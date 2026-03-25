@@ -32,3 +32,6 @@ jobs:
 
       - name: Run workspace and feature matrix tests
         run: bash scripts/test-feature-matrix.sh
+
+      - name: CI success
+        run: echo "CI success"

@@ -1,0 +1,48 @@
+$ErrorActionPreference = "Stop"
+Set-StrictMode -Version Latest
+
+# For native commands (cargo, rustup, etc.), fail fast on non-zero exit.
+$PSNativeCommandUseErrorActionPreference = $true
+
+function Run-Step {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Title,
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command
+    )
+
+    Write-Host $Title
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "Step failed with exit code ${LASTEXITCODE}: $Title"
+    }
+}
+
+Run-Step "[1/7] cargo test --workspace" {
+    cargo test --workspace
+}
+
+Run-Step "[2/7] cargo hack test --each-feature" {
+    cargo hack test --each-feature
+}
+
+Run-Step "[3/7] cargo hack test --no-default-features" {
+    cargo hack test --no-default-features
+}
+
+Run-Step "[4/7] cargo hack check --no-default-features --features json" {
+    cargo hack check --no-default-features -p diagweave --features json
+}
+
+Run-Step "[5/7] cargo check -p diagweave --no-default-features --features trace" {
+    cargo check -p diagweave --no-default-features --features trace
+}
+
+Run-Step "[6/7] cargo check -p diagweave --no-default-features --features tracing" {
+    cargo check -p diagweave --no-default-features --features tracing
+}
+
+Run-Step "[7/7] cargo hack test --feature-powerset" {
+    cargo hack test --feature-powerset
+}

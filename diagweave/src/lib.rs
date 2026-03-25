@@ -13,6 +13,14 @@ mod tracing_export_impl;
 
 pub use diagweave_macros::{Error, set, union};
 
+#[cfg(doctest)]
+#[doc = include_str!("../../README.md")]
+pub struct ReadmeDoctests;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../README_CN.md")]
+pub struct ReadmeCnDoctests;
+
 pub mod adapters {
     pub use crate::adapters_impl::*;
 }

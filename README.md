@@ -1,50 +1,89 @@
 # diagweave
 
-Type-safe error-set algebra and diagweaveed runtime diagnostics for Rust.
+<div align="center">
 
-`diagweave` gives you three pieces that work together:
-- `set!`: define structured error sets with concise display templates.
-- `union!`: combine multiple error sets/types into one union enum.
-- `Report`: carry context, attachments, and source chains with multiple renderers.
+**Type-safe error algebra and runtime diagnostic reports for Rust**
 
-## Chinese Guide
+[![crates.io](https://img.shields.io/crates/v/diagweave.svg)](https://crates.io/crates/diagweave)
+[![docs.rs](https://img.shields.io/docsrs/diagweave)](https://docs.rs/diagweave)
+[![license](https://img.shields.io/crates/l/diagweave)](#license)
+[![build](https://img.shields.io/github/actions/workflow/status/shaogme/diagweave/ci.yml?branch=main)](https://github.com/shaogme/diagweave/actions)
 
-- Chinese guide: [`README_CN.md`](README_CN.md)
+[English](./README.md) · [简体中文](./README_CN.md)
 
+</div>
+
+---
+
+`diagweave` unifies three layers that are often split across different crates:
+
+- **Type layer**: `set!` / `union!` for composable, strongly-typed error modeling
+- **Propagation layer**: `Report` for context, attachments, events, stack trace, and source/cause chain
+- **Presentation layer**: `Compact` / `Pretty` / `Json`, plus tracing/telemetry export
+
+## Table of Contents
+
+- [diagweave](#diagweave)
+  - [Table of Contents](#table-of-contents)
+  - [Why diagweave](#why-diagweave)
+  - [Installation](#installation)
+  - [Quick Start](#quick-start)
+  - [Core Concepts](#core-concepts)
+    - [`set!`](#set)
+    - [`union!`](#union)
+    - [`Report`](#report)
+  - [`set!`](#set-1)
+  - [`union!`](#union-1)
+  - [Standalone `#[derive(Error)]`](#standalone-deriveerror)
+  - [`Report` and chain APIs](#report-and-chain-apis)
+  - [Rendering and export](#rendering-and-export)
+  - [Advanced patterns from `diagweave-example`](#advanced-patterns-from-diagweave-example)
+  - [Comparison with other crates](#comparison-with-other-crates)
+  - [Feature flags](#feature-flags)
+  - [Workspace layout](#workspace-layout)
+  - [Testing](#testing)
+  - [When to use](#when-to-use)
+  - [License](#license)
 
 ## Why diagweave
 
-- Avoid hand-written nested error enums and repetitive `From` boilerplate.
-- Keep error data structured (named fields / tuple fields) and still human-readable.
-- Add diagnostic metadata close to failure points with chain-style APIs.
-- Render errors in `Compact`, `Pretty`, or `Json` style, or bring your own renderer.
+In many Rust projects, error modeling, propagation context, and rendering are handled by separate tools. `diagweave` keeps them on one consistent data model:
+
+1. what failed
+2. what runtime context came with the failure
+3. how to render/export it for humans and systems
+
+Benefits:
+
+- less manual nested enum boilerplate
+- structured diagnostics instead of string-only errors
+- chain-friendly context enrichment near the failure site
+- one output pipeline for text, JSON, and observability sinks
 
 ## Installation
-
-`diagweave` is a normal dependency (macros are re-exported).
 
 ```toml
 [dependencies]
 diagweave = "0.1"
 ```
 
-If you do not need JSON rendering:
+If you do not need default features:
 
 ```toml
 [dependencies]
 diagweave = { version = "0.1", default-features = false }
 ```
 
-`no_std` mode is supported with `alloc` when `default-features = false`.
+With `default-features = false`, `diagweave` supports `no_std + alloc`.
 
 ## Quick Start
 
-```rust
-use diagweave::prelude::{set, Diagnostic, Report};
+```rust,no_run
+use diagweave::prelude::{set, Diagnostic, Report, ReportResultExt};
 
 set! {
     AuthError = {
-        #[display("invalid token for user {user_id}")]
+        #[display("user {user_id} token is invalid")]
         InvalidToken { user_id: u64 },
 
         #[display("permission denied for role {0}")]
@@ -63,29 +102,62 @@ fn main() {
         .with_note("auth gate rejected")
         .expect_err("demo");
 
-    println!("{}", report);           // compact Display
-    println!("{}", report.pretty());  // structured pretty output
+    println!("{}", report);          // compact output
+    println!("{}", report.pretty()); // structured output
 }
 ```
 
-## `set!` Guide
+## Core Concepts
 
-### Constructors
+### `set!`
 
-`set!` generates constructor helpers per variant in snake_case:
-- named variant: `ErrorSet::invalid_token(user_id)`
-- tuple variant: `ErrorSet::permission_denied(role)`
-- unit variant: `ErrorSet::timeout()`
+Define structured error sets for module/domain-local modeling.
 
-It also generates `*_report(...)` helpers returning `Report<ErrorSet>`.
+### `union!`
 
-You can optionally configure a constructor prefix:
+Compose multiple sets and external error types into one boundary error.
+
+### `Report`
+
+Wrap an error value and enrich it with runtime diagnostics.
+
+## `set!`
+
+Basic example:
 
 ```rust
+use diagweave::prelude::set;
+
+set! {
+    AuthError = {
+        #[display("user {user_id} token is invalid")]
+        InvalidToken { user_id: u64 },
+
+        #[display("permission denied for role {0}")]
+        PermissionDenied(&'static str),
+
+        #[display("request timed out")]
+        Timeout,
+    }
+}
+```
+
+Generated constructors:
+
+- `AuthError::invalid_token(user_id)`
+- `AuthError::permission_denied(role)`
+- `AuthError::timeout()`
+- report helpers: `*_report(...)`
+
+Custom constructor prefix:
+
+```rust
+use diagweave::prelude::set;
+
 set! {
     #[diagweave(constructor_prefix = "new")]
     AuthError = {
-        #[display("invalid token for user {user_id}")]
+        #[display("user {user_id} token is invalid")]
         InvalidToken { user_id: u64 },
     }
 }
@@ -94,9 +166,14 @@ let e = AuthError::new_invalid_token(7);
 let r = AuthError::new_invalid_token_report(7);
 ```
 
-You can decouple the report type path used by generated `*_report(...)` constructors:
+Custom report path:
 
-```rust
+```rust,ignore
+use diagweave::prelude::set;
+# mod custom_runtime {
+#     pub struct Bag<T>(pub T);
+# }
+
 set! {
     #[diagweave(report_path = "crate::custom_runtime::Bag")]
     AuthError = {
@@ -106,57 +183,9 @@ set! {
 }
 ```
 
-### Derive Support
+`#[display(transparent)]` and `#[from]` on tuple variants are supported and require exactly one field.
 
-Each error set can independently configure its `derive` attributes. `Debug` is always added automatically if not present.
-
-```rust
-set! {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    AuthError = {
-        NotFound,
-        InvalidToken,
-    }
-
-    #[derive(Clone)]
-    ApiError = AuthError | {
-        Internal,
-        RateLimited,
-    }
-}
-```
-
-### Display Template Rules
-
-- Named fields: use field names, for example `{user_id}`.
-- Tuple fields: use zero-based indices, for example `{0}`, `{1}`.
-- Escape braces with `{{` and `}}`.
-
-### Transparent Delegation and `#[from]`
-
-Variants can delegate their `Display` and `From` implementation.
-
-```rust
-set! {
-    WrapperError = {
-        #[from]
-        #[display(transparent)]
-        Io(std::io::Error),
-
-        #[display("config error: {0}")]
-        Config(&'static str),
-    }
-}
-```
-
-- `#[display(transparent)]`: requires exactly one field; delegates `Display` to that field's implementation.
-- `#[from]`: generates `From<T>` for the wrapped type; requires exactly one field.
-
-## `union!` Guide
-
-`union!` is used to combine multiple error types (or error sets defined by `set!`) into a single unified enum. It simplifies error propagation and handling in complex applications.
-
-### Basic Usage
+## `union!`
 
 ```rust
 use diagweave::prelude::{set, union};
@@ -184,41 +213,25 @@ impl std::fmt::Display for DbError {
 impl std::error::Error for DbError {}
 
 union! {
-    /// Combined error type for the API layer
-    #[derive(Clone)]
-    pub enum ApiError = 
-        // External type with implicit variant name (AuthError)
-        AuthError | 
-        // External type with explicit alias (Db)
-        DbError as Db | 
-        // Standard library type
+    pub enum ApiError =
+        AuthError |
+        DbError as Db |
         std::io::Error |
-        // Inline variants
         {
-            #[display("rate limited, retry after {retry_after}s")]
+            #[display("rate limited; retry after {retry_after}s")]
             RateLimited { retry_after: u64 },
         }
 }
 ```
 
-### Key Features
+Highlights:
 
-1.  **Automatic `From` Conversion**: `union!` automatically implements `From<T>` for all external types listed. This allows using the `?` operator to propagate errors from sub-modules directly into the union type.
-2.  **Display Delegation**: For external types, `fmt::Display` is automatically delegated to the inner error's implementation. For inline variants, you can use the same `#[display]` templates as in `set!`.
-3.  **Error Trait**: The generated enum automatically implements `std::error::Error`.
-4.  **Automatic Debug**: If `#[derive(Debug)]` is not present, it is added automatically.
-5.  **Variant Naming**:
-    *   For external types like `path::to::MyError`, the variant name defaults to `MyError`.
-    *   Use `as Alias` to override the variant name (e.g., `DbError as Db`).
-    *   Inline variants use their declared names.
-6.  **Attributes Passthrough**: Any attributes (like `#[derive(...)]` or doc comments) applied to the `union!` block are passed through to the generated enum.
-
+- auto-`From<T>` for listed external types
+- display delegation for wrapped external errors
+- `as Alias` for variant naming override
+- auto `Error` implementation and auto `Debug` backfill
 
 ## Standalone `#[derive(Error)]`
-
-`diagweave` provides a standalone `#[derive(Error)]` macro that automatically implements `std::error::Error` and `Display` for your structs and enums. It is designed to be a lightweight and familiar alternative to crates like `thiserror`.
-
-### Basic Usage
 
 ```rust
 use diagweave::Error;
@@ -232,235 +245,188 @@ pub enum MyError {
     Custom { msg: String },
 
     #[display(transparent)]
-    Other(#[source] anyhow::Error),
+    Other(#[source] std::io::Error),
 }
 ```
 
-### Key Features
+Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `diag()` / `diag_with::<C>()` integration.
 
-1.  **Display Templates**: Use the same template syntax as in `set!` (via `#[display("...")]`).
-2.  **Transparent Delegation**: Use `#[display(transparent)]` to delegate both `Display` and `Error::source`.
-3.  **Automatic From Conversion**: Use `#[from]` to generate `From<T>` implementations automatically.
-4.  **Error::source Support**: Both `#[from]` and `#[source]` are recognized to provide the `source()` method.
-5.  **Report Integration**: Derived types automatically get `diag()`, `source()`, and `diag_with::<C>()` methods for seamless integration with the `Report` system.
+## `Report` and chain APIs
 
+From `Result<T, E>`:
 
-## Report and Chaining APIs
+- `diag()`
+- `diag_with::<Store>()`
+- `diag_context(key, value)`
+- `diag_note(message)`
 
-### Result conversion
+Common enrichers on `Result<T, Report<E, C>>`:
 
-- `Diagnostic::diag()` converts `Result<T, E>` to `Result<T, Report<E>>`.
-- `ReportResultExt` adds chain methods on `Result<T, Report<E>>`:
-  - `attach(key, value)` / `with_context(key, value)`
-  - `attach_printable(msg)` / `with_note(msg)`
-  - `attach_payload(name, value, media_type)` / `with_payload(...)`
-  - `with_error_code(code)` / `with_severity(severity)` / `with_category(category)` / `with_retryable(bool)`
-  - `with_source(err)` / `with_event(message)` / `with_causes(iter)`
-  - `context_lazy(key, || value)`
-  - `note_lazy(|| msg)`
-  - `wrap(outer)` / `wrap_with(|inner| outer)`
+- `with_context`, `with_note`, `with_payload`
+- `with_error_code`, `with_severity`, `with_category`, `with_retryable`
+- `with_source`, `with_local_source`, `with_event`, `with_causes`
+- `context_lazy`, `note_lazy`
+- `wrap`, `wrap_with`
 
-`Diagnostic` is implemented for all `Result<T, E>`, so `diag()/diag_with()/diag_context()/diag_note()` are always available:
+Global context injector (`std`):
 
 ```rust
-let report = verify(7)
-    .diag_context("request_id", "req-001")
-    .with_note("auth gate rejected")
-    .expect_err("demo");
-```
+#[cfg(feature = "std")]
+{
+    use diagweave::report::{GlobalContext, register_global_injector};
 
-`Report` governance metadata is first-class (`error_code`, `severity`, `category`, `retryable`).
-`Attachment` values support scalar values, arrays, objects, bytes, and redacted markers.
-
-### Global Context Injector (`std` only)
-
-If you want common metadata (for example `request_id` or `trace_id`) to be attached automatically,
-you can register a global injector once:
-
-```rust
-use diagweave::report::{GlobalContext, register_global_injector};
-
-let _ = register_global_injector(|| {
-    let mut ctx = GlobalContext::default();
-    ctx.context.push(("request_id".to_owned(), "req-001".into()));
-    #[cfg(feature = "trace")]
-    {
-        ctx.trace_id = Some("trace-abc".to_owned());
-        ctx.span_id = Some("span-def".to_owned());
-    }
-    Some(ctx)
-});
-```
-
-Notes:
-- Available under `feature = "std"`.
-- Registration is one-time (`OnceLock`); repeated registration returns `RegisterGlobalContextError`.
-- Scheduling/dispatch/concurrency strategy is intentionally owned by user code inside the injector.
-
-### Generic Cause Store examples
-
-Use `diag_with::<Store>()` when you want a non-default cause storage strategy.
-
-`LocalCauseStore` (non-`Send`/`Sync` local error objects):
-
-```rust
-use diagweave::prelude::{Diagnostic, ReportResultExt};`r`nuse diagweave::report::LocalCauseStore;
-
-fn parse() -> Result<(), std::num::ParseIntError> {
-    "x".parse::<i32>().map(|_| ())
+    let _ = register_global_injector(|| {
+        let mut ctx = GlobalContext::default();
+        ctx.context.push(("request_id".to_owned(), "req-001".into()));
+        Some(ctx)
+    });
 }
-
-let report = parse()
-    .diag_with::<LocalCauseStore>()
-    .with_local_source(std::fmt::Error)
-    .expect_err("demo");
 ```
 
-`EventOnlyStore` (event-focused diagnostics, no typed error source chain):
+## Rendering and export
 
-```rust
-use diagweave::prelude::{Diagnostic, ReportResultExt};`r`nuse diagweave::report::EventOnlyStore;
-
-let report = Err::<(), &str>("network path unavailable")
-    .diag_with::<EventOnlyStore>()
-    .with_event("fallback route selected")
-    .with_source(std::io::Error::other("socket closed"))
-    .expect_err("demo");
-```
-
-## Rendering
-
-### Built-in renderers
+Built-in renderers:
 
 ```rust
 use diagweave::render::{Compact, Pretty, ReportRenderOptions};
+# use diagweave::prelude::set;
+# use diagweave::report::Report;
+# set! {
+#     AuthError = {
+#         #[display("invalid token")]
+#         InvalidToken,
+#     }
+# }
+# let report = Report::new(AuthError::invalid_token());
 
 let _ = report.render(Compact).to_string();
 let _ = report.render(Pretty::new(ReportRenderOptions::default())).to_string();
 ```
 
-Structured IR (AST-like intermediate form) is available for direct machine consumption:
+IR and adapters:
 
 ```rust
+# use diagweave::prelude::set;
+# use diagweave::render::ReportRenderOptions;
+# use diagweave::report::Report;
+# set! {
+#     AuthError = {
+#         #[display("invalid token")]
+#         InvalidToken,
+#     }
+# }
+# let report = Report::new(AuthError::invalid_token());
+
 let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
-```
-
-Direct adapters for logging/telemetry platforms:
-
-```rust
 let tracing_fields = ir.to_tracing_fields();
-let otel = ir.to_otel_envelope(); // { attributes, events }
+let otel = ir.to_otel_envelope();
 ```
 
-Minimal `tracing_subscriber` + `report.emit_tracing(...)` usage:
-
-```rust
-#[cfg(feature = "tracing")]
-{
-    use diagweave::render::ReportRenderOptions;
-    use tracing_subscriber::FmtSubscriber;
-
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(tracing::Level::TRACE)
-        .finish();
-    let _ = tracing::subscriber::set_global_default(subscriber);
-
-    report.emit_tracing(ReportRenderOptions::default());
-}
-```
-
-Minimal custom `TracingExporterTrait` implementation:
-
-```rust
-#[cfg(feature = "tracing")]
-{
-    use diagweave::render::{DiagnosticIr, ReportRenderOptions};
-    use diagweave::tracing_export::TracingExporterTrait;
-
-    struct MyExporter;
-
-    impl TracingExporterTrait for MyExporter {
-        fn export_ir(&self, ir: &DiagnosticIr) {
-            tracing::info!(
-                target: "my_app::diag",
-                error_message = %ir.error.message,
-                stack_trace_present = ir.metadata.stack_trace.is_some(),
-                "custom exporter"
-            );
-        }
-    }
-
-    report.emit_tracing_with(&MyExporter, ReportRenderOptions::default());
-}
-```
-
-`Json` renderer exists when `json` feature is enabled.
-The JSON payload includes `schema_version: "v0.1.0"` for compatibility tracking.
-Machine-readable schema and Rust type definitions are exposed:
-- schema file: `diagweave/schemas/report-v0.1.0.schema.json`
-- docs: [`docs/report-json-schema-v0.1.0.md`](docs/report-json-schema-v0.1.0.md)
-- exported types: `ReportJsonDocument`, `ReportJsonError`, `ReportJsonMetadata`, `ReportJsonStackTrace`, `ReportJsonStackFrame`, `ReportJsonStackTraceFormat`, `ReportJsonCauseChain`, `ReportJsonCauseNode`, `ReportJsonCauseKind`, `ReportJsonContext`, `ReportJsonAttachment`
-- exported constants/functions: `REPORT_JSON_SCHEMA_VERSION`, `REPORT_JSON_SCHEMA_DRAFT`, `report_json_schema()`
+JSON renderer (`json` feature):
 
 ```rust
 #[cfg(feature = "json")]
 {
     use diagweave::render::{Json, ReportRenderOptions};
+#    use diagweave::prelude::set;
+#    use diagweave::report::Report;
+#    set! {
+#        AuthError = {
+#            #[display("invalid token")]
+#            InvalidToken,
+#        }
+#    }
+#    let report = Report::new(AuthError::invalid_token());
     let _ = report.render(Json::new(ReportRenderOptions::default())).to_string();
 }
 ```
 
-### Custom renderer
+JSON output includes `schema_version: "v0.1.0"`.
+
+- Schema: `diagweave/schemas/report-v0.1.0.schema.json`
+- Doc: [`docs/report-json-schema-v0.1.0.md`](docs/report-json-schema-v0.1.0.md)
+
+Tracing export:
 
 ```rust
-use std::fmt::{Formatter, Result as FmtResult};
-use diagweave::prelude::Report;
-use diagweave::render::ReportRenderer;
-
-struct OneLine;
-
-impl<E: std::fmt::Display> ReportRenderer<E> for OneLine {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "ERR: {}", report.inner())
-    }
+#[cfg(feature = "tracing")]
+{
+#    use diagweave::prelude::set;
+#    use diagweave::report::Report;
+#    set! {
+#        AuthError = {
+#            #[display("invalid token")]
+#            InvalidToken,
+#        }
+#    }
+#    let report = Report::new(AuthError::invalid_token());
+    report.emit_tracing(diagweave::render::ReportRenderOptions::default());
 }
 ```
 
-## Feature Flags
+## Advanced patterns from `diagweave-example`
 
-- `std` (default): enables the standard library integration.
-- `json` (default): enables `Json` renderer via `serde` + `serde_json` (`alloc` mode supported).
-- `trace` (default): enables trace data model APIs (`ReportTrace`, `TraceContext`, `TraceEvent`).
-- `tracing`: enables `TracingExporterTrait`, default `TracingExporter`, and `emit_tracing*` APIs.
+See [`diagweave-example/src/main.rs`](diagweave-example/src/main.rs) for a runnable showcase including:
 
-For `no_std + alloc`, disable default features:
+- `set!` composition and `union!` API boundary
+- custom constructor prefixes
+- custom `ReportRenderer`
+- custom `TracingExporterTrait`
+- `EventOnlyStore` / `LocalCauseStore`
+- manual and captured stack trace
+- global injector for context/trace propagation
 
-```toml
-[dependencies]
-diagweave = { version = "0.1", default-features = false }
+Run it with:
+
+```bash
+cargo run -p diagweave-example
 ```
 
-## Workspace Layout
+## Comparison with other crates
 
-- `diagweave/`: runtime API and macro re-exports.
-- `diagweave-macros/`: proc-macro implementation.
-- `diagweave-example/`: `publish = false` best-practice sample crate.
+| Capability | `thiserror` | `anyhow` | `miette` | `diagweave` |
+| --- | --- | --- | --- | --- |
+| Typed error definitions | Strong | Weak | Medium | Strong |
+| Composable error modeling | Weak | Weak | Weak | Strong |
+| Propagation-time context | Weak | Strong | Medium | Strong |
+| Structured payloads | Weak | Medium | Medium | Strong |
+| Human-readable rendering | Weak | Medium | Strong | Strong |
+| Machine-consumable JSON | Weak | Weak | Medium | Strong |
+| Tracing/observability export | Weak | Weak | Medium | Strong |
+
+## Feature flags
+
+- `std` (default): std integrations
+- `json` (default): `Json` renderer (`serde` / `serde_json`)
+- `trace` (default): trace data model (`ReportTrace`, `TraceContext`, `TraceEvent`)
+- `tracing`: exporter APIs (`TracingExporterTrait`, `emit_tracing*`)
+
+## Workspace layout
+
+- `diagweave/`: runtime APIs + macro re-export
+- `diagweave-macros/`: proc-macro implementation
+- `diagweave-example/`: runnable best-practice sample (`publish = false`)
 
 ## Testing
-
-Run all tests:
 
 ```bash
 cargo test --workspace
 ```
 
-Feature matrix:
-
 ```bash
 bash scripts/test-feature-matrix.sh
 ```
 
+```powershell
+powershell -File diagweave/scripts/test-feature-matrix.ps1
+```
+
+## When to use
+
+`diagweave` is a good fit when you need both typed boundaries and rich runtime diagnostics for services, libraries, or frameworks.
+
+If you only need minimal display derivation or quick app-level propagation, a lighter stack may be enough.
+
 ## License
 
-Licensed under either MIT or Apache-2.0.
-
+Dual-licensed under MIT OR Apache-2.0.

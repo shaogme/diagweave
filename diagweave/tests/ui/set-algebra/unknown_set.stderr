@@ -1,0 +1,5 @@
+error: referenced undefined set `MissingError`
+ --> tests/ui/set-algebra/unknown_set.rs:4:16
+  |
+4 |     ApiError = MissingError | {
+  |                ^^^^^^^^^^^^

@@ -1,0 +1,68 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+extern crate alloc;
+
+#[path = "adapters.rs"]
+mod adapters_impl;
+#[path = "render.rs"]
+mod render_impl;
+#[path = "report.rs"]
+mod report_impl;
+#[cfg(feature = "trace")]
+#[path = "tracing_export.rs"]
+mod tracing_export_impl;
+
+pub use diagweave_macros::{Error, set, union};
+
+pub mod adapters {
+    pub use crate::adapters_impl::*;
+}
+
+pub mod render {
+    pub use crate::render_impl::{
+        Compact, DiagnosticIr, DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError,
+        DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport, ReportRenderOptions,
+        ReportRenderer,
+    };
+    #[cfg(feature = "json")]
+    pub use crate::render_impl::{
+        Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
+        ReportJsonCauseChain, ReportJsonCauseKind, ReportJsonCauseNode, ReportJsonContext,
+        ReportJsonDocument, ReportJsonError, ReportJsonMetadata, ReportJsonStackFrame,
+        ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
+    };
+}
+
+pub mod report {
+    pub use crate::report_impl::{
+        Attachment, AttachmentValue, CauseChain, CauseCollectOptions, CauseCollection, CauseEntry,
+        CauseKind, CauseNode, CauseStore, DefaultCauseStore, Diagnostic, EventCauseStore,
+        EventOnlyStore, GlobalContext, LocalCause, LocalCauseStore, LocalErrorCauseStore, Report,
+        ReportMetadata, ReportResultCauseExt, ReportResultExt, Severity, StackFrame, StackTrace,
+        StackTraceFormat, StdCause, StdCauseStore, StdErrorCauseStore,
+    };
+    #[cfg(feature = "std")]
+    pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
+    #[cfg(feature = "trace")]
+    pub use crate::report_impl::{
+        ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel,
+    };
+}
+
+#[cfg(feature = "trace")]
+pub mod tracing_export {
+    #[cfg(feature = "tracing")]
+    pub use crate::tracing_export_impl::TracingExporter;
+    pub use crate::tracing_export_impl::TracingExporterTrait;
+}
+
+pub mod prelude {
+    pub use crate::render::{Compact, Pretty, ReportRenderOptions, ReportRenderer};
+    pub use crate::report::{
+        AttachmentValue, Diagnostic, Report, ReportResultCauseExt, ReportResultExt, Severity,
+    };
+    #[cfg(feature = "std")]
+    pub use crate::report::{GlobalContext, register_global_injector};
+    #[cfg(feature = "trace")]
+    pub use crate::report::{TraceEvent, TraceEventAttribute, TraceEventLevel};
+    pub use crate::{Error, set, union};
+}

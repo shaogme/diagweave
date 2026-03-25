@@ -1,0 +1,5 @@
+error: variant `PermissionDenied` has the same name but a different field shape; cannot deduplicate union members
+ --> tests/ui/set-algebra/conflicting_variant_shape.rs:9:9
+  |
+9 |         PermissionDenied { id: String },
+  |         ^^^^^^^^^^^^^^^^

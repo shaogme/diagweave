@@ -1,0 +1,5 @@
+error: missing #[display(...)] attribute; expected #[display("...")] or #[display(transparent)]
+ --> tests/ui/derive/missing_error_attr.rs:5:5
+  |
+5 |     NoMessage,
+  |     ^^^^^^^^^

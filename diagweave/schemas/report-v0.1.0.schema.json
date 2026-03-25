@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shaogme/diagweave/schemas/report-v0.1.0.schema.json",
+  "title": "diagweave Report JSON v0.1.0",
+  "$defs": {
+    "severity": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error", "fatal"]
+    },
+    "trace_event_level": {
+      "type": "string",
+      "enum": ["trace", "debug", "info", "warn", "error"]
+    },
+    "stack_trace_format": {
+      "type": "string",
+      "enum": ["native", "raw"]
+    },
+    "stack_frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "module_path", "file", "line", "column"],
+      "properties": {
+        "symbol": { "type": ["string", "null"] },
+        "module_path": { "type": ["string", "null"] },
+        "file": { "type": ["string", "null"] },
+        "line": { "type": ["integer", "null"], "minimum": 0 },
+        "column": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "stack_trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "frames", "raw"],
+      "properties": {
+        "format": { "$ref": "#/$defs/stack_trace_format" },
+        "frames": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stack_frame" }
+        },
+        "raw": { "type": ["string", "null"] }
+      }
+    },
+    "cause_kind": {
+      "type": "string",
+      "enum": ["error", "event"]
+    },
+    "cause_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/cause_kind" },
+        "message": { "type": "string" }
+      }
+    },
+    "cause_chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "truncated", "cycle_detected"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/cause_node" }
+        },
+        "truncated": { "type": "boolean" },
+        "cycle_detected": { "type": "boolean" }
+      }
+    },
+    "attachment_value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "string" },
+            "value": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "integer" },
+            "value": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "unsigned" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "float" },
+            "value": { "type": "number" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bool" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "array" },
+            "value": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/attachment_value" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "object" },
+            "value": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/attachment_value" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bytes" },
+            "value": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "redacted" },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "type": ["string", "null"] },
+                "reason": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "trace_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_id",
+        "span_id",
+        "parent_span_id",
+        "sampled",
+        "trace_state",
+        "flags"
+      ],
+      "properties": {
+        "trace_id": { "type": ["string", "null"] },
+        "span_id": { "type": ["string", "null"] },
+        "parent_span_id": { "type": ["string", "null"] },
+        "sampled": { "type": ["boolean", "null"] },
+        "trace_state": { "type": ["string", "null"] },
+        "flags": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "trace_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "level", "timestamp_unix_nano", "attributes"],
+      "properties": {
+        "name": { "type": "string" },
+        "level": {
+          "oneOf": [
+            { "$ref": "#/$defs/trace_event_level" },
+            { "type": "null" }
+          ]
+        },
+        "timestamp_unix_nano": { "type": ["integer", "null"], "minimum": 0 },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "value"],
+            "properties": {
+              "key": { "type": "string" },
+              "value": { "$ref": "#/$defs/attachment_value" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "error",
+    "metadata",
+    "trace",
+    "context",
+    "attachments"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "v0.1.0"
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "type"],
+      "properties": {
+        "message": { "type": "string" },
+        "type": { "type": "string" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error_code", "severity", "category", "retryable", "stack_trace", "causes"],
+      "properties": {
+        "error_code": { "type": ["string", "null"] },
+        "severity": {
+          "oneOf": [
+            { "$ref": "#/$defs/severity" },
+            { "type": "null" }
+          ]
+        },
+        "category": { "type": ["string", "null"] },
+        "retryable": { "type": ["boolean", "null"] },
+        "stack_trace": {
+          "oneOf": [
+            { "$ref": "#/$defs/stack_trace" },
+            { "type": "null" }
+          ]
+        },
+        "causes": {
+          "oneOf": [
+            { "$ref": "#/$defs/cause_chain" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["context", "events"],
+      "properties": {
+        "context": { "$ref": "#/$defs/trace_context" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/trace_event" }
+        }
+      }
+    },
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "value"],
+        "properties": {
+          "key": { "type": "string" },
+          "value": { "$ref": "#/$defs/attachment_value" }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "message"],
+            "properties": {
+              "kind": { "const": "note" },
+              "message": { "type": "string" }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "name", "value", "media_type"],
+            "properties": {
+              "kind": { "const": "payload" },
+              "name": { "type": "string" },
+              "value": { "$ref": "#/$defs/attachment_value" },
+              "media_type": { "type": ["string", "null"] }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

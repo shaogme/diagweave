@@ -1,0 +1,5 @@
+error: #[from] requires exactly one field
+ --> tests/ui/derive/from_requires_single_field.rs:6:10
+  |
+6 |     Multi(#[from] std::io::Error, u32),
+  |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: #[display(transparent)] requires exactly one tuple field
+ --> tests/ui/display/display_transparent_requires_single_tuple_field.rs:6:9
+  |
+6 |         NotTuple { code: u32 },
+  |         ^^^^^^^^

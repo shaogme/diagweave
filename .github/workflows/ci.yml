@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "dev"
+  pull_request:
+    branches:
+      - "main"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Alloy Check
+        uses: shaogme/alloy-check@main
+
+      - name: Run Alloy Check
+        run: alloy-check --all-features
+
+      - name: Install cargo-hack
+        run: cargo install cargo-hack --locked
+
+      - name: Run workspace and feature matrix tests
+        run: bash scripts/test-feature-matrix.sh

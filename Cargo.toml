@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    "diagweave", "diagweave-example", "diagweave-macros",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Shao G. <shaogme@gmail.com>"]
+repository = "https://github.com/shaogme/diagweave"
+description = "Type-safe error set algebra and diagweaveed diagnostic reports for Rust."
+readme = "README.md"
+homepage = "https://github.com/shaogme/diagweave"
+documentation = "https://docs.rs/diagweave"
+keywords = ["error-handling", "proc-macro", "diagnostics", "result", "library"]
+categories = ["rust-patterns", "development-tools::debugging"]
+
+[workspace.dependencies]
+
+# Internal Crates
+diagweave = { path = "diagweave", version = "0.1.0" }
+diagweave-macros = { path = "diagweave-macros", version = "0.1.0" }
+
+# External Crates
+tracing = { version = "0.1", default-features = false }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+cognitive_complexity = { level = "deny", priority = 1 }

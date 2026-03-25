@@ -1,0 +1,6 @@
+error: #[from] requires exactly one tuple field variant, e.g. Variant(SourceError)
+ --> tests/ui/display/from_requires_single_tuple_field.rs:5:9
+  |
+5 | /         #[from]
+6 | |         NotTuple { code: u32 },
+  | |______________________________^

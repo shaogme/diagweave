@@ -1,0 +1,5 @@
+error: unmatched `}` in #[display(...)] template
+ --> tests/ui/display/display_unmatched_brace.rs:5:19
+  |
+5 |         #[display("broken } template")]
+  |                   ^^^^^^^^^^^^^^^^^^^

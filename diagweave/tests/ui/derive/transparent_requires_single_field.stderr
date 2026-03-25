@@ -1,0 +1,5 @@
+error: #[display(transparent)] requires exactly one field
+ --> tests/ui/derive/transparent_requires_single_field.rs:6:5
+  |
+6 |     TooMany(std::io::Error, u32),
+  |     ^^^^^^^

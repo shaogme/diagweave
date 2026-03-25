@@ -1,0 +1,23 @@
+[package]
+name = "diagweave-example"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Best-practice runnable example for diagweave."
+readme = "README.md"
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["example", "error-handling", "diagweave"]
+categories = ["development-tools::debugging"]
+publish = false
+
+[dependencies]
+diagweave = { workspace = true, features = ["std", "json", "trace", "tracing"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+serde_json = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true

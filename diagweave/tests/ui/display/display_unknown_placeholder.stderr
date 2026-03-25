@@ -1,0 +1,5 @@
+error: unknown placeholder `{uid}` in #[display(...)] template; placeholders come from named fields or zero-based tuple indices
+ --> tests/ui/display/display_unknown_placeholder.rs:5:19
+  |
+5 |         #[display("user {uid} token is invalid")]
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,5 @@
+error: duplicate variant name `AuthError` in union!
+ --> tests/ui/set-algebra/union_duplicate_variant_name.rs:7:9
+  |
+7 |         AuthError,
+  |         ^^^^^^^^^

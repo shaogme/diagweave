@@ -26,11 +26,16 @@ where
                 }
                 #[cfg(feature = "trace")]
                 writeln!(f, "  - trace: {:?}", diag.trace)?;
-                if diag.display_causes.is_empty() {
+                let display_causes = diag
+                    .display_causes
+                    .as_ref()
+                    .map(|v| v.items.as_slice())
+                    .unwrap_or(&[]);
+                if display_causes.is_empty() {
                     writeln!(f, "  - display_causes: (none)")?;
                 } else {
                     writeln!(f, "  - display_causes:")?;
-                    for cause in &diag.display_causes {
+                    for cause in display_causes {
                         writeln!(f, "    - {}", cause)?;
                     }
                 }
@@ -62,12 +67,9 @@ where
         let has_metadata = metadata.error_code.is_some()
             || metadata.severity.is_some()
             || metadata.category.is_some()
-            || metadata.retryable.is_some()
-            || metadata.stack_trace.is_some()
-            || metadata.display_causes.is_some()
-            || metadata.source_errors.is_some();
+            || metadata.retryable.is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
-            !diag.attachments.is_empty() || {
+            diag.stack_trace.is_some() || !diag.attachments.is_empty() || {
                 #[cfg(feature = "trace")]
                 {
                     !diag.trace.is_empty()
@@ -115,15 +117,6 @@ where
         if let Some(ret) = metadata.retryable {
             write_field("retryable", &ret)?;
         }
-        if metadata.stack_trace.is_some() {
-            write_field("stack_trace", &"present")?;
-        }
-        if let Some(display_causes) = &metadata.display_causes {
-            write_field("display_causes", &display_causes.items.len())?;
-        }
-        if let Some(source_errors) = &metadata.source_errors {
-            write_field("source_errors", &source_errors.items.len())?;
-        }
         Ok(())
     }
 
@@ -146,6 +139,14 @@ where
                 if let Some(sid) = &diag.trace.context.span_id {
                     write_field("span_id", sid)?;
                 }
+            }
+
+            if diag.stack_trace.is_some() {
+                if *idx > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "stack_trace=present")?;
+                *idx += 1;
             }
 
             for attachment in &diag.attachments {
@@ -177,7 +178,11 @@ where
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
-            .and_then(|diag| diag.source_errors.first().map(|err| err.as_ref()))
+            .and_then(|diag| {
+                diag.source_errors
+                    .as_ref()
+                    .and_then(|v| v.items.first().map(|err| err.as_ref()))
+            })
             .or_else(|| self.inner().source())
     }
 }

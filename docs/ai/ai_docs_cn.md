@@ -179,10 +179,12 @@ pub struct Report<E> {
 | `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
-| `report.display_causes()` | 使用默认选项收集展示原因 (`CauseCollection`) |
-| `report.display_causes_with(options)` | 使用自定义选项收集展示原因 (`CauseCollection`) |
-| `report.source_errors()` | 使用默认选项收集错误源链 (`CauseCollection`) |
-| `report.source_errors_with(options)` | 使用自定义选项收集错误源链 (`CauseCollection`) |
+| `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
+| `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
+| `report.visit_sources(visit)` | 使用默认选项流式遍历错误源链 |
+| `report.visit_sources_ext(options, visit)` | 使用自定义选项流式遍历错误源链 |
+| `report.iter_sources()` | 使用默认选项迭代错误源链 |
+| `report.iter_sources_ext(options)` | 使用自定义选项迭代错误源链 |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
@@ -217,7 +219,7 @@ pub struct Report<E> {
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | 添加上下文键值对 |
-| `with_note` / `attach_printable` | `impl Display` | 添加备注或解决建议 |
+| `with_note` / `attach_printable` | `impl Display + 'static` | 添加备注或解决建议 |
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<Cow<'static, str>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
@@ -323,7 +325,7 @@ fn process() -> Result<(), Report<io::Error>> {
 ### 展示原因数据
 | 类型名 | 说明 |
 | :--- | :--- |
-| `Vec<Cow<'static, str>>` | 直接存储展示原因字符串，在渲染阶段转换为展示原因链元数据。 |
+| `DisplayCauseChain` | 运行时展示原因链摘要，包含 `items: Vec<Box<dyn Display>>`、`truncated` 与 `cycle_detected`。 |
 
 ### 核心数据转换：`AttachmentValue`
 `Report` 附件支持的强类型值，支持自动从基础类型转换：
@@ -339,6 +341,10 @@ fn process() -> Result<(), Report<io::Error>> {
 | `Object` | `BTreeMap<String, AttachmentValue>`| 键值对映射 |
 | `Bytes` | `Vec<u8>` | 二进制数据内容 |
 | `Redacted` | `{ kind, reason }` | 脱敏数据占位符 |
+
+Note 附件读取：
+- `Attachment::as_note() -> Option<Cow<'_, str>>`：返回物化后的 note 文本。
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`：返回零分配的显示引用。
 
 ---
 
@@ -363,31 +369,60 @@ fn process() -> Result<(), Report<io::Error>> {
 | `show_trace_section` | `true` | 是否显示分布式追踪 (TraceID/Event) 部分 |
 | `stack_trace_max_lines` | `24` | 原始堆栈渲染的最大行数截断 |
 
+
 ### 诊断中间表示 (`DiagnosticIr`)
-渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。
+渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。该 IR 保留头部/元数据，并提供附件相关部分的聚合计数。
 ```rust
 use diagweave::render::{
-    DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError, DiagnosticIrMetadata,
+    DiagnosticIrError, DiagnosticIrMetadata,
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
+#[cfg(feature = "json")]
+use std::borrow::Cow;
 
-#[cfg(feature = "trace")]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub trace: ReportTrace,             // { context, events }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
-}
-#[cfg(not(feature = "trace"))]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
+pub struct DiagnosticIr<'a> {
+    #[cfg(feature = "json")]
+    pub schema_version: Cow<'static, str>,
+    pub error: DiagnosticIrError<'a>,
+    pub metadata: DiagnosticIrMetadata<'a>,
+    #[cfg(feature = "trace")]
+    pub trace: Option<&'a ReportTrace>,
+    pub context_count: usize,
+    pub attachment_count: usize,
 }
 ```
+
+逐项访问上下文/note/payload 由 `Report::visit_attachments(...)` 提供。
+
+这样使用：
+```rust
+use diagweave::render::ReportRenderOptions;
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
+```
+
+`DiagnosticIrMetadata` 不直接暴露 `display_causes` / `source_errors`；请通过 `Report` 的 `visit_causes*`、`visit_sources*` 或 `iter_sources*` 读取。
 
 ### 用法示例
 ```rust
@@ -487,8 +522,8 @@ report.emit_tracing_with(&MyCustomExporter, options);
 | `ir.to_tracing_fields()` | `Vec<TracingField>`| 转换为 KV 形式的 Tracing/Logging 字段 |
 
 ### OTel 映射逻辑
-1. **Attributes (属性)**: 错误核心字段（消息、代码、类型）、严重程度、重试标记、上下文 KV 全量映射。
-2. **Events (事件)**: `Report` 中的 `Attachments` (Note/Payload) 和内部 `TraceEvent` 转换为 OTel 事件序列。
+1. **Attributes (属性)**: 错误核心字段（消息、代码、类型）、严重程度/重试标记、原因链摘要与报告计数映射。
+2. **Events (事件)**: `Report` 内部 `TraceEvent` 转换为 OTel 事件序列。
 3. **TraceContext**: TraceID 和 SpanID 自动填充到 Envelope 顶层。
 
 ---

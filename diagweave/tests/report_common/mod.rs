@@ -14,9 +14,7 @@ pub use diagweave::prelude::{TraceEvent, TraceEventAttribute, TraceEventLevel};
 pub use diagweave::render::DiagnosticIr;
 pub use diagweave::render::PrettyIndent;
 #[cfg(feature = "json")]
-pub use diagweave::render::{
-    Json, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment, ReportJsonDocument, report_json_schema,
-};
+pub use diagweave::render::{Json, REPORT_JSON_SCHEMA_VERSION, report_json_schema};
 #[cfg(feature = "std")]
 pub use diagweave::report::GlobalContext;
 #[cfg(feature = "std")]

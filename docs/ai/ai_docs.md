@@ -179,10 +179,12 @@ pub struct Report<E> {
 | `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
-| `report.display_causes()` | Collects display causes with default options (`CauseCollection`) |
-| `report.display_causes_with(options)` | Collects display causes with custom options (`CauseCollection`) |
-| `report.source_errors()` | Collects source errors with default options (`CauseCollection`) |
-| `report.source_errors_with(options)` | Collects source errors with custom options (`CauseCollection`) |
+| `report.visit_causes(visit)` | Streams display causes with default options |
+| `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
+| `report.visit_sources(visit)` | Streams source errors with default options |
+| `report.visit_sources_ext(options, visit)` | Streams source errors with custom options |
+| `report.iter_sources()` | Iterates source errors with default options |
+| `report.iter_sources_ext(options)` | Iterates source errors with custom options |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
@@ -217,7 +219,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | Add context key-value pairs |
-| `with_note` / `attach_printable` | `impl Display` | Add remarks or resolution suggestions |
+| `with_note` / `attach_printable` | `impl Display + 'static` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<impl Into<Cow<'static, str>>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
@@ -323,7 +325,7 @@ Manages the chain of triggers for a diagnostic. `diagweave` supports not only `s
 ### Display Cause Data
 | Type Name | Description |
 | :--- | :--- |
-| `Vec<Cow<'static, str>>` | Stores display-cause messages directly; converted into display-cause chain metadata during rendering. |
+| `DisplayCauseChain` | Runtime chain summary with `items: Vec<Box<dyn Display>>`, plus `truncated` and `cycle_detected`. |
 
 ### Core Data Conversion: `AttachmentValue`
 Strongly typed values supported by `Report` attachments, converted automatically from base types:
@@ -339,6 +341,10 @@ Strongly typed values supported by `Report` attachments, converted automatically
 | `Object` | `BTreeMap<String, AttachmentValue>` | Key-Value mapping |
 | `Bytes` | `Vec<u8>` | Binary data content |
 | `Redacted` | `{ kind, reason }` | Placeholder for sensitive data |
+
+Attachment note access:
+- `Attachment::as_note() -> Option<Cow<'_, str>>` returns a materialized note string.
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` returns a zero-allocation display reference.
 
 ---
 
@@ -363,31 +369,60 @@ Converts `Report` with rich metadata into displayable strings or structured data
 | `show_trace_section` | `true`| Whether to show Distributed Tracing (TraceID/Event) section |
 | `stack_trace_max_lines` | `24` | Maximum lines for raw stack trace rendering |
 
+
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
-Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure.
+Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure. The IR keeps header/metadata plus aggregate counters for attachment-related sections.
 ```rust
 use diagweave::render::{
-    DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError, DiagnosticIrMetadata,
+    DiagnosticIrError, DiagnosticIrMetadata,
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
+#[cfg(feature = "json")]
+use std::borrow::Cow;
 
-#[cfg(feature = "trace")]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub trace: ReportTrace,             // { context, events }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
-}
-#[cfg(not(feature = "trace"))]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
+pub struct DiagnosticIr<'a> {
+    #[cfg(feature = "json")]
+    pub schema_version: Cow<'static, str>,
+    pub error: DiagnosticIrError<'a>,
+    pub metadata: DiagnosticIrMetadata<'a>,
+    #[cfg(feature = "trace")]
+    pub trace: Option<&'a ReportTrace>,
+    pub context_count: usize,
+    pub attachment_count: usize,
 }
 ```
+
+Per-item context/note/payload traversal is exposed via `Report::visit_attachments(...)`.
+
+Use them like this:
+```rust
+use diagweave::render::ReportRenderOptions;
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
+```
+
+`DiagnosticIrMetadata` does not expose `display_causes` / `source_errors`; traverse those from `Report` via `visit_causes*`, `visit_sources*`, or `iter_sources*`.
 
 ### Usage Example
 ```rust
@@ -487,8 +522,8 @@ report.emit_tracing_with(&MyCustomExporter, options);
 | `ir.to_tracing_fields()` | `Vec<TracingField>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
-1. **Attributes**: Core error fields (message, code, type), severity, retry flags, and all Context KV pairs are mapped.
-2. **Events**: `Attachments` (Note/Payload) and internal `TraceEvent` from `Report` are converted into OTel event sequences.
+1. **Attributes**: Core error fields (message, code, type), severity/retry flags, cause-chain summaries, and report-level counters are mapped.
+2. **Events**: Internal `TraceEvent` from `Report` is converted into OTel event sequences.
 3. **TraceContext**: TraceID and SpanID are automatically filled into the top level of the Envelope.
 
 ---

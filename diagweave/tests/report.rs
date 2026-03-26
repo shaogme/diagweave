@@ -40,7 +40,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     );
     assert_eq!(
         report.attachments()[1].as_note(),
-        Some("check authorization flow")
+        Some("check authorization flow".into())
     );
     assert!(report.attachments()[2].as_payload().is_some());
     assert_eq!(
@@ -365,23 +365,54 @@ fn report_field_getters_are_exposed() {
 }
 
 #[test]
-fn public_cause_collection_apis_are_accessible() {
+fn public_cause_visit_apis_are_accessible() {
     let _guard = init_test();
 
     let report = Report::new(AuthError::InvalidToken)
         .with_display_cause("token stale")
         .with_source_error(ApiError::Unauthorized);
-    let display = report.display_causes();
-    let source = report.source_errors();
+    let mut display = Vec::new();
+    let display_state = report
+        .visit_causes(|cause| {
+            display.push(cause.to_string());
+            Ok(())
+        })
+        .expect("display causes");
+    let mut source = Vec::new();
+    let source_state = report
+        .visit_sources(|err| {
+            source.push(err.to_string());
+            Ok(())
+        })
+        .expect("source errors");
 
-    assert_eq!(display.messages, vec!["event: token stale".to_owned()]);
-    assert_eq!(source.messages, vec!["api unauthorized".to_owned()]);
+    assert_eq!(display, vec!["token stale".to_owned()]);
+    assert_eq!(source, vec!["api unauthorized".to_owned()]);
+    assert!(!display_state.truncated);
+    assert!(!display_state.cycle_detected);
+    assert!(!source_state.truncated);
+    assert!(!source_state.cycle_detected);
 
-    let cycle = Report::new(LoopError).source_errors_with(CauseCollectOptions {
-        max_depth: 8,
+    let cycle = Report::new(LoopError)
+        .visit_sources_ext(
+            CauseCollectOptions {
+                max_depth: 8,
+                detect_cycle: true,
+            },
+            |_| Ok(()),
+        )
+        .expect("cycle traversal");
+    assert!(cycle.cycle_detected);
+
+    let mut iter = report.iter_sources_ext(CauseCollectOptions {
+        max_depth: 4,
         detect_cycle: true,
     });
-    assert!(cycle.cycle_detected);
+    let collected: Vec<String> = iter.by_ref().map(|err| err.to_string()).collect();
+    let iter_state = iter.state();
+    assert_eq!(collected, vec!["api unauthorized".to_owned()]);
+    assert!(!iter_state.truncated);
+    assert!(!iter_state.cycle_detected);
 }
 
 #[test]

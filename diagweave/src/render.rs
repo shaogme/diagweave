@@ -6,31 +6,23 @@ mod pretty;
 
 use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
-use alloc::format;
-use alloc::vec::Vec;
+use alloc::string::{String, ToString};
 use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
-use crate::report::{
-    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, DisplayCauseChain,
-    ErrorCode, Report, ReportMetadata, Severity, SourceError, SourceErrorChain, StackTrace,
-};
+use crate::report::{AttachmentVisit, ErrorCode, Report, Severity, StackTrace};
 
 pub use pretty::Pretty;
 
 #[cfg(feature = "json")]
-pub use json::{
-    Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
-    ReportJsonContext, ReportJsonDisplayCauseChain, ReportJsonDocument, ReportJsonError,
-    ReportJsonMetadata, ReportJsonSourceError, ReportJsonSourceErrorChain, ReportJsonStackFrame,
-    ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
-};
+pub use json::{Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, report_json_schema};
 
 /// Options for rendering a diagnostic report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReportRenderOptions {
     pub max_source_depth: usize,
     pub detect_source_cycle: bool,
@@ -51,6 +43,8 @@ pub struct ReportRenderOptions {
 
 /// Indentation style for pretty rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
 pub enum PrettyIndent {
     Spaces(u8),
     Tab,
@@ -85,52 +79,94 @@ pub trait ReportRenderer<E> {
 
 /// Error information in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagnosticIrError {
-    pub message: Cow<'static, str>,
-    pub r#type: Cow<'static, str>,
+#[cfg_attr(feature = "json", derive(serde::Serialize))]
+pub struct DiagnosticIrError<'a> {
+    pub message: DiagnosticIrMessage<'a>,
+    pub r#type: Cow<'a, str>,
+}
+
+/// Lazily-resolved diagnostic message payload.
+#[derive(Clone)]
+pub enum DiagnosticIrMessage<'a> {
+    Borrowed(&'a str),
+    Owned(Cow<'a, str>),
+    Display(&'a (dyn Display + 'a)),
+}
+
+impl DiagnosticIrMessage<'_> {
+    /// Materializes the value as an owned `String`.
+    pub fn to_string_owned(&self) -> String {
+        match self {
+            Self::Borrowed(v) => (*v).to_owned(),
+            Self::Owned(v) => v.as_ref().to_owned(),
+            Self::Display(v) => v.to_string(),
+        }
+    }
+}
+
+impl Display for DiagnosticIrMessage<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Borrowed(v) => f.write_str(v),
+            Self::Owned(v) => f.write_str(v.as_ref()),
+            Self::Display(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl core::fmt::Debug for DiagnosticIrMessage<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.to_string_owned())
+    }
+}
+
+impl PartialEq for DiagnosticIrMessage<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string_owned() == other.to_string_owned()
+    }
+}
+
+impl Eq for DiagnosticIrMessage<'_> {}
+
+impl PartialEq<&str> for DiagnosticIrMessage<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            Self::Borrowed(v) => v == other,
+            Self::Owned(v) => v.as_ref() == *other,
+            Self::Display(v) => v.to_string() == *other,
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+impl serde::Serialize for DiagnosticIrMessage<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string_owned())
+    }
 }
 
 /// Metadata information in the Diagnostic Intermediate Representation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagnosticIrMetadata {
-    pub error_code: Option<ErrorCode>,
+pub struct DiagnosticIrMetadata<'a> {
+    pub error_code: Option<&'a ErrorCode>,
     pub severity: Option<Severity>,
-    pub category: Option<Cow<'static, str>>,
+    pub category: Option<&'a Cow<'static, str>>,
     pub retryable: Option<bool>,
-    pub stack_trace: Option<StackTrace>,
-    pub display_causes: Option<DisplayCauseChain>,
-    pub source_errors: Option<SourceErrorChain>,
-}
-
-/// Context item in the Diagnostic Intermediate Representation.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticIrContext {
-    pub key: Cow<'static, str>,
-    pub value: AttachmentValue,
-}
-
-/// Attachment in the Diagnostic Intermediate Representation.
-#[derive(Debug, Clone, PartialEq)]
-pub enum DiagnosticIrAttachment {
-    Note {
-        message: Cow<'static, str>,
-    },
-    Payload {
-        name: Cow<'static, str>,
-        value: AttachmentValue,
-        media_type: Option<Cow<'static, str>>,
-    },
+    pub stack_trace: Option<&'a StackTrace>,
 }
 
 /// A platform-agnostic intermediate representation of a diagnostic report.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,
-    pub metadata: DiagnosticIrMetadata,
+pub struct DiagnosticIr<'a> {
+    #[cfg(feature = "json")]
+    pub schema_version: Cow<'static, str>,
+    pub error: DiagnosticIrError<'a>,
+    pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
-    pub trace: ReportTrace,
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
+    pub trace: Option<&'a ReportTrace>,
+    pub context_count: usize,
+    pub attachment_count: usize,
 }
 
 /// A renderer that produces a compact display of the report.
@@ -163,119 +199,50 @@ impl<E> Report<E> {
     }
 }
 
-impl From<&ReportMetadata> for DiagnosticIrMetadata {
-    fn from(value: &ReportMetadata) -> Self {
-        Self {
-            error_code: value.error_code.clone(),
-            severity: value.severity,
-            category: value.category.clone(),
-            retryable: value.retryable,
-            stack_trace: value.stack_trace.clone(),
-            display_causes: value.display_causes.clone(),
-            source_errors: value.source_errors.clone(),
-        }
-    }
-}
-
 impl<E> Report<E>
 where
     E: Error + Display + 'static,
 {
     /// Converts the report to a platform-agnostic intermediate representation.
-    pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr {
-        let display_cause_collection = self.display_causes_with(CauseCollectOptions {
-            max_depth: options.max_source_depth,
-            detect_cycle: options.detect_source_cycle,
-        });
-        let display_causes = to_display_causes(&display_cause_collection);
-        let source_error_collection = self.source_errors_with(CauseCollectOptions {
-            max_depth: options.max_source_depth,
-            detect_cycle: options.detect_source_cycle,
-        });
-        let source_errors = to_source_errors(&source_error_collection);
-
-        let mut context = Vec::new();
-        let mut attachments = Vec::new();
-        for item in self.attachments() {
-            match item {
-                Attachment::Context { key, value } => context.push(DiagnosticIrContext {
-                    key: key.clone(),
-                    value: value.clone(),
-                }),
-                Attachment::Note { message } => attachments.push(DiagnosticIrAttachment::Note {
-                    message: message.clone(),
-                }),
-                Attachment::Payload {
-                    name,
-                    value,
-                    media_type,
-                } => attachments.push(DiagnosticIrAttachment::Payload {
-                    name: name.clone(),
-                    value: value.clone(),
-                    media_type: media_type.clone(),
-                }),
-            }
-        }
-
-        let mut metadata = DiagnosticIrMetadata::from(self.metadata());
-        metadata.display_causes = display_causes;
-        metadata.source_errors = source_errors;
+    pub fn to_diagnostic_ir(&self, _options: ReportRenderOptions) -> DiagnosticIr<'_> {
+        let metadata = self.metadata();
+        let (context_count, attachment_count) = count_attachments(self);
 
         DiagnosticIr {
+            #[cfg(feature = "json")]
+            schema_version: Cow::Borrowed(REPORT_JSON_SCHEMA_VERSION),
             error: DiagnosticIrError {
-                message: format!("{}", self.inner()).into(),
+                message: DiagnosticIrMessage::Display(self.inner()),
                 r#type: Cow::Borrowed(any::type_name::<E>()),
             },
-            metadata,
+            metadata: DiagnosticIrMetadata {
+                error_code: metadata.error_code.as_ref(),
+                severity: metadata.severity,
+                category: metadata.category.as_ref(),
+                retryable: metadata.retryable,
+                stack_trace: self.stack_trace(),
+            },
             #[cfg(feature = "trace")]
-            trace: self.trace().cloned().unwrap_or_default(),
-            context,
-            attachments,
+            trace: self.trace(),
+            context_count,
+            attachment_count,
         }
     }
 }
 
-fn to_display_causes(collection: &CauseCollection) -> Option<DisplayCauseChain> {
-    if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
-        return None;
+fn count_attachments(report: &Report<impl Error + 'static>) -> (usize, usize) {
+    let mut context = 0usize;
+    let mut attachments = 0usize;
+    match report.visit_attachments(|item| {
+        match item {
+            AttachmentVisit::Context { .. } => context += 1,
+            AttachmentVisit::Note { .. } | AttachmentVisit::Payload { .. } => attachments += 1,
+        }
+        Ok(())
+    }) {
+        Ok(()) => (context, attachments),
+        Err(_) => (0, 0),
     }
-
-    let items = collection
-        .messages
-        .iter()
-        .map(|message| {
-            message
-                .strip_prefix("event: ")
-                .unwrap_or(message)
-                .to_owned()
-        })
-        .collect();
-
-    Some(DisplayCauseChain {
-        items,
-        truncated: collection.truncated,
-        cycle_detected: collection.cycle_detected,
-    })
-}
-
-fn to_source_errors(collection: &CauseCollection) -> Option<SourceErrorChain> {
-    if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
-        return None;
-    }
-
-    let items = collection
-        .messages
-        .iter()
-        .map(|message| SourceError {
-            message: message.clone(),
-        })
-        .collect();
-
-    Some(SourceErrorChain {
-        items,
-        truncated: collection.truncated,
-        cycle_detected: collection.cycle_detected,
-    })
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.

@@ -35,25 +35,22 @@ pub mod adapters {
 
 pub mod render {
     pub use crate::render_impl::{
-        Compact, DiagnosticIr, DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError,
-        DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport, ReportRenderOptions,
-        ReportRenderer,
+        Compact, DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata,
+        Pretty, PrettyIndent, RenderedReport, ReportRenderOptions, ReportRenderer,
     };
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
-        Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
-        ReportJsonContext, ReportJsonDisplayCauseChain, ReportJsonDocument, ReportJsonError,
-        ReportJsonMetadata, ReportJsonSourceError, ReportJsonSourceErrorChain,
-        ReportJsonStackFrame, ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
+        Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, report_json_schema,
     };
 }
 
 pub mod report {
     pub use crate::report_impl::{
-        Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind, Diagnostic,
-        DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalContext, Report, ReportMetadata,
-        ReportResultExt, ReportResultInspectExt, Severity, SourceError, SourceErrorChain,
-        StackFrame, StackTrace, StackTraceFormat,
+        Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseKind,
+        CauseTraversalState, Diagnostic, DisplayCauseChain, ErrorCode, ErrorCodeIntError,
+        GlobalContext, Report, ReportMetadata, ReportResultExt, ReportResultInspectExt,
+        ReportSourceErrorIter, Severity, SourceErrorChain, StackFrame, StackTrace,
+        StackTraceFormat,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};

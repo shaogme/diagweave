@@ -1,18 +1,24 @@
-use alloc::borrow::Cow;
-use alloc::borrow::ToOwned;
-use alloc::string::String;
-use alloc::vec::Vec;
+#[path = "json/attachment.rs"]
+mod attachment;
+#[path = "json/report.rs"]
+mod report;
+
 use core::error::Error;
-use core::fmt::{self, Display, Formatter};
+use core::fmt::{self, Display, Formatter, Write};
 
-#[cfg(feature = "trace")]
-use crate::report::ReportTrace;
-use crate::report::{
-    AttachmentValue, DisplayCauseChain, ErrorCode, Report, Severity, SourceError, SourceErrorChain,
-    StackFrame, StackTrace, StackTraceFormat,
+use crate::report::{ErrorCode, Report};
+
+use super::{ReportRenderOptions, ReportRenderer};
+
+const INDENT_SPACES: &str = {
+    const LEN: usize = 64;
+    const SPACES: [u8; LEN] = [b' '; LEN];
+    match alloc::str::from_utf8(&SPACES) {
+        Ok(s) => s,
+        Err(_) => panic!("Invalid UTF-8"),
+    }
 };
-
-use super::{DiagnosticIr, DiagnosticIrAttachment, ReportRenderOptions, ReportRenderer};
+const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
 
 /// A renderer that outputs the diagnostic report in JSON format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,277 +35,10 @@ pub fn report_json_schema() -> &'static str {
     include_str!("../../schemas/report-v0.1.0.schema.json")
 }
 
-/// JSON representation of an error.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonError {
-    /// The formatted error message.
-    pub message: Cow<'static, str>,
-    /// The type name of the error.
-    pub r#type: Cow<'static, str>,
-}
-
-/// JSON representation of error metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonMetadata {
-    /// An optional error code.
-    pub error_code: Option<ErrorCode>,
-    /// The severity of the error.
-    pub severity: Option<Severity>,
-    /// The category of the error.
-    pub category: Option<Cow<'static, str>>,
-    /// Whether the error is retryable.
-    pub retryable: Option<bool>,
-    /// The stack trace if available.
-    pub stack_trace: Option<ReportJsonStackTrace>,
-    /// The display cause chain if available.
-    pub display_causes: Option<ReportJsonDisplayCauseChain>,
-    /// The error source chain if available.
-    pub source_errors: Option<ReportJsonSourceErrorChain>,
-}
-
-/// JSON representation of a cause chain.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonDisplayCauseChain {
-    /// The items in the cause chain.
-    pub items: Vec<String>,
-    /// Whether the cause chain was truncated.
-    pub truncated: bool,
-    /// Whether a cycle was detected in the cause chain.
-    pub cycle_detected: bool,
-}
-
-/// JSON representation of one structured error source.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonSourceError {
-    /// The formatted source message.
-    pub message: Cow<'static, str>,
-}
-
-/// JSON representation of an error source chain.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonSourceErrorChain {
-    /// The items in the error source chain.
-    pub items: Vec<ReportJsonSourceError>,
-    /// Whether the source chain was truncated.
-    pub truncated: bool,
-    /// Whether a cycle was detected in the source chain.
-    pub cycle_detected: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReportJsonStackTraceFormat {
-    #[default]
-    Native,
-    Raw,
-}
-
-/// JSON representation of a stack frame.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonStackFrame {
-    /// The symbol name.
-    pub symbol: Option<String>,
-    /// The module path.
-    pub module_path: Option<String>,
-    /// The file name.
-    pub file: Option<String>,
-    /// The line number.
-    pub line: Option<u32>,
-    /// The column number.
-    pub column: Option<u32>,
-}
-
-/// JSON representation of a stack trace.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonStackTrace {
-    /// The format of the stack trace.
-    pub format: ReportJsonStackTraceFormat,
-    /// The stack frames.
-    pub frames: Vec<ReportJsonStackFrame>,
-    /// The raw stack trace string if available.
-    pub raw: Option<String>,
-}
-
-/// JSON representation of a context item.
-#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonContext {
-    /// The key of the context item.
-    pub key: Cow<'static, str>,
-    /// The value of the context item.
-    pub value: AttachmentValue,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ReportJsonAttachment {
-    Note {
-        message: Cow<'static, str>,
-    },
-    Payload {
-        name: Cow<'static, str>,
-        value: AttachmentValue,
-        media_type: Option<Cow<'static, str>>,
-    },
-}
-
-/// JSON representation of a diagnostic report document.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonDocument {
-    /// The version of the schema used.
-    pub schema_version: String,
-    /// Basic error information.
-    pub error: ReportJsonError,
-    /// Metadata about the error.
-    pub metadata: ReportJsonMetadata,
-    /// Trace information if enabled.
-    #[cfg(feature = "trace")]
-    pub trace: ReportTrace,
-    /// Context key-value pairs.
-    pub context: Vec<ReportJsonContext>,
-    /// Attachments associated with the report.
-    pub attachments: Vec<ReportJsonAttachment>,
-}
-
-impl Default for ReportJsonDocument {
-    fn default() -> Self {
-        Self {
-            schema_version: REPORT_JSON_SCHEMA_VERSION.to_owned(),
-            error: ReportJsonError::default(),
-            metadata: ReportJsonMetadata::default(),
-            #[cfg(feature = "trace")]
-            trace: ReportTrace::default(),
-            context: Vec::new(),
-            attachments: Vec::new(),
-        }
-    }
-}
-
 impl Json {
     /// Creates a new JSON renderer with specific options.
     pub fn new(options: ReportRenderOptions) -> Self {
         Self { options }
-    }
-}
-
-impl From<StackTraceFormat> for ReportJsonStackTraceFormat {
-    fn from(value: StackTraceFormat) -> Self {
-        match value {
-            StackTraceFormat::Native => Self::Native,
-            StackTraceFormat::Raw => Self::Raw,
-        }
-    }
-}
-
-impl From<StackFrame> for ReportJsonStackFrame {
-    fn from(value: StackFrame) -> Self {
-        Self {
-            symbol: value.symbol,
-            module_path: value.module_path,
-            file: value.file,
-            line: value.line,
-            column: value.column,
-        }
-    }
-}
-
-impl From<StackTrace> for ReportJsonStackTrace {
-    fn from(value: StackTrace) -> Self {
-        Self {
-            format: value.format.into(),
-            frames: value
-                .frames
-                .into_iter()
-                .map(ReportJsonStackFrame::from)
-                .collect(),
-            raw: value.raw,
-        }
-    }
-}
-
-impl From<DisplayCauseChain> for ReportJsonDisplayCauseChain {
-    fn from(value: DisplayCauseChain) -> Self {
-        Self {
-            items: value.items,
-            truncated: value.truncated,
-            cycle_detected: value.cycle_detected,
-        }
-    }
-}
-
-impl From<SourceError> for ReportJsonSourceError {
-    fn from(value: SourceError) -> Self {
-        Self {
-            message: value.message,
-        }
-    }
-}
-
-impl From<SourceErrorChain> for ReportJsonSourceErrorChain {
-    fn from(value: SourceErrorChain) -> Self {
-        Self {
-            items: value
-                .items
-                .into_iter()
-                .map(ReportJsonSourceError::from)
-                .collect(),
-            truncated: value.truncated,
-            cycle_detected: value.cycle_detected,
-        }
-    }
-}
-
-impl From<DiagnosticIr> for ReportJsonDocument {
-    fn from(value: DiagnosticIr) -> Self {
-        Self {
-            schema_version: REPORT_JSON_SCHEMA_VERSION.to_owned(),
-            error: ReportJsonError {
-                message: value.error.message,
-                r#type: value.error.r#type,
-            },
-            metadata: ReportJsonMetadata {
-                error_code: value.metadata.error_code,
-                severity: value.metadata.severity,
-                category: value.metadata.category,
-                retryable: value.metadata.retryable,
-                stack_trace: value.metadata.stack_trace.map(ReportJsonStackTrace::from),
-                display_causes: value
-                    .metadata
-                    .display_causes
-                    .map(ReportJsonDisplayCauseChain::from),
-                source_errors: value
-                    .metadata
-                    .source_errors
-                    .map(ReportJsonSourceErrorChain::from),
-            },
-            #[cfg(feature = "trace")]
-            trace: value.trace,
-            context: value
-                .context
-                .into_iter()
-                .map(|item| ReportJsonContext {
-                    key: item.key,
-                    value: item.value,
-                })
-                .collect(),
-            attachments: value
-                .attachments
-                .into_iter()
-                .map(|item| match item {
-                    DiagnosticIrAttachment::Note { message } => {
-                        ReportJsonAttachment::Note { message }
-                    }
-                    DiagnosticIrAttachment::Payload {
-                        name,
-                        value,
-                        media_type,
-                    } => ReportJsonAttachment::Payload {
-                        name,
-                        value,
-                        media_type,
-                    },
-                })
-                .collect(),
-        }
     }
 }
 
@@ -320,14 +59,197 @@ fn render_json<E>(
 where
     E: Error + Display + 'static,
 {
-    let node: ReportJsonDocument = report.to_diagnostic_ir(options).into();
-    let encoded = if options.json_pretty {
-        serde_json::to_string_pretty(&node)
-    } else {
-        serde_json::to_string(&node)
-    };
-    match encoded {
-        Ok(payload) => write!(f, "{payload}"),
-        Err(_) => write!(f, "{{\"error\":\"json serialization failed\"}}"),
+    let pretty = options.json_pretty;
+    let mut first = true;
+
+    f.write_char('{')?;
+    write_object_field(f, pretty, 0, &mut first, "schema_version", |f| {
+        write_json_string(f, REPORT_JSON_SCHEMA_VERSION)
+    })?;
+    write_object_field(f, pretty, 0, &mut first, "error", |f| {
+        report::write_error_object(f, pretty, 1, report.inner())
+    })?;
+    write_object_field(f, pretty, 0, &mut first, "metadata", |f| {
+        report::write_metadata_object(f, pretty, 1, report)
+    })?;
+    write_object_field(f, pretty, 0, &mut first, "diagnostic_bag", |f| {
+        report::write_diag_bag(f, pretty, 1, report, options)
+    })?;
+    #[cfg(feature = "trace")]
+    if report.trace().is_some() {
+        write_object_field(f, pretty, 0, &mut first, "trace", |f| {
+            report::write_trace_object(f, pretty, 1, report)
+        })?;
     }
+    write_object_field(f, pretty, 0, &mut first, "context", |f| {
+        attachment::write_context_array(f, pretty, 1, report)
+    })?;
+    write_object_field(f, pretty, 0, &mut first, "attachments", |f| {
+        attachment::write_attachments_array(f, pretty, 1, report)
+    })?;
+
+    if pretty && !first {
+        f.write_char('\n')?;
+        write_indent(f, 0)?;
+    }
+    f.write_char('}')
+}
+
+// Internal utilities used by submodules
+
+fn write_error_code(f: &mut Formatter<'_>, code: &ErrorCode) -> fmt::Result {
+    match code {
+        ErrorCode::Integer(v) => write!(f, "{v}"),
+        ErrorCode::String(v) => write_json_string(f, v),
+    }
+}
+
+fn write_option_string(f: &mut Formatter<'_>, value: Option<&str>) -> fmt::Result {
+    match value {
+        Some(v) => write_json_string(f, v),
+        None => f.write_str("null"),
+    }
+}
+
+pub(super) fn write_json_display(
+    f: &mut Formatter<'_>,
+    value: &(impl Display + ?Sized),
+) -> fmt::Result {
+    f.write_char('"')?;
+    {
+        let mut escaper = JsonStringEscaper { out: f };
+        write!(&mut escaper, "{value}")?;
+    }
+    f.write_char('"')
+}
+
+fn write_json_string(f: &mut Formatter<'_>, value: impl AsRef<str>) -> fmt::Result {
+    f.write_char('"')?;
+    {
+        let mut escaper = JsonStringEscaper { out: f };
+        escaper.write_str(value.as_ref())?;
+    }
+    f.write_char('"')
+}
+
+struct JsonStringEscaper<'a, 'b> {
+    out: &'a mut Formatter<'b>,
+}
+
+impl Write for JsonStringEscaper<'_, '_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let bytes = s.as_bytes();
+        let mut start = 0usize;
+
+        for (idx, &b) in bytes.iter().enumerate() {
+            let escaped = match b {
+                b'"' => Some("\\\""),
+                b'\\' => Some("\\\\"),
+                b'\n' => Some("\\n"),
+                b'\r' => Some("\\r"),
+                b'\t' => Some("\\t"),
+                0x08 => Some("\\b"),
+                0x0C => Some("\\f"),
+                _ => None,
+            };
+
+            if let Some(seq) = escaped {
+                if start < idx {
+                    self.out.write_str(&s[start..idx])?;
+                }
+                self.out.write_str(seq)?;
+                start = idx + 1;
+                continue;
+            }
+
+            if b <= 0x1F {
+                if start < idx {
+                    self.out.write_str(&s[start..idx])?;
+                }
+                self.out.write_str("\\u00")?;
+                self.out.write_char(HEX_DIGITS[(b >> 4) as usize] as char)?;
+                self.out
+                    .write_char(HEX_DIGITS[(b & 0x0F) as usize] as char)?;
+                start = idx + 1;
+            }
+        }
+
+        if start < s.len() {
+            self.out.write_str(&s[start..])?;
+        }
+
+        Ok(())
+    }
+}
+
+fn write_object_field<F>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    first: &mut bool,
+    key: &str,
+    mut write_value: F,
+) -> fmt::Result
+where
+    F: FnMut(&mut Formatter<'_>) -> fmt::Result,
+{
+    if *first {
+        *first = false;
+    } else {
+        f.write_char(',')?;
+    }
+    if pretty {
+        f.write_char('\n')?;
+        write_indent(f, depth + 1)?;
+    }
+    write_json_string(f, key)?;
+    f.write_char(':')?;
+    if pretty {
+        f.write_char(' ')?;
+    }
+    write_value(f)
+}
+
+fn write_array_item_prefix(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    first: &mut bool,
+) -> fmt::Result {
+    if *first {
+        *first = false;
+    } else {
+        f.write_char(',')?;
+    }
+    if pretty {
+        f.write_char('\n')?;
+        write_indent(f, depth + 1)?;
+    }
+    Ok(())
+}
+
+fn close_object(f: &mut Formatter<'_>, pretty: bool, depth: usize, empty: bool) -> fmt::Result {
+    if pretty && !empty {
+        f.write_char('\n')?;
+        write_indent(f, depth)?;
+    }
+    f.write_char('}')
+}
+
+fn close_array(f: &mut Formatter<'_>, pretty: bool, depth: usize, empty: bool) -> fmt::Result {
+    if pretty && !empty {
+        f.write_char('\n')?;
+        write_indent(f, depth)?;
+    }
+    f.write_char(']')
+}
+
+fn write_indent(f: &mut Formatter<'_>, depth: usize) -> fmt::Result {
+    let mut remaining = depth.saturating_mul(2);
+    while remaining > 0 {
+        let chunk = remaining.min(INDENT_SPACES.len());
+        f.write_str(&INDENT_SPACES[..chunk])?;
+        remaining -= chunk;
+    }
+    Ok(())
 }

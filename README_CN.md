@@ -271,8 +271,14 @@ pub enum MyError {
 
 - `attachments()`、`metadata()`、`stack_trace()`
 - `error_code()`、`severity()`、`category()`、`retryable()`
-- `display_causes()` / `display_causes_with(options)`
-- `source_errors()` / `source_errors_with(options)`
+- `visit_causes(visit)` / `visit_causes_ext(options, visit)`
+- `visit_sources(visit)` / `visit_sources_ext(options, visit)`
+- `iter_sources()` / `iter_sources_ext(options)`
+
+Note 附件读取：
+
+- `Attachment::as_note() -> Option<Cow<'_, str>>`（物化后的文本视图）
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`（零分配显示视图）
 
 `Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
 
@@ -347,6 +353,36 @@ let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 let tracing_fields = ir.to_tracing_fields();
 let otel = ir.to_otel_envelope();
 ```
+
+`DiagnosticIr` 主要包含稳定的头部/元数据和聚合计数：
+
+```rust
+use diagweave::render::ReportRenderOptions;
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
+```
+
+如果需要逐项流式读取上下文/note/payload，可使用 `Report::visit_attachments(...)`。
 
 JSON 渲染（`json` feature）：
 

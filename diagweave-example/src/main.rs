@@ -6,9 +6,7 @@ use diagweave::prelude::{
     ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, TraceEvent,
     TraceEventAttribute, TraceEventLevel, register_global_injector, set, union,
 };
-use diagweave::render::{
-    DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION, ReportJsonDocument,
-};
+use diagweave::render::{DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
 use diagweave::trace::TracingExporterTrait;
 
@@ -120,28 +118,14 @@ struct ConsoleExporter;
 
 impl TracingExporterTrait for ConsoleExporter {
     fn export_ir(&self, ir: &DiagnosticIr) {
-        let display_causes = ir.metadata.display_causes.as_ref();
-        let source_errors = ir.metadata.source_errors.as_ref();
-        let display_cause_count = display_causes.map(|c| c.items.len()).unwrap_or(0);
-        let source_errors_count = source_errors.map(|c| c.items.len()).unwrap_or(0);
         println!(
-            "[Tracing Exporter] error={}, severity={:?}, display_causes={}, source_errors={}, stack_trace={}",
+            "[Tracing Exporter] error={}, severity={:?}, context_count={}, attachment_count={}, stack_trace={}",
             ir.error.message,
             ir.metadata.severity,
-            display_cause_count,
-            source_errors_count,
+            ir.context_count,
+            ir.attachment_count,
             ir.metadata.stack_trace.is_some()
         );
-        if let Some(causes) = display_causes {
-            for (idx, cause) in causes.items.iter().enumerate() {
-                println!("  display_cause[{idx}] {}", cause);
-            }
-        }
-        if let Some(sources) = source_errors {
-            for (idx, source) in sources.items.iter().enumerate() {
-                println!("  source_errors[{idx}] {}", source.message);
-            }
-        }
     }
 }
 
@@ -240,16 +224,17 @@ where
     println!("--- JSON Rendering ---");
     println!("{}\n", json);
 
-    let parsed: ReportJsonDocument = serde_json::from_str(&json)
+    let parsed: serde_json::Value = serde_json::from_str(&json)
         .map_err(|e| {
             println!("JSON deserialization failed: {e}");
             e
         })
-        .unwrap_or_default();
+        .unwrap_or(serde_json::Value::Null);
     println!(
         "JSON check: schema_version={}, causes_present={}\n",
-        parsed.schema_version,
-        parsed.metadata.display_causes.is_some() || parsed.metadata.source_errors.is_some()
+        parsed["schema_version"],
+        parsed["diagnostic_bag"]["display_causes"].is_object()
+            || parsed["diagnostic_bag"]["source_errors"].is_object()
     );
 
     let lean_pretty_opts = ReportRenderOptions {
@@ -263,6 +248,60 @@ where
     println!("{}\n", report.render(Pretty::new(lean_pretty_opts)));
 }
 
+fn print_display_causes<E>(report: &Report<E>)
+where
+    E: Display + std::error::Error + 'static,
+{
+    println!("Display Causes:");
+    if report.display_causes().is_empty() {
+        println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_causes(|cause| {
+            idx += 1;
+            println!("  {}. {}", idx, cause);
+            Ok(())
+        });
+        let state = report
+            .visit_causes(|_| Ok(()))
+            .unwrap_or_else(|_| diagweave::report::CauseTraversalState::default());
+        println!(
+            "  summary: count={}, truncated={}, cycle_detected={}",
+            report.display_causes().len(),
+            state.truncated,
+            state.cycle_detected
+        );
+    }
+}
+
+fn print_source_errors<E>(report: &Report<E>)
+where
+    E: std::error::Error + 'static,
+{
+    println!("Error Causes (Source Errors Chain):");
+    if report.iter_sources().next().is_none() {
+        println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_sources(|source| {
+            idx += 1;
+            println!("  {}. {}", idx, source);
+            Ok(())
+        });
+        let mut source_count = 0usize;
+        let state = report
+            .visit_sources(|_| {
+                source_count += 1;
+                Ok(())
+            })
+            .unwrap_or_else(|_| diagweave::report::CauseTraversalState::default());
+        println!(
+            "  summary: count={}, truncated={}, cycle_detected={}",
+            source_count, state.truncated, state.cycle_detected
+        );
+    }
+}
+
 fn print_ir_and_adapters<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
@@ -272,22 +311,9 @@ where
     println!("Error Code: {:?}", ir.metadata.error_code);
     println!("Severity: {:?}", ir.metadata.severity);
     println!("StackTrace Present: {}", ir.metadata.stack_trace.is_some());
-    println!("Display Causes:");
-    if let Some(display_causes) = &ir.metadata.display_causes {
-        for (idx, cause) in display_causes.items.iter().enumerate() {
-            println!("  {}. {}", idx + 1, cause);
-        }
-    } else {
-        println!("  (none)");
-    }
-    println!("Error Causes (Source Errors Chain):");
-    if let Some(source_errors) = &ir.metadata.source_errors {
-        for (idx, source) in source_errors.items.iter().enumerate() {
-            println!("  {}. {}", idx + 1, source.message);
-        }
-    } else {
-        println!("  (none)");
-    }
+
+    print_display_causes(report);
+    print_source_errors(report);
     println!();
 
     let tracing_fields = ir.to_tracing_fields();

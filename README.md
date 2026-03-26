@@ -271,8 +271,14 @@ Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
 - `error_code()`, `severity()`, `category()`, `retryable()`
-- `display_causes()` / `display_causes_with(options)`
-- `source_errors()` / `source_errors_with(options)`
+- `visit_causes(visit)` / `visit_causes_ext(options, visit)`
+- `visit_sources(visit)` / `visit_sources_ext(options, visit)`
+- `iter_sources()` / `iter_sources_ext(options)`
+
+Attachment note access:
+
+- `Attachment::as_note() -> Option<Cow<'_, str>>` (materialized text view)
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` (zero-allocation display view)
 
 Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
@@ -291,7 +297,7 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display` and append display-cause strings (for rendering/IR).
-- `with_source_error` appends explicit error objects into the source chain metadata.
+- `with_source_error` appends explicit error objects into the report diagnostic bag source chain.
 - Error source propagation is maintained by `with_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
 
 Global context injector (`std`):
@@ -347,6 +353,36 @@ let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 let tracing_fields = ir.to_tracing_fields();
 let otel = ir.to_otel_envelope();
 ```
+
+`DiagnosticIr` keeps render-stable header/metadata plus aggregate counters:
+
+```rust
+use diagweave::render::ReportRenderOptions;
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
+```
+
+Use `Report::visit_attachments(...)` if you need streaming access to per-item context/note/payload entries.
 
 JSON renderer (`json` feature):
 

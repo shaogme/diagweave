@@ -27,7 +27,7 @@ pub trait Diagnostic {
         self.diag().with_context(key, value)
     }
 
-    fn diag_note(self, message: impl Display) -> Result<Self::Value, Report<Self::Error>>
+    fn diag_note(self, message: impl Display + 'static) -> Result<Self::Value, Report<Self::Error>>
     where
         Self: Sized,
     {
@@ -52,7 +52,7 @@ pub trait ReportResultExt<T, E> {
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>>;
 
-    fn attach_printable(self, message: impl Display) -> Result<T, Report<E>>;
+    fn attach_printable(self, message: impl Display + 'static) -> Result<T, Report<E>>;
 
     fn attach_payload(
         self,
@@ -67,7 +67,7 @@ pub trait ReportResultExt<T, E> {
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>>;
 
-    fn with_note(self, message: impl Display) -> Result<T, Report<E>>;
+    fn with_note(self, message: impl Display + 'static) -> Result<T, Report<E>>;
 
     fn with_payload(
         self,
@@ -184,7 +184,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.attach(key, value))
     }
 
-    fn attach_printable(self, message: impl Display) -> Result<T, Report<E>> {
+    fn attach_printable(self, message: impl Display + 'static) -> Result<T, Report<E>> {
         self.map_err(|report| report.attach_printable(message))
     }
 
@@ -205,7 +205,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.attach(key, value)
     }
 
-    fn with_note(self, message: impl Display) -> Result<T, Report<E>> {
+    fn with_note(self, message: impl Display + 'static) -> Result<T, Report<E>> {
         self.attach_printable(message)
     }
 

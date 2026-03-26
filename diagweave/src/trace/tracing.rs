@@ -14,9 +14,11 @@ impl TracingExporterTrait for TracingExporter {
         let report_level = severity_to_level(ir.metadata.severity);
         emit_report_event(report_level, ir);
 
-        for (idx, trace_event) in ir.trace.events.iter().enumerate() {
-            let trace_level = trace_level_to_tracing(trace_event.level).unwrap_or(report_level);
-            emit_trace_event(trace_level, idx, trace_event);
+        if let Some(trace) = ir.trace {
+            for (idx, trace_event) in trace.events.iter().enumerate() {
+                let trace_level = trace_level_to_tracing(trace_event.level).unwrap_or(report_level);
+                emit_trace_event(trace_level, idx, trace_event);
+            }
         }
     }
 }
@@ -53,25 +55,17 @@ macro_rules! report_event {
             severity = ?$ir.metadata.severity,
             category = ?$ir.metadata.category,
             retryable = ?$ir.metadata.retryable,
-            trace_id = ?$ir.trace.context.trace_id,
-            span_id = ?$ir.trace.context.span_id,
-            parent_span_id = ?$ir.trace.context.parent_span_id,
-            sampled = ?$ir.trace.context.sampled,
-            trace_state = ?$ir.trace.context.trace_state,
-            trace_flags = ?$ir.trace.context.flags,
-            context_count = $ir.context.len(),
-            attachment_count = $ir.attachments.len(),
+            trace_id = ?$ir.trace.as_ref().and_then(|t| t.context.trace_id.as_ref()),
+            span_id = ?$ir.trace.as_ref().and_then(|t| t.context.span_id.as_ref()),
+            parent_span_id = ?$ir.trace.as_ref().and_then(|t| t.context.parent_span_id.as_ref()),
+            sampled = ?$ir.trace.as_ref().and_then(|t| t.context.sampled),
+            trace_state = ?$ir.trace.as_ref().and_then(|t| t.context.trace_state.as_ref()),
+            trace_flags = ?$ir.trace.as_ref().and_then(|t| t.context.flags),
+            context_count = $ir.context_count,
+            attachment_count = $ir.attachment_count,
             stack_trace_present = $ir.metadata.stack_trace.is_some(),
             stack_trace_frame_count = $ir.metadata.stack_trace.as_ref().map(|x| x.frames.len()).unwrap_or(0),
-            display_causes_present = $ir.metadata.display_causes.is_some(),
-            display_causes_count = $ir.metadata.display_causes.as_ref().map(|x| x.items.len()).unwrap_or(0),
-            display_causes_truncated = $ir.metadata.display_causes.as_ref().map(|x| x.truncated).unwrap_or(false),
-            display_causes_cycle_detected = $ir.metadata.display_causes.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
-            source_errors_present = $ir.metadata.source_errors.is_some(),
-            source_errors_count = $ir.metadata.source_errors.as_ref().map(|x| x.items.len()).unwrap_or(0),
-            source_errors_truncated = $ir.metadata.source_errors.as_ref().map(|x| x.truncated).unwrap_or(false),
-            source_errors_cycle_detected = $ir.metadata.source_errors.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
-            trace_event_count = $ir.trace.events.len(),
+            trace_event_count = $ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0),
             "diagweave report emitted"
         )
     };

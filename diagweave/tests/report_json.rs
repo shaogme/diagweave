@@ -39,6 +39,7 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(json.contains("\"v0.1.0\""));
         assert!(json.contains("\"error\""));
         assert!(json.contains("\"metadata\""));
+        assert!(json.contains("\"diagnostic_bag\""));
         #[cfg(feature = "trace")]
         assert!(json.contains("\"trace\""));
         assert!(json.contains("\"context\""));
@@ -47,15 +48,15 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(json.contains("\"display_causes\""));
         assert!(json.contains("\"source_errors\""));
 
-        let parsed: ReportJsonDocument = serde_json::from_str(&json).expect("json schema shape");
-        assert_eq!(parsed.schema_version, REPORT_JSON_SCHEMA_VERSION);
-        assert_eq!(parsed.error.message, "api unauthorized");
-        assert_eq!(parsed.metadata.error_code, None);
-        assert!(parsed.metadata.retryable.is_none());
-        assert!(parsed.metadata.stack_trace.is_none());
-        assert!(parsed.metadata.display_causes.is_none());
-        assert!(parsed.metadata.source_errors.is_some());
-        assert_eq!(parsed.attachments.len(), 0);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+        assert_eq!(parsed["schema_version"], REPORT_JSON_SCHEMA_VERSION);
+        assert_eq!(parsed["error"]["message"], "api unauthorized");
+        assert!(parsed["metadata"]["error_code"].is_null());
+        assert!(parsed["metadata"]["retryable"].is_null());
+        assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
+        assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
+        assert!(parsed["diagnostic_bag"]["source_errors"].is_object());
+        assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(0));
     }
 }
 
@@ -87,29 +88,25 @@ fn json_document_carries_metadata_and_structured_attachments() {
         );
 
     let json = report.render(Json::default()).to_string();
-    let parsed: ReportJsonDocument = serde_json::from_str(&json).expect("json schema shape");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
 
     assert_eq!(
-        parsed.metadata.error_code.as_ref().map(|c| c.to_string()),
-        Some("API.UNAUTHORIZED".to_owned())
+        parsed["metadata"]["error_code"].as_str(),
+        Some("API.UNAUTHORIZED")
     );
-    assert_eq!(parsed.metadata.severity, Some(Severity::Error));
-    assert_eq!(parsed.metadata.category.as_deref(), Some("auth"));
-    assert_eq!(parsed.metadata.retryable, Some(false));
-    assert!(parsed.metadata.display_causes.is_none());
-    assert!(parsed.metadata.source_errors.is_none());
+    assert_eq!(parsed["metadata"]["severity"].as_str(), Some("error"));
+    assert_eq!(parsed["metadata"]["category"].as_str(), Some("auth"));
+    assert_eq!(parsed["metadata"]["retryable"].as_bool(), Some(false));
+    assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
+    assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
+    assert!(parsed["diagnostic_bag"]["source_errors"].is_null());
     #[cfg(feature = "trace")]
-    assert!(parsed.trace.events.is_empty());
-    assert_eq!(parsed.context.len(), 1);
-    assert_eq!(parsed.attachments.len(), 2);
-    assert!(matches!(
-        parsed.attachments[0],
-        ReportJsonAttachment::Note { .. }
-    ));
-    assert!(matches!(
-        parsed.attachments[1],
-        ReportJsonAttachment::Payload { .. }
-    ));
+    assert_eq!(
+        parsed["trace"]["events"].as_array().map(|a| a.len()),
+        Some(0)
+    );
+    assert_eq!(parsed["context"].as_array().map(|a| a.len()), Some(1));
+    assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(2));
 }
 
 #[cfg(feature = "json")]

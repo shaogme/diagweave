@@ -1,10 +1,12 @@
 use alloc::borrow::Cow;
+#[cfg(feature = "trace")]
 use alloc::format;
 use alloc::string::{String, ToString};
+#[cfg(feature = "trace")]
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::render::{DiagnosticIr, DiagnosticIrAttachment};
+use crate::render::DiagnosticIr;
 use crate::report::{AttachmentValue, ErrorCode};
 
 /// A generic value type used for Adapters (e.g., Tracing, OpenTelemetry).
@@ -84,7 +86,7 @@ pub struct OtelEnvelope {
     pub events: Vec<OtelEvent>,
 }
 
-impl DiagnosticIr {
+impl DiagnosticIr<'_> {
     /// Converts the diagnostic IR to a vector of tracing fields.
     pub fn to_tracing_fields(&self) -> Vec<TracingField> {
         let mut fields = Vec::new();
@@ -93,9 +95,7 @@ impl DiagnosticIr {
         self.tracing_meta(&mut fields);
         #[cfg(feature = "trace")]
         self.tracing_trace(&mut fields);
-        self.tracing_causes(&mut fields);
-        self.tracing_context(&mut fields);
-        self.tracing_attachments(&mut fields);
+        self.tracing_stats(&mut fields);
 
         fields
     }
@@ -103,11 +103,11 @@ impl DiagnosticIr {
     fn tracing_error(&self, fields: &mut Vec<TracingField>) {
         fields.push(TracingField {
             key: "error.message".into(),
-            value: AdapterValue::String(self.error.message.clone()),
+            value: AdapterValue::String(self.error.message.to_string_owned().into()),
         });
         fields.push(TracingField {
             key: "error.type".into(),
-            value: AdapterValue::String(self.error.r#type.clone()),
+            value: AdapterValue::String(self.error.r#type.clone().into_owned().into()),
         });
     }
 
@@ -115,7 +115,7 @@ impl DiagnosticIr {
         if let Some(error_code) = &self.metadata.error_code {
             fields.push(TracingField {
                 key: "error.code".into(),
-                value: AdapterValue::from(error_code),
+                value: AdapterValue::from(*error_code),
             });
         }
         if let Some(severity) = self.metadata.severity {
@@ -124,10 +124,10 @@ impl DiagnosticIr {
                 value: AdapterValue::String(severity.into()),
             });
         }
-        if let Some(category) = &self.metadata.category {
+        if let Some(category) = self.metadata.category {
             fields.push(TracingField {
                 key: "error.category".into(),
-                value: AdapterValue::String(category.clone()),
+                value: AdapterValue::String((*category).clone()),
             });
         }
         if let Some(retryable) = self.metadata.retryable {
@@ -155,37 +155,41 @@ impl DiagnosticIr {
 
     #[cfg(feature = "trace")]
     fn tracing_trace(&self, fields: &mut Vec<TracingField>) {
-        if let Some(trace_id) = &self.trace.context.trace_id {
+        let trace = match self.trace {
+            Some(t) => t,
+            None => return,
+        };
+        if let Some(trace_id) = &trace.context.trace_id {
             fields.push(TracingField {
                 key: "trace.trace_id".into(),
                 value: AdapterValue::String(trace_id.clone()),
             });
         }
-        if let Some(span_id) = &self.trace.context.span_id {
+        if let Some(span_id) = &trace.context.span_id {
             fields.push(TracingField {
                 key: "trace.span_id".into(),
                 value: AdapterValue::String(span_id.clone()),
             });
         }
-        if let Some(parent_span_id) = &self.trace.context.parent_span_id {
+        if let Some(parent_span_id) = &trace.context.parent_span_id {
             fields.push(TracingField {
                 key: "trace.parent_span_id".into(),
                 value: AdapterValue::String(parent_span_id.clone()),
             });
         }
-        if let Some(sampled) = self.trace.context.sampled {
+        if let Some(sampled) = trace.context.sampled {
             fields.push(TracingField {
                 key: "trace.sampled".into(),
                 value: AdapterValue::Bool(sampled),
             });
         }
-        if let Some(trace_state) = &self.trace.context.trace_state {
+        if let Some(trace_state) = &trace.context.trace_state {
             fields.push(TracingField {
                 key: "trace.state".into(),
                 value: AdapterValue::String(trace_state.clone()),
             });
         }
-        if let Some(flags) = self.trace.context.flags {
+        if let Some(flags) = trace.context.flags {
             fields.push(TracingField {
                 key: "trace.flags".into(),
                 value: AdapterValue::U64(flags as u64),
@@ -193,7 +197,7 @@ impl DiagnosticIr {
         }
         fields.push(TracingField {
             key: "trace.event_count".into(),
-            value: AdapterValue::U64(self.trace.events.len() as u64),
+            value: AdapterValue::U64(trace.events.len() as u64),
         });
 
         self.tracing_trace_events(fields);
@@ -201,7 +205,11 @@ impl DiagnosticIr {
 
     #[cfg(feature = "trace")]
     fn tracing_trace_events(&self, fields: &mut Vec<TracingField>) {
-        for (idx, event) in self.trace.events.iter().enumerate() {
+        let trace = match self.trace {
+            Some(t) => t,
+            None => return,
+        };
+        for (idx, event) in trace.events.iter().enumerate() {
             fields.push(TracingField {
                 key: format!("trace.event.{idx}.name").into(),
                 value: AdapterValue::String(event.name.clone()),
@@ -227,112 +235,30 @@ impl DiagnosticIr {
         }
     }
 
-    fn tracing_causes(&self, fields: &mut Vec<TracingField>) {
-        self.tracing_display(fields);
-        self.tracing_source(fields);
-    }
-
-    fn tracing_display(&self, fields: &mut Vec<TracingField>) {
-        if let Some(display_causes) = &self.metadata.display_causes {
-            fields.push(TracingField {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            fields.push(TracingField {
-                key: "display_causes.count".into(),
-                value: AdapterValue::U64(display_causes.items.len() as u64),
-            });
-            fields.push(TracingField {
-                key: "display_causes.truncated".into(),
-                value: AdapterValue::Bool(display_causes.truncated),
-            });
-            fields.push(TracingField {
-                key: "display_causes.cycle_detected".into(),
-                value: AdapterValue::Bool(display_causes.cycle_detected),
-            });
-            for (idx, cause) in display_causes.items.iter().enumerate() {
-                fields.push(TracingField {
-                    key: format!("display_causes.{idx}.message").into(),
-                    value: AdapterValue::String(cause.clone().into()),
-                });
-            }
-        } else {
-            fields.push(TracingField {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-    }
-
-    fn tracing_source(&self, fields: &mut Vec<TracingField>) {
-        if let Some(source_errors) = &self.metadata.source_errors {
-            fields.push(TracingField {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            fields.push(TracingField {
-                key: "source_errors.count".into(),
-                value: AdapterValue::U64(source_errors.items.len() as u64),
-            });
-            fields.push(TracingField {
-                key: "source_errors.truncated".into(),
-                value: AdapterValue::Bool(source_errors.truncated),
-            });
-            fields.push(TracingField {
-                key: "source_errors.cycle_detected".into(),
-                value: AdapterValue::Bool(source_errors.cycle_detected),
-            });
-            for (idx, source) in source_errors.items.iter().enumerate() {
-                fields.push(TracingField {
-                    key: format!("source_errors.{idx}.message").into(),
-                    value: AdapterValue::String(source.message.clone()),
-                });
-            }
-        } else {
-            fields.push(TracingField {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-    }
-
-    fn tracing_context(&self, fields: &mut Vec<TracingField>) {
-        for item in &self.context {
-            fields.push(TracingField {
-                key: format!("context.{}", item.key).into(),
-                value: AdapterValue::from(&item.value),
-            });
-        }
-    }
-
-    fn tracing_attachments(&self, fields: &mut Vec<TracingField>) {
-        for (idx, item) in self.attachments.iter().enumerate() {
-            match item {
-                DiagnosticIrAttachment::Note { message } => fields.push(TracingField {
-                    key: format!("attachment.note.{idx}").into(),
-                    value: AdapterValue::String(message.clone()),
-                }),
-                DiagnosticIrAttachment::Payload { name, value, .. } => fields.push(TracingField {
-                    key: format!("attachment.payload.{idx}.{name}").into(),
-                    value: AdapterValue::from(value),
-                }),
-            }
-        }
+    fn tracing_stats(&self, fields: &mut Vec<TracingField>) {
+        fields.push(TracingField {
+            key: "report.context_count".into(),
+            value: AdapterValue::U64(self.context_count as u64),
+        });
+        fields.push(TracingField {
+            key: "report.attachment_count".into(),
+            value: AdapterValue::U64(self.attachment_count as u64),
+        });
     }
 
     /// Converts the diagnostic IR to an OpenTelemetry envelope.
     pub fn to_otel_envelope(&self) -> OtelEnvelope {
         let mut attributes = Vec::new();
+        #[cfg(feature = "trace")]
         let mut events = Vec::new();
+        #[cfg(not(feature = "trace"))]
+        let events = Vec::new();
 
         self.otel_error(&mut attributes);
         self.otel_meta(&mut attributes);
         self.otel_stats(&mut attributes);
         #[cfg(feature = "trace")]
         self.otel_trace(&mut attributes);
-
-        self.otel_context(&mut attributes);
-        self.otel_attachments(&mut events);
         #[cfg(feature = "trace")]
         self.otel_trace_ev(&mut events);
 
@@ -342,11 +268,11 @@ impl DiagnosticIr {
     fn otel_error(&self, attributes: &mut Vec<OtelAttribute>) {
         attributes.push(OtelAttribute {
             key: "error.message".into(),
-            value: AdapterValue::String(self.error.message.clone()),
+            value: AdapterValue::String(self.error.message.to_string_owned().into()),
         });
         attributes.push(OtelAttribute {
             key: "error.type".into(),
-            value: AdapterValue::String(self.error.r#type.clone()),
+            value: AdapterValue::String(self.error.r#type.clone().into_owned().into()),
         });
     }
 
@@ -354,7 +280,7 @@ impl DiagnosticIr {
         if let Some(error_code) = &self.metadata.error_code {
             attributes.push(OtelAttribute {
                 key: "error.code".into(),
-                value: AdapterValue::from(error_code),
+                value: AdapterValue::from(*error_code),
             });
         }
         if let Some(severity) = self.metadata.severity {
@@ -363,10 +289,10 @@ impl DiagnosticIr {
                 value: AdapterValue::String(severity.into()),
             });
         }
-        if let Some(category) = &self.metadata.category {
+        if let Some(category) = self.metadata.category {
             attributes.push(OtelAttribute {
                 key: "error.category".into(),
-                value: AdapterValue::String(category.clone()),
+                value: AdapterValue::String((*category).clone()),
             });
         }
         if let Some(retryable) = self.metadata.retryable {
@@ -390,109 +316,63 @@ impl DiagnosticIr {
                 value: AdapterValue::Bool(false),
             });
         }
-
-        self.otel_meta_causes(attributes);
-    }
-
-    fn otel_meta_causes(&self, attributes: &mut Vec<OtelAttribute>) {
-        if let Some(display_causes) = &self.metadata.display_causes {
-            attributes.push(OtelAttribute {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            attributes.push(OtelAttribute {
-                key: "display_causes.count".into(),
-                value: AdapterValue::U64(display_causes.items.len() as u64),
-            });
-            attributes.push(OtelAttribute {
-                key: "display_causes.truncated".into(),
-                value: AdapterValue::Bool(display_causes.truncated),
-            });
-            attributes.push(OtelAttribute {
-                key: "display_causes.cycle_detected".into(),
-                value: AdapterValue::Bool(display_causes.cycle_detected),
-            });
-        } else {
-            attributes.push(OtelAttribute {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-
-        if let Some(source_errors) = &self.metadata.source_errors {
-            attributes.push(OtelAttribute {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            attributes.push(OtelAttribute {
-                key: "source_errors.count".into(),
-                value: AdapterValue::U64(source_errors.items.len() as u64),
-            });
-            attributes.push(OtelAttribute {
-                key: "source_errors.truncated".into(),
-                value: AdapterValue::Bool(source_errors.truncated),
-            });
-            attributes.push(OtelAttribute {
-                key: "source_errors.cycle_detected".into(),
-                value: AdapterValue::Bool(source_errors.cycle_detected),
-            });
-        } else {
-            attributes.push(OtelAttribute {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
     }
 
     fn otel_stats(&self, attributes: &mut Vec<OtelAttribute>) {
         attributes.push(OtelAttribute {
             key: "report.context_count".into(),
-            value: AdapterValue::U64(self.context.len() as u64),
+            value: AdapterValue::U64(self.context_count as u64),
         });
         attributes.push(OtelAttribute {
             key: "report.attachment_count".into(),
-            value: AdapterValue::U64(self.attachments.len() as u64),
+            value: AdapterValue::U64(self.attachment_count as u64),
         });
         #[cfg(feature = "trace")]
-        attributes.push(OtelAttribute {
-            key: "trace.event_count".into(),
-            value: AdapterValue::U64(self.trace.events.len() as u64),
-        });
+        if let Some(trace) = self.trace {
+            attributes.push(OtelAttribute {
+                key: "trace.event_count".into(),
+                value: AdapterValue::U64(trace.events.len() as u64),
+            });
+        }
     }
 
     #[cfg(feature = "trace")]
     fn otel_trace(&self, attributes: &mut Vec<OtelAttribute>) {
-        if let Some(trace_id) = &self.trace.context.trace_id {
+        let trace = match self.trace {
+            Some(t) => t,
+            None => return,
+        };
+        if let Some(trace_id) = &trace.context.trace_id {
             attributes.push(OtelAttribute {
                 key: "trace.trace_id".into(),
                 value: AdapterValue::String(trace_id.clone()),
             });
         }
-        if let Some(span_id) = &self.trace.context.span_id {
+        if let Some(span_id) = &trace.context.span_id {
             attributes.push(OtelAttribute {
                 key: "trace.span_id".into(),
                 value: AdapterValue::String(span_id.clone()),
             });
         }
-        if let Some(parent_span_id) = &self.trace.context.parent_span_id {
+        if let Some(parent_span_id) = &trace.context.parent_span_id {
             attributes.push(OtelAttribute {
                 key: "trace.parent_span_id".into(),
                 value: AdapterValue::String(parent_span_id.clone()),
             });
         }
-        if let Some(sampled) = self.trace.context.sampled {
+        if let Some(sampled) = trace.context.sampled {
             attributes.push(OtelAttribute {
                 key: "trace.sampled".into(),
                 value: AdapterValue::Bool(sampled),
             });
         }
-        if let Some(trace_state) = &self.trace.context.trace_state {
+        if let Some(trace_state) = &trace.context.trace_state {
             attributes.push(OtelAttribute {
                 key: "trace.state".into(),
                 value: AdapterValue::String(trace_state.clone()),
             });
         }
-        if let Some(flags) = self.trace.context.flags {
+        if let Some(flags) = trace.context.flags {
             attributes.push(OtelAttribute {
                 key: "trace.flags".into(),
                 value: AdapterValue::U64(flags as u64),
@@ -500,68 +380,13 @@ impl DiagnosticIr {
         }
     }
 
-    fn otel_context(&self, attributes: &mut Vec<OtelAttribute>) {
-        for item in &self.context {
-            attributes.push(OtelAttribute {
-                key: format!("context.{}", item.key).into(),
-                value: AdapterValue::from(&item.value),
-            });
-        }
-    }
-
-    fn otel_attachments(&self, events: &mut Vec<OtelEvent>) {
-        for (idx, item) in self.attachments.iter().enumerate() {
-            match item {
-                DiagnosticIrAttachment::Note { message } => events.push(OtelEvent {
-                    name: "report.attachment.note".into(),
-                    attributes: vec![
-                        OtelAttribute {
-                            key: "attachment.index".into(),
-                            value: AdapterValue::U64(idx as u64),
-                        },
-                        OtelAttribute {
-                            key: "attachment.message".into(),
-                            value: AdapterValue::String(message.clone()),
-                        },
-                    ],
-                }),
-                DiagnosticIrAttachment::Payload {
-                    name,
-                    value,
-                    media_type,
-                } => {
-                    let mut event_attributes = vec![
-                        OtelAttribute {
-                            key: "attachment.index".into(),
-                            value: AdapterValue::U64(idx as u64),
-                        },
-                        OtelAttribute {
-                            key: "attachment.name".into(),
-                            value: AdapterValue::String(name.clone()),
-                        },
-                        OtelAttribute {
-                            key: "attachment.value".into(),
-                            value: AdapterValue::from(value),
-                        },
-                    ];
-                    if let Some(media_type) = media_type {
-                        event_attributes.push(OtelAttribute {
-                            key: "attachment.media_type".into(),
-                            value: AdapterValue::String(media_type.clone()),
-                        });
-                    }
-                    events.push(OtelEvent {
-                        name: "report.attachment.payload".into(),
-                        attributes: event_attributes,
-                    });
-                }
-            }
-        }
-    }
-
     #[cfg(feature = "trace")]
     fn otel_trace_ev(&self, events: &mut Vec<OtelEvent>) {
-        for (idx, trace_event) in self.trace.events.iter().enumerate() {
+        let trace = match self.trace {
+            Some(t) => t,
+            None => return,
+        };
+        for (idx, trace_event) in trace.events.iter().enumerate() {
             let mut event_attributes = vec![
                 OtelAttribute {
                     key: "trace.event.index".into(),

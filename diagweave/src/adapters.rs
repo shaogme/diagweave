@@ -307,6 +307,7 @@ impl DiagnosticIr<'_> {
 
         self.otel_error(&mut attributes);
         self.otel_meta(&mut attributes);
+        self.otel_causes(&mut attributes);
         self.otel_stats(&mut attributes);
         #[cfg(feature = "trace")]
         self.otel_trace(&mut attributes);
@@ -367,7 +368,9 @@ impl DiagnosticIr<'_> {
                 value: AdapterValue::Bool(false),
             });
         }
+    }
 
+    fn otel_causes(&self, attributes: &mut Vec<OtelAttribute>) {
         if let Some(display_causes) = &self.metadata.display_causes {
             attributes.push(OtelAttribute {
                 key: "display_causes.present".into(),

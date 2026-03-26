@@ -174,8 +174,8 @@ where
                 category: metadata.category.as_ref(),
                 retryable: metadata.retryable,
                 stack_trace: metadata.stack_trace.as_ref(),
-                display_causes: build_display_causes_summary(self, collect_opts),
-                source_errors: build_source_errors_summary(self, collect_opts),
+                display_causes: build_display_causes(self, collect_opts),
+                source_errors: build_source_errors(self, collect_opts),
             },
             #[cfg(feature = "trace")]
             trace: self.trace(),
@@ -200,7 +200,7 @@ fn count_attachments(report: &Report<impl Error + 'static>) -> (usize, usize) {
     }
 }
 
-fn build_display_causes_summary<E>(
+fn build_display_causes<E>(
     report: &Report<E>,
     options: CauseCollectOptions,
 ) -> Option<DiagnosticIrCauseChainSummary>
@@ -208,7 +208,7 @@ where
     E: Error + Display + 'static,
 {
     let mut count = 0usize;
-    let state = match report.visit_display_causes_with(options, |_| {
+    let state = match report.visit_causes_ext(options, |_| {
         count += 1;
         Ok(())
     }) {
@@ -227,7 +227,7 @@ where
     })
 }
 
-fn build_source_errors_summary<E>(
+fn build_source_errors<E>(
     report: &Report<E>,
     options: CauseCollectOptions,
 ) -> Option<DiagnosticIrCauseChainSummary>
@@ -235,7 +235,7 @@ where
     E: Error + Display + 'static,
 {
     let mut count = 0usize;
-    let state = match report.visit_source_errors_with(options, |_| {
+    let state = match report.visit_sources_ext(options, |_| {
         count += 1;
         Ok(())
     }) {

@@ -36,7 +36,7 @@ where
         #[cfg(feature = "trace")]
         render_trace_section(f, report, options)?;
         render_stack_trace(f, report, options)?;
-        render_attachment_sections(f, report, options)?;
+        render_attachments(f, report, options)?;
         render_display_causes(f, report, options)?;
         render_source_errors(f, report, options)?;
         Ok(())
@@ -303,79 +303,101 @@ fn render_raw_stack_trace(
     Ok(())
 }
 
-fn render_attachment_sections(
+fn render_attachments(
     f: &mut Formatter<'_>,
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    if options.show_context_section {
-        let mut wrote_header = false;
-        report.visit_attachments(|item| {
-            let AttachmentVisit::Context { key, value } = item else {
-                return Ok(());
-            };
-            if !wrote_header {
-                wrote_header = true;
-                writeln!(f, "Context:")?;
-            }
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- {}: {}", key.as_ref(), value)
-        })?;
-        if !wrote_header && options.show_empty_sections {
+    render_context_section(f, report, options)?;
+    render_attachment_section(f, report, options)?;
+    Ok(())
+}
+
+fn render_context_section(
+    f: &mut Formatter<'_>,
+    report: &Report<impl Error + 'static>,
+    options: ReportRenderOptions,
+) -> fmt::Result {
+    if !options.show_context_section {
+        return Ok(());
+    }
+
+    let mut wrote_header = false;
+    report.visit_attachments(|item| {
+        let AttachmentVisit::Context { key, value } = item else {
+            return Ok(());
+        };
+        if !wrote_header {
+            wrote_header = true;
             writeln!(f, "Context:")?;
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
         }
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- {}: {}", key.as_ref(), value)
+    })?;
+
+    if !wrote_header && options.show_empty_sections {
+        writeln!(f, "Context:")?;
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- (none)")?;
+    }
+    Ok(())
+}
+
+fn render_attachment_section(
+    f: &mut Formatter<'_>,
+    report: &Report<impl Error + 'static>,
+    options: ReportRenderOptions,
+) -> fmt::Result {
+    if !options.show_attachments_section {
+        return Ok(());
     }
 
-    if options.show_attachments_section {
-        let mut wrote_header = false;
-        report.visit_attachments(|item| {
-            match item {
-                AttachmentVisit::Context { .. } => {}
-                AttachmentVisit::Note { message } => {
-                    if !wrote_header {
-                        wrote_header = true;
-                        writeln!(f, "Attachments:")?;
-                    }
-                    write_indent(f, options.pretty_indent)?;
-                    writeln!(f, "- note: {}", message.as_ref())?;
+    let mut wrote_header = false;
+    report.visit_attachments(|item| {
+        match item {
+            AttachmentVisit::Context { .. } => {}
+            AttachmentVisit::Note { message } => {
+                if !wrote_header {
+                    wrote_header = true;
+                    writeln!(f, "Attachments:")?;
                 }
-                AttachmentVisit::Payload {
-                    name,
-                    value,
-                    media_type,
-                } => {
-                    if !wrote_header {
-                        wrote_header = true;
-                        writeln!(f, "Attachments:")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- note: {}", message.as_ref())?;
+            }
+            AttachmentVisit::Payload {
+                name,
+                value,
+                media_type,
+            } => {
+                if !wrote_header {
+                    wrote_header = true;
+                    writeln!(f, "Attachments:")?;
+                }
+                write_indent(f, options.pretty_indent)?;
+                match media_type {
+                    Some(media_type) => {
+                        writeln!(
+                            f,
+                            "- payload {} ({}): {}",
+                            name.as_ref(),
+                            media_type.as_ref(),
+                            value
+                        )?;
                     }
-                    write_indent(f, options.pretty_indent)?;
-                    match media_type {
-                        Some(media_type) => {
-                            writeln!(
-                                f,
-                                "- payload {} ({}): {}",
-                                name.as_ref(),
-                                media_type.as_ref(),
-                                value
-                            )?;
-                        }
-                        None => {
-                            writeln!(f, "- payload {}: {}", name.as_ref(), value)?;
-                        }
+                    None => {
+                        writeln!(f, "- payload {}: {}", name.as_ref(), value)?;
                     }
                 }
             }
-            Ok(())
-        })?;
-        if !wrote_header && options.show_empty_sections {
-            writeln!(f, "Attachments:")?;
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
         }
-    }
+        Ok(())
+    })?;
 
+    if !wrote_header && options.show_empty_sections {
+        writeln!(f, "Attachments:")?;
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- (none)")?;
+    }
     Ok(())
 }
 
@@ -389,7 +411,7 @@ fn render_display_causes(
         detect_cycle: options.detect_source_cycle,
     };
     let mut count = 0usize;
-    let traversal = report.visit_display_causes_with(traversal_options, |cause| {
+    let traversal = report.visit_causes_ext(traversal_options, |cause| {
         count += 1;
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "{}. {}", count, cause)
@@ -428,7 +450,7 @@ fn render_source_errors(
         detect_cycle: options.detect_source_cycle,
     };
     let mut count = 0usize;
-    let traversal = report.visit_source_errors_with(traversal_options, |err| {
+    let traversal = report.visit_sources_ext(traversal_options, |err| {
         count += 1;
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "{}. {}", count, err)

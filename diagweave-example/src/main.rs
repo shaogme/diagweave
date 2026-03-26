@@ -278,7 +278,7 @@ where
         println!("  (none)");
     } else {
         let mut idx = 0usize;
-        let _ = report.visit_display_causes(|cause| {
+        let _ = report.visit_causes(|cause| {
             idx += 1;
             println!("  {}. {}", idx, cause);
             Ok(())
@@ -295,7 +295,7 @@ where
         println!("  (none)");
     } else {
         let mut idx = 0usize;
-        let _ = report.visit_source_errors(|source| {
+        let _ = report.visit_sources(|source| {
             idx += 1;
             println!("  {}. {}", idx, source);
             Ok(())

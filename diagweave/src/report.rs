@@ -2,6 +2,8 @@
 mod ext;
 #[path = "report/impls.rs"]
 mod impls;
+#[path = "report/internal.rs"]
+mod internal;
 #[path = "report/types.rs"]
 mod types;
 
@@ -11,190 +13,28 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
-#[cfg(feature = "std")]
-use std::panic::{AssertUnwindSafe, catch_unwind};
-#[cfg(feature = "std")]
-use std::sync::OnceLock;
 
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
+pub use internal::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
+#[cfg(feature = "std")]
+pub use internal::{RegisterGlobalContextError, register_global_injector};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
     ErrorCodeIntError, ReportMetadata, Severity, SourceError, SourceErrorChain, StackFrame,
     StackTrace, StackTraceFormat,
 };
+
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
+
+use internal::{
+    ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorIterStage,
+};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 pub struct Report<E> {
     inner: E,
     cold: Option<Box<ColdData>>,
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct CauseTraversalState {
-    pub truncated: bool,
-    pub cycle_detected: bool,
-}
-
-enum SourceErrorIterStage {
-    Attached,
-    Inner,
-    Done,
-}
-
-/// A streamed attachment item for visitor-based traversal.
-pub enum AttachmentVisit<'a> {
-    Context {
-        key: &'a Cow<'static, str>,
-        value: &'a AttachmentValue,
-    },
-    Note {
-        message: &'a Cow<'static, str>,
-    },
-    Payload {
-        name: &'a Cow<'static, str>,
-        value: &'a AttachmentValue,
-        media_type: Option<&'a Cow<'static, str>>,
-    },
-}
-
-/// Iterator over source errors with depth/cycle control.
-pub struct ReportSourceErrorIter<'a> {
-    source_errors: core::slice::Iter<'a, Box<dyn Error + 'static>>,
-    root_source: Option<&'a (dyn Error + 'static)>,
-    current: Option<&'a (dyn Error + 'static)>,
-    stage: SourceErrorIterStage,
-    depth: usize,
-    options: CauseCollectOptions,
-    seen: SeenErrorAddrs,
-    state: CauseTraversalState,
-}
-
-impl<'a> ReportSourceErrorIter<'a> {
-    /// Returns traversal state observed so far.
-    pub fn state(&self) -> CauseTraversalState {
-        self.state
-    }
-}
-
-impl<'a> Iterator for ReportSourceErrorIter<'a> {
-    type Item = &'a (dyn Error + 'static);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.state.truncated || self.state.cycle_detected {
-            self.stage = SourceErrorIterStage::Done;
-            return None;
-        }
-
-        loop {
-            let err = match self.current.take() {
-                Some(err) => err,
-                None => match self.stage {
-                    SourceErrorIterStage::Attached => {
-                        if let Some(err) = self.source_errors.next() {
-                            err.as_ref()
-                        } else {
-                            self.stage = SourceErrorIterStage::Inner;
-                            continue;
-                        }
-                    }
-                    SourceErrorIterStage::Inner => {
-                        let Some(err) = self.root_source.take() else {
-                            self.stage = SourceErrorIterStage::Done;
-                            return None;
-                        };
-                        err
-                    }
-                    SourceErrorIterStage::Done => return None,
-                },
-            };
-
-            if self.depth >= self.options.max_depth {
-                self.state.truncated = true;
-                self.stage = SourceErrorIterStage::Done;
-                return None;
-            }
-            if self.options.detect_cycle {
-                let ptr = (err as *const dyn Error) as *const ();
-                let addr = ptr as usize;
-                if !self.seen.insert(addr) {
-                    self.state.cycle_detected = true;
-                    self.stage = SourceErrorIterStage::Done;
-                    return None;
-                }
-            }
-            self.current = err.source();
-            self.depth += 1;
-            return Some(err);
-        }
-    }
-}
-
-#[derive(Default)]
-struct ColdData {
-    metadata: ReportMetadata,
-    diagnostics: DiagnosticBag,
-}
-
-#[derive(Default)]
-struct DiagnosticBag {
-    #[cfg(feature = "trace")]
-    trace: ReportTrace,
-    attachments: Vec<Attachment>,
-    display_causes: Vec<Box<dyn Display + 'static>>,
-    source_errors: Vec<Box<dyn Error + 'static>>,
-}
-
-const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
-    error_code: None,
-    severity: None,
-    category: None,
-    retryable: None,
-    stack_trace: None,
-    display_causes: None,
-    source_errors: None,
-};
-
-/// Global context information that can be injected into reports.
-#[derive(Debug, Clone, Default)]
-pub struct GlobalContext {
-    /// Context key-value pairs.
-    pub context: Vec<(Cow<'static, str>, AttachmentValue)>,
-    /// Global trace ID if available.
-    #[cfg(feature = "trace")]
-    pub trace_id: Option<Cow<'static, str>>,
-    /// Global span ID if available.
-    #[cfg(feature = "trace")]
-    pub span_id: Option<Cow<'static, str>>,
-    /// Global parent span ID if available.
-    #[cfg(feature = "trace")]
-    pub parent_span_id: Option<Cow<'static, str>>,
-}
-
-/// Context injector type alias for global context providers.
-#[cfg(feature = "std")]
-type ContextInjector = dyn Fn() -> Option<GlobalContext> + Send + Sync + 'static;
-
-#[cfg(feature = "std")]
-fn global_context_injector() -> &'static OnceLock<Box<ContextInjector>> {
-    static INJECTOR: OnceLock<Box<ContextInjector>> = OnceLock::new();
-    &INJECTOR
-}
-
-/// Error returned when global context registration fails.
-#[cfg(feature = "std")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RegisterGlobalContextError;
-
-/// Registers a global context injector that will be invoked for every new report.
-#[cfg(feature = "std")]
-pub fn register_global_injector(
-    injector: impl Fn() -> Option<GlobalContext> + Send + Sync + 'static,
-) -> Result<(), RegisterGlobalContextError> {
-    global_context_injector()
-        .set(Box::new(injector))
-        .map_err(|_| RegisterGlobalContextError)
 }
 
 impl<E> Report<E> {
@@ -330,31 +170,11 @@ impl<E> Report<E> {
 
     #[cfg(feature = "std")]
     fn apply_global_context(&mut self) {
-        let Some(injector) = global_context_injector().get() else {
-            return;
-        };
-        let injected = catch_unwind(AssertUnwindSafe(injector));
-        let Some(global) = injected.unwrap_or_default() else {
-            return;
-        };
-        for (key, value) in global.context {
-            self.diagnostics_mut()
-                .attachments
-                .push(Attachment::context(key, value));
-        }
+        let diag = self.diagnostics_mut();
         #[cfg(feature = "trace")]
-        {
-            let trace = &mut self.diagnostics_mut().trace.context;
-            if trace.trace_id.is_none() {
-                trace.trace_id = global.trace_id;
-            }
-            if trace.span_id.is_none() {
-                trace.span_id = global.span_id;
-            }
-            if trace.parent_span_id.is_none() {
-                trace.parent_span_id = global.parent_span_id;
-            }
-        }
+        internal::apply_global_context(&mut diag.attachments, &mut diag.trace.context);
+        #[cfg(not(feature = "trace"))]
+        internal::apply_global_context(&mut diag.attachments);
     }
 
     /// Attaches a context key-value pair to the report.
@@ -612,88 +432,23 @@ impl<E> Report<E> {
     }
 
     /// Visits display causes using default collection options.
-    pub fn visit_display_causes<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
+    pub fn visit_causes<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(&dyn Display) -> fmt::Result,
         E: Error + 'static,
     {
-        self.visit_display_causes_with(CauseCollectOptions::default(), visit)
+        self.visit_causes_ext(CauseCollectOptions::default(), visit)
     }
 
     /// Visits display causes using custom collection options.
-    pub fn visit_display_causes_with<F>(
-        &self,
-        options: CauseCollectOptions,
-        visit: F,
-    ) -> Result<CauseTraversalState, fmt::Error>
-    where
-        F: FnMut(&dyn Display) -> fmt::Result,
-        E: Error + 'static,
-    {
-        self.for_each_display_cause_with(options, visit)
-    }
-
-    /// Visits source errors using default collection options.
-    pub fn visit_source_errors<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
-    where
-        F: FnMut(&dyn Error) -> fmt::Result,
-        E: Error + 'static,
-    {
-        self.visit_source_errors_with(CauseCollectOptions::default(), visit)
-    }
-
-    /// Visits source errors using custom collection options.
-    pub fn visit_source_errors_with<F>(
-        &self,
-        options: CauseCollectOptions,
-        visit: F,
-    ) -> Result<CauseTraversalState, fmt::Error>
-    where
-        F: FnMut(&dyn Error) -> fmt::Result,
-        E: Error + 'static,
-    {
-        self.for_each_source_error_with(options, visit)
-    }
-}
-
-impl<E> Report<E>
-where
-    E: Error + 'static,
-{
-    /// Iterates source errors using default collection options.
-    pub fn iter_source_errors(&self) -> ReportSourceErrorIter<'_> {
-        self.iter_source_errors_with(CauseCollectOptions::default())
-    }
-
-    /// Iterates source errors using custom collection options.
-    pub fn iter_source_errors_with(
-        &self,
-        options: CauseCollectOptions,
-    ) -> ReportSourceErrorIter<'_> {
-        let source_errors = self
-            .diagnostics()
-            .map(|diag| diag.source_errors.as_slice())
-            .unwrap_or(&[]);
-
-        ReportSourceErrorIter {
-            source_errors: source_errors.iter(),
-            root_source: self.inner.source(),
-            current: None,
-            stage: SourceErrorIterStage::Attached,
-            depth: 0,
-            options,
-            seen: SeenErrorAddrs::new(),
-            state: CauseTraversalState::default(),
-        }
-    }
-
-    pub fn for_each_display_cause_with<F>(
+    pub fn visit_causes_ext<F>(
         &self,
         options: CauseCollectOptions,
         mut visit: F,
     ) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(&dyn Display) -> fmt::Result,
+        E: Error + 'static,
     {
         let mut state = CauseTraversalState::default();
         let Some(diag) = self.diagnostics() else {
@@ -710,15 +465,26 @@ where
         Ok(state)
     }
 
-    pub fn for_each_source_error_with<F>(
+    /// Visits source errors using default collection options.
+    pub fn visit_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
+    where
+        F: FnMut(&dyn Error) -> fmt::Result,
+        E: Error + 'static,
+    {
+        self.visit_sources_ext(CauseCollectOptions::default(), visit)
+    }
+
+    /// Visits source errors using custom collection options.
+    pub fn visit_sources_ext<F>(
         &self,
         options: CauseCollectOptions,
         mut visit: F,
     ) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(&dyn Error) -> fmt::Result,
+        E: Error + 'static,
     {
-        let mut iter = self.iter_source_errors_with(options);
+        let mut iter = self.iter_sources_ext(options);
         for err in iter.by_ref() {
             visit(err)?;
         }
@@ -726,38 +492,31 @@ where
     }
 }
 
-struct SeenErrorAddrs {
-    inline: [usize; 8],
-    len: usize,
-    spill: Vec<usize>,
-}
-
-impl SeenErrorAddrs {
-    fn new() -> Self {
-        Self {
-            inline: [0usize; 8],
-            len: 0,
-            spill: Vec::new(),
-        }
+impl<E> Report<E>
+where
+    E: Error + 'static,
+{
+    /// Iterates source errors using default collection options.
+    pub fn iter_sources(&self) -> ReportSourceErrorIter<'_> {
+        self.iter_sources_ext(CauseCollectOptions::default())
     }
 
-    fn insert(&mut self, addr: usize) -> bool {
-        if self.contains(addr) {
-            return false;
-        }
-        if self.len < self.inline.len() {
-            self.inline[self.len] = addr;
-            self.len += 1;
-            return true;
-        }
-        self.spill.push(addr);
-        true
-    }
+    /// Iterates source errors using custom collection options.
+    pub fn iter_sources_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_> {
+        let source_errors = self
+            .diagnostics()
+            .map(|diag| diag.source_errors.as_slice())
+            .unwrap_or(&[]);
 
-    fn contains(&self, addr: usize) -> bool {
-        if self.inline[..self.len].contains(&addr) {
-            return true;
+        ReportSourceErrorIter {
+            source_errors: source_errors.iter(),
+            root_source: self.inner.source(),
+            current: None,
+            stage: SourceErrorIterStage::Attached,
+            depth: 0,
+            options,
+            seen: SeenErrorAddrs::new(),
+            state: CauseTraversalState::default(),
         }
-        self.spill.contains(&addr)
     }
 }

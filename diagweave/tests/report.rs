@@ -373,14 +373,14 @@ fn public_cause_visit_apis_are_accessible() {
         .with_source_error(ApiError::Unauthorized);
     let mut display = Vec::new();
     let display_state = report
-        .visit_display_causes(|cause| {
+        .visit_causes(|cause| {
             display.push(cause.to_string());
             Ok(())
         })
         .expect("display causes");
     let mut source = Vec::new();
     let source_state = report
-        .visit_source_errors(|err| {
+        .visit_sources(|err| {
             source.push(err.to_string());
             Ok(())
         })
@@ -394,7 +394,7 @@ fn public_cause_visit_apis_are_accessible() {
     assert!(!source_state.cycle_detected);
 
     let cycle = Report::new(LoopError)
-        .visit_source_errors_with(
+        .visit_sources_ext(
             CauseCollectOptions {
                 max_depth: 8,
                 detect_cycle: true,
@@ -404,7 +404,7 @@ fn public_cause_visit_apis_are_accessible() {
         .expect("cycle traversal");
     assert!(cycle.cycle_detected);
 
-    let mut iter = report.iter_source_errors_with(CauseCollectOptions {
+    let mut iter = report.iter_sources_ext(CauseCollectOptions {
         max_depth: 4,
         detect_cycle: true,
     });

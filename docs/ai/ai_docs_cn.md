@@ -344,7 +344,9 @@ let json_str = report.json().to_string();
 ## 8. 日志系统集成 (`Tracing`)
 
 ### 概览
-(需开启 `trace` 或 `tracing` 特性) 将诊断报告导出到监控系统或日志流。
+将诊断报告导出到监控系统或日志流。
+- **`trace` 特性**：提供数据模型与 `TracingExporterTrait` 用于自定义导出器。
+- **`tracing` 特性**：提供针对 `tracing` crate 的默认实现及 `emit_tracing` 快捷方法。
 
 ### 核心 API
 | 方法 | 说明 |
@@ -418,4 +420,21 @@ impl<E: Display> ReportRenderer<E> for MyHtmlRenderer {
         write!(f, "<div>{}</div>", report.inner())
     }
 }
+
+---
+
+## 11. Feature Flags (特性开关)
+
+| Feature | 默认开启 | 说明 |
+| :--- | :--- | :--- |
+| `std` | 是 | 标准库集成 (捕获堆栈、全局注入器等) |
+| `json` | 否 | `Json` 渲染器支持 (依赖 `serde` 和 `serde_json`) |
+| `trace` | 否 | Trace 数据模型 (`ReportTrace` 等) 与可插拔导出器 Trait (`TracingExporterTrait`、`emit_tracing_with`) |
+| `tracing` | 否 | 默认 `tracing` 生态集成 (`TracingExporter`、`emit_tracing`)。会自动开启 `trace`。 |
+
+### 依赖矩阵
+- **`no_std`**: 通过关闭默认特性支持。需要 `alloc`。
+- **`json`**: 需要 `serde` (含 `derive` 和 `alloc` 特性) 以及 `serde_json` (含 `alloc` 特性)。
+- **`trace`**: 无额外外部依赖的 Trace 数据结构。
+- **`tracing`**: 依赖 `tracing` crate。
 ```

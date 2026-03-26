@@ -397,9 +397,9 @@ cargo run -p diagweave-example
 ## Feature flags
 
 - `std` (default): std integrations
-- `json` (default): `Json` renderer (`serde` / `serde_json`)
-- `trace` (default): trace data model (`ReportTrace`, `TraceContext`, `TraceEvent`)
-- `tracing`: exporter APIs (`TracingExporterTrait`, `emit_tracing*`)
+- `json`: `Json` renderer (`serde` / `serde_json`)
+- `trace`: trace data model (`ReportTrace`, etc.) and pluggable exporter trait (`TracingExporterTrait`, `emit_tracing_with`)
+- `tracing`: default `tracing` crate integration (`TracingExporter`, `emit_tracing`)
 
 ## Workspace layout
 

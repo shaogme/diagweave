@@ -1,5 +1,5 @@
 #[cfg(feature = "tracing")]
-#[path = "tracing_export/tracing.rs"]
+#[path = "trace/tracing.rs"]
 mod tracing;
 
 use core::error::Error;

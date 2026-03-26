@@ -8,8 +8,8 @@ mod render_impl;
 #[path = "report.rs"]
 mod report_impl;
 #[cfg(feature = "trace")]
-#[path = "tracing_export.rs"]
-mod tracing_export_impl;
+#[path = "trace.rs"]
+mod trace_impl;
 
 pub use diagweave_macros::{Error, set, union};
 
@@ -57,10 +57,10 @@ pub mod report {
 }
 
 #[cfg(feature = "trace")]
-pub mod tracing_export {
+pub mod trace {
     #[cfg(feature = "tracing")]
-    pub use crate::tracing_export_impl::TracingExporter;
-    pub use crate::tracing_export_impl::TracingExporterTrait;
+    pub use crate::trace_impl::TracingExporter;
+    pub use crate::trace_impl::TracingExporterTrait;
 }
 
 pub mod prelude {

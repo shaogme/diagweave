@@ -22,7 +22,7 @@ tracing = { workspace = true, optional = true }
 trybuild = "1.0"
 
 [features]
-default = ["std", "json", "trace"]
+default = ["std"]
 std = []
 json = ["dep:serde", "dep:serde_json"]
 trace = []

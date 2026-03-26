@@ -344,7 +344,9 @@ let json_str = report.json().to_string();
 ## 8. Log System Integration (`Tracing`)
 
 ### Overview
-(Requires `trace` or `tracing` feature) Exports diagnostic reports to monitoring systems or log streams.
+Exports diagnostic reports to monitoring systems or log streams.
+- **`trace` feature**: Provides the data model and `TracingExporterTrait` for custom exporters.
+- **`tracing` feature**: Provides the default implementation for the `tracing` crate and the `emit_tracing` shortcut.
 
 ### Core API
 | Method | Description |
@@ -415,7 +417,23 @@ Customize output format (e.g., output to HTML or Web UI) by implementing the `Re
 struct MyHtmlRenderer;
 impl<E: Display> ReportRenderer<E> for MyHtmlRenderer {
     fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "<div>{}</div>", report.inner())
     }
 }
+
+---
+
+## 11. Feature Flags
+
+| Feature | Default | Description |
+| :--- | :--- | :--- |
+| `std` | Yes | Standard library integrations (capture stack trace, global injector, etc.) |
+| `json` | No | `Json` renderer support (requires `serde` and `serde_json`) |
+| `trace` | No | Trace data model (`ReportTrace`, etc.) and pluggable exporter trait (`TracingExporterTrait`, `emit_tracing_with`) |
+| `tracing` | No | Default `tracing` crate integration (`TracingExporter`, `emit_tracing`). Automatically enables `trace`. |
+
+### Requirements Matrix
+- **`no_std`**: Supported by disabling default features. Requires `alloc`.
+- **`json`**: Requires `serde` with `derive` and `alloc` features, plus `serde_json` with `alloc`.
+- **`trace`**: Zero-dependency trace data structures.
+- **`tracing`**: Requires `tracing` crate.
 ```

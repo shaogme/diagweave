@@ -25,7 +25,7 @@ pub use diagweave::report::{
     Attachment, AttachmentValue, CauseNode, ReportMetadata, StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "tracing")]
-pub use diagweave::tracing_export::TracingExporterTrait;
+pub use diagweave::trace::TracingExporterTrait;
 
 /// An error type for authentication failures.
 #[derive(Debug, Clone, PartialEq, Eq)]

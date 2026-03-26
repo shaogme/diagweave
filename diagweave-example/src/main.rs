@@ -10,7 +10,7 @@ use diagweave::render::{
     DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION, ReportJsonDocument,
 };
 use diagweave::report::{EventOnlyStore, LocalCauseStore, StackTrace, StackTraceFormat};
-use diagweave::tracing_export::TracingExporterTrait;
+use diagweave::trace::TracingExporterTrait;
 
 // =============================================================================
 // Part 1: Error Definitions using diagweave macros

@@ -397,9 +397,9 @@ cargo run -p diagweave-example
 ## Feature
 
 - `std`（默认）：标准库能力
-- `json`（默认）：`Json` 渲染器（`serde` / `serde_json`）
-- `trace`（默认）：trace 数据模型（`ReportTrace`、`TraceContext`、`TraceEvent`）
-- `tracing`：导出器 API（`TracingExporterTrait`、`emit_tracing*`）
+- `json`：`Json` 渲染器（`serde` / `serde_json`）
+- `trace`：trace 数据模型（`ReportTrace` 等）与可插拔导出器 Trait（`TracingExporterTrait`、`emit_tracing_with`）
+- `tracing`：默认 `tracing` 生态集成（`TracingExporter`、`emit_tracing`）
 
 ## 仓库结构
 

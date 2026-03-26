@@ -261,7 +261,7 @@ impl DiagnosticIr<'_> {
             for (idx, cause) in display_causes.items.iter().enumerate() {
                 fields.push(TracingField {
                     key: format!("display_causes.{idx}.message").into(),
-                    value: AdapterValue::String(cause.clone().into()),
+                    value: AdapterValue::String(cause.to_string().into()),
                 });
             }
         } else {
@@ -293,7 +293,7 @@ impl DiagnosticIr<'_> {
             for (idx, source) in source_errors.items.iter().enumerate() {
                 fields.push(TracingField {
                     key: format!("source_errors.{idx}.message").into(),
-                    value: AdapterValue::String(source.message.clone()),
+                    value: AdapterValue::String(source.to_string().into()),
                 });
             }
         } else {
@@ -322,7 +322,7 @@ impl DiagnosticIr<'_> {
                 }),
                 DiagnosticIrAttachment::Payload { name, value, .. } => fields.push(TracingField {
                     key: format!("attachment.payload.{idx}.{name}").into(),
-                    value: AdapterValue::from(*value),
+                    value: AdapterValue::from(value),
                 }),
             }
         }
@@ -555,7 +555,7 @@ impl DiagnosticIr<'_> {
                         },
                         OtelAttribute {
                             key: "attachment.value".into(),
-                            value: AdapterValue::from(*value),
+                            value: AdapterValue::from(value),
                         },
                     ];
                     if let Some(media_type) = media_type {

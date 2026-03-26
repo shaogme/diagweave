@@ -137,7 +137,7 @@ impl TracingExporterTrait for ConsoleExporter {
         }
         if let Some(sources) = source_errors {
             for (idx, source) in sources.items.iter().enumerate() {
-                println!("  source_errors[{idx}] {}", source.message);
+                println!("  source_errors[{idx}] {}", source);
             }
         }
     }
@@ -282,7 +282,7 @@ where
     println!("Error Causes (Source Errors Chain):");
     if let Some(source_errors) = &ir.metadata.source_errors {
         for (idx, source) in source_errors.items.iter().enumerate() {
-            println!("  {}. {}", idx + 1, source.message);
+            println!("  {}. {}", idx + 1, source);
         }
     } else {
         println!("  (none)");

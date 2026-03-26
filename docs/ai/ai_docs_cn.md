@@ -179,10 +179,10 @@ pub struct Report<E> {
 | `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
-| `report.display_causes()` | 使用默认选项收集展示原因 (`CauseCollection`) |
-| `report.display_causes_with(options)` | 使用自定义选项收集展示原因 (`CauseCollection`) |
-| `report.source_errors()` | 使用默认选项收集错误源链 (`CauseCollection`) |
-| `report.source_errors_with(options)` | 使用自定义选项收集错误源链 (`CauseCollection`) |
+| `report.visit_display_causes(visit)` | 使用默认选项流式遍历展示原因 |
+| `report.visit_display_causes_with(options, visit)` | 使用自定义选项流式遍历展示原因 |
+| `report.visit_source_errors(visit)` | 使用默认选项流式遍历错误源链 |
+| `report.visit_source_errors_with(options, visit)` | 使用自定义选项流式遍历错误源链 |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
@@ -365,10 +365,12 @@ fn process() -> Result<(), Report<io::Error>> {
 
 
 ### 诊断中间表示 (`DiagnosticIr`)
-渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。
+渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。该 IR 会把上下文、附件和原因链保留为延迟借用视图。
 ```rust
 use diagweave::render::{
-    DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError, DiagnosticIrMetadata,
+    DiagnosticIrAttachment, DiagnosticIrAttachments, DiagnosticIrContext,
+    DiagnosticIrContexts, DiagnosticIrDisplayCauseChain, DiagnosticIrError,
+    DiagnosticIrMetadata, DiagnosticIrSourceErrorChain,
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
@@ -382,10 +384,52 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
-    pub context: Vec<DiagnosticIrContext<'a>>,
-    pub attachments: Vec<DiagnosticIrAttachment<'a>>,
+    pub context: DiagnosticIrContexts<'a>,
+    pub attachments: DiagnosticIrAttachments<'a>,
 }
 ```
+
+`DiagnosticIrContexts` 和 `DiagnosticIrAttachments` 是基于借用的可迭代视图，而不是已经分配好的 `Vec`。
+
+这样使用：
+```rust
+use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context.len();
+for ctx in &ir.context {
+    println!("context {} = {}", ctx.key, ctx.value);
+}
+
+let attachment_count = ir.attachments.len();
+for attachment in &ir.attachments {
+    match attachment {
+        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
+        DiagnosticIrAttachment::Payload { name, value, media_type } => {
+            println!("payload {name} ({:?}): {value}", media_type);
+        }
+    }
+}
+```
+
+`DiagnosticIrContext` 是上下文项的借用结构体，`DiagnosticIrAttachment` 是 note/payload 项的借用结构体。`display_causes` / `source_errors` 则通过 `items` 暴露延迟借用链。
 
 ### 用法示例
 ```rust

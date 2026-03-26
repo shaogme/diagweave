@@ -179,10 +179,10 @@ pub struct Report<E> {
 | `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
-| `report.display_causes()` | Collects display causes with default options (`CauseCollection`) |
-| `report.display_causes_with(options)` | Collects display causes with custom options (`CauseCollection`) |
-| `report.source_errors()` | Collects source errors with default options (`CauseCollection`) |
-| `report.source_errors_with(options)` | Collects source errors with custom options (`CauseCollection`) |
+| `report.visit_display_causes(visit)` | Streams display causes with default options |
+| `report.visit_display_causes_with(options, visit)` | Streams display causes with custom options |
+| `report.visit_source_errors(visit)` | Streams source errors with default options |
+| `report.visit_source_errors_with(options, visit)` | Streams source errors with custom options |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
@@ -365,10 +365,12 @@ Converts `Report` with rich metadata into displayable strings or structured data
 
 
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
-Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure.
+Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure. The IR keeps context, attachments, and cause chains as lazy borrowed views.
 ```rust
 use diagweave::render::{
-    DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError, DiagnosticIrMetadata,
+    DiagnosticIrAttachment, DiagnosticIrAttachments, DiagnosticIrContext,
+    DiagnosticIrContexts, DiagnosticIrDisplayCauseChain, DiagnosticIrError,
+    DiagnosticIrMetadata, DiagnosticIrSourceErrorChain,
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
@@ -382,10 +384,52 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
-    pub context: Vec<DiagnosticIrContext<'a>>,
-    pub attachments: Vec<DiagnosticIrAttachment<'a>>,
+    pub context: DiagnosticIrContexts<'a>,
+    pub attachments: DiagnosticIrAttachments<'a>,
 }
 ```
+
+`DiagnosticIrContexts` and `DiagnosticIrAttachments` are borrowed iterable views over the report attachments, not materialized `Vec`s.
+
+Use them like this:
+```rust
+use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context.len();
+for ctx in &ir.context {
+    println!("context {} = {}", ctx.key, ctx.value);
+}
+
+let attachment_count = ir.attachments.len();
+for attachment in &ir.attachments {
+    match attachment {
+        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
+        DiagnosticIrAttachment::Payload { name, value, media_type } => {
+            println!("payload {name} ({:?}): {value}", media_type);
+        }
+    }
+}
+```
+
+`DiagnosticIrContext` is the borrowed key/value shape for a context item, and `DiagnosticIrAttachment` is the borrowed shape for note/payload items. `display_causes` / `source_errors` expose lazy borrowed chains through `items`.
 
 ### Usage Example
 ```rust

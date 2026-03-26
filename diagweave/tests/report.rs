@@ -365,22 +365,43 @@ fn report_field_getters_are_exposed() {
 }
 
 #[test]
-fn public_cause_collection_apis_are_accessible() {
+fn public_cause_visit_apis_are_accessible() {
     let _guard = init_test();
 
     let report = Report::new(AuthError::InvalidToken)
         .with_display_cause("token stale")
         .with_source_error(ApiError::Unauthorized);
-    let display = report.display_causes();
-    let source = report.source_errors();
+    let mut display = Vec::new();
+    let display_state = report
+        .visit_display_causes(|cause| {
+            display.push(cause.to_string());
+            Ok(())
+        })
+        .expect("display causes");
+    let mut source = Vec::new();
+    let source_state = report
+        .visit_source_errors(|err| {
+            source.push(err.to_string());
+            Ok(())
+        })
+        .expect("source errors");
 
-    assert_eq!(display.messages, vec!["event: token stale".to_owned()]);
-    assert_eq!(source.messages, vec!["api unauthorized".to_owned()]);
+    assert_eq!(display, vec!["token stale".to_owned()]);
+    assert_eq!(source, vec!["api unauthorized".to_owned()]);
+    assert!(!display_state.truncated);
+    assert!(!display_state.cycle_detected);
+    assert!(!source_state.truncated);
+    assert!(!source_state.cycle_detected);
 
-    let cycle = Report::new(LoopError).source_errors_with(CauseCollectOptions {
-        max_depth: 8,
-        detect_cycle: true,
-    });
+    let cycle = Report::new(LoopError)
+        .visit_source_errors_with(
+            CauseCollectOptions {
+                max_depth: 8,
+                detect_cycle: true,
+            },
+            |_| Ok(()),
+        )
+        .expect("cycle traversal");
     assert!(cycle.cycle_detected);
 }
 

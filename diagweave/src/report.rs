@@ -10,7 +10,7 @@ use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
-use core::fmt::Display;
+use core::fmt::{self, Display};
 #[cfg(feature = "std")]
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "std")]
@@ -18,9 +18,9 @@ use std::sync::OnceLock;
 
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
-    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind,
-    DisplayCauseChain, ErrorCode, ErrorCodeIntError, ReportMetadata, Severity, SourceError,
-    SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
+    ErrorCodeIntError, ReportMetadata, Severity, SourceError, SourceErrorChain, StackFrame,
+    StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
@@ -29,6 +29,12 @@ pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, Trac
 pub struct Report<E> {
     inner: E,
     cold: Option<Box<ColdData>>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct CauseTraversalState {
+    pub truncated: bool,
+    pub cycle_detected: bool,
 }
 
 #[derive(Default)]
@@ -123,6 +129,22 @@ impl<E> Report<E> {
     pub fn attachments(&self) -> &[Attachment] {
         match self.diagnostics() {
             Some(diag) => &diag.attachments,
+            None => &[],
+        }
+    }
+
+    /// Returns the display causes associated with the report.
+    pub fn display_causes(&self) -> &[Box<dyn Display + 'static>] {
+        match self.diagnostics() {
+            Some(diag) => &diag.display_causes,
+            None => &[],
+        }
+    }
+
+    /// Returns the source errors associated with the report.
+    pub fn source_errors(&self) -> &[Box<dyn Error + 'static>] {
+        match self.diagnostics() {
+            Some(diag) => &diag.source_errors,
             None => &[],
         }
     }
@@ -463,82 +485,133 @@ impl<E> Report<E> {
         Report { inner: outer, cold }
     }
 
-    /// Collects display causes using default collection options.
-    pub fn display_causes(&self) -> CauseCollection
+    /// Visits display causes using default collection options.
+    pub fn visit_display_causes<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
+        F: FnMut(&dyn Display) -> fmt::Result,
         E: Error + 'static,
     {
-        self.display_causes_with(CauseCollectOptions::default())
+        self.visit_display_causes_with(CauseCollectOptions::default(), visit)
     }
 
-    /// Collects display causes using custom collection options.
-    pub fn display_causes_with(&self, options: CauseCollectOptions) -> CauseCollection
+    /// Visits display causes using custom collection options.
+    pub fn visit_display_causes_with<F>(
+        &self,
+        options: CauseCollectOptions,
+        visit: F,
+    ) -> Result<CauseTraversalState, fmt::Error>
     where
+        F: FnMut(&dyn Display) -> fmt::Result,
         E: Error + 'static,
     {
-        let mut state = CauseCollection::default();
-        let Some(diag) = self.diagnostics() else {
-            return state;
-        };
-
-        for cause in &diag.display_causes {
-            if state.messages.len() >= options.max_depth {
-                state.truncated = true;
-                break;
-            }
-            state.messages.push(alloc::format!("event: {cause}").into());
-        }
-        state
+        self.for_each_display_cause_with(options, visit)
     }
 
-    /// Collects source errors using default collection options.
-    pub fn source_errors(&self) -> CauseCollection
+    /// Visits source errors using default collection options.
+    pub fn visit_source_errors<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
+        F: FnMut(&dyn Error) -> fmt::Result,
         E: Error + 'static,
     {
-        self.source_errors_with(CauseCollectOptions::default())
+        self.visit_source_errors_with(CauseCollectOptions::default(), visit)
     }
 
-    /// Collects source errors using custom collection options.
-    pub fn source_errors_with(&self, options: CauseCollectOptions) -> CauseCollection
+    /// Visits source errors using custom collection options.
+    pub fn visit_source_errors_with<F>(
+        &self,
+        options: CauseCollectOptions,
+        visit: F,
+    ) -> Result<CauseTraversalState, fmt::Error>
     where
+        F: FnMut(&dyn Error) -> fmt::Result,
         E: Error + 'static,
     {
-        let mut state = CauseCollection::default();
-        let mut depth = 0usize;
-        let mut seen = SeenErrorAddrs::new();
-        if let Some(diag) = self.diagnostics() {
-            for err in &diag.source_errors {
-                collect_error_chain(
-                    Some(err.as_ref()),
-                    options,
-                    &mut state,
-                    &mut depth,
-                    &mut seen,
-                );
-                if state.truncated || state.cycle_detected {
-                    return state;
-                }
-            }
-        }
-        collect_error_chain(
-            self.inner.source(),
-            options,
-            &mut state,
-            &mut depth,
-            &mut seen,
-        );
-        state
+        self.for_each_source_error_with(options, visit)
     }
 }
 
-fn collect_error_chain(
+impl<E> Report<E>
+where
+    E: Error + 'static,
+{
+    pub fn for_each_display_cause_with<F>(
+        &self,
+        options: CauseCollectOptions,
+        mut visit: F,
+    ) -> Result<CauseTraversalState, fmt::Error>
+    where
+        F: FnMut(&dyn Display) -> fmt::Result,
+    {
+        let mut state = CauseTraversalState::default();
+        let mut depth = 0usize;
+        let Some(diag) = self.diagnostics() else {
+            return Ok(state);
+        };
+
+        for cause in &diag.display_causes {
+            if depth >= options.max_depth {
+                state.truncated = true;
+                break;
+            }
+            visit(cause.as_ref())?;
+            depth += 1;
+        }
+
+        Ok(state)
+    }
+
+    pub fn for_each_source_error_with<F>(
+        &self,
+        options: CauseCollectOptions,
+        mut visit: F,
+    ) -> Result<CauseTraversalState, fmt::Error>
+    where
+        F: FnMut(&dyn Error) -> fmt::Result,
+    {
+        let mut state = CauseTraversalState::default();
+        let mut depth = 0usize;
+        let mut seen = SeenErrorAddrs::new();
+
+        if let Some(diag) = self.diagnostics() {
+            for err in &diag.source_errors {
+                visit_error_chain(
+                    Some(err.as_ref()),
+                    options,
+                    &mut visit,
+                    &mut state,
+                    &mut depth,
+                    &mut seen,
+                )?;
+                if state.truncated || state.cycle_detected {
+                    return Ok(state);
+                }
+            }
+        }
+
+        visit_error_chain(
+            self.inner.source(),
+            options,
+            &mut visit,
+            &mut state,
+            &mut depth,
+            &mut seen,
+        )?;
+
+        Ok(state)
+    }
+}
+
+fn visit_error_chain<F>(
     start: Option<&(dyn Error + 'static)>,
     options: CauseCollectOptions,
-    state: &mut CauseCollection,
+    visit: &mut F,
+    state: &mut CauseTraversalState,
     depth: &mut usize,
     seen: &mut SeenErrorAddrs,
-) {
+) -> Result<(), fmt::Error>
+where
+    F: FnMut(&dyn Error) -> fmt::Result,
+{
     let mut current = start;
     while let Some(err) = current {
         if *depth >= options.max_depth {
@@ -553,10 +626,11 @@ fn collect_error_chain(
                 break;
             }
         }
-        state.messages.push(err.to_string().into());
+        visit(err)?;
         *depth += 1;
         current = err.source();
     }
+    Ok(())
 }
 
 struct SeenErrorAddrs {

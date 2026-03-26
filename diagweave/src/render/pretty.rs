@@ -1,13 +1,9 @@
-use alloc::borrow::ToOwned;
-use alloc::string::String;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-use super::{
-    DiagnosticIr, DiagnosticIrAttachment, DiagnosticIrMetadata, PrettyIndent, ReportRenderOptions,
-    ReportRenderer,
-};
 use crate::report::Report;
+
+use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
 
 /// A renderer that outputs the diagnostic report in a human-readable pretty format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -28,51 +24,63 @@ where
     E: Error + Display + 'static,
 {
     fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
-        let ir = report.to_diagnostic_ir(self.options);
-        let indent = pretty_indent(self.options.pretty_indent);
-
-        render_error_section(f, &ir, &self.options, &indent)?;
-        render_governance_section(f, &ir, &self.options, &indent)?;
+        let options = self.options;
+        render_error_section(
+            f,
+            report.inner(),
+            core::any::type_name::<E>(),
+            options.pretty_indent,
+            options.show_type_name,
+        )?;
+        render_governance_section(f, report, options)?;
         #[cfg(feature = "trace")]
-        render_trace_section(f, &ir, &self.options, &indent)?;
-        render_stack_trace(f, &ir, &self.options, &indent)?;
-        render_context_section(f, &ir, &self.options, &indent)?;
-        render_attachments(f, &ir, &self.options, &indent)?;
-        render_display_causes(f, &ir, &self.options, &indent)?;
-        render_source_errors(f, &ir, &self.options, &indent)?;
-
+        render_trace_section(f, report, options)?;
+        render_stack_trace(f, report, options)?;
+        render_context_section(f, report, options)?;
+        render_attachments(f, report, options)?;
+        render_display_causes(f, report, options)?;
+        render_source_errors(f, report, options)?;
         Ok(())
     }
 }
 
-fn pretty_indent(indent: PrettyIndent) -> String {
+fn write_indent(f: &mut Formatter<'_>, indent: PrettyIndent) -> fmt::Result {
     match indent {
-        PrettyIndent::Spaces(n) => " ".repeat(n as usize),
-        PrettyIndent::Tab => "\t".to_owned(),
+        PrettyIndent::Spaces(n) => {
+            for _ in 0..n {
+                f.write_str(" ")?;
+            }
+        }
+        PrettyIndent::Tab => {
+            f.write_str("\t")?;
+        }
     }
+    Ok(())
 }
 
 fn render_error_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    error: &impl Display,
+    type_name: &str,
+    indent: PrettyIndent,
+    show_type_name: bool,
 ) -> fmt::Result {
     writeln!(f, "Error:")?;
-    writeln!(f, "{indent}- message: {}", ir.error.message)?;
-    if options.show_type_name {
-        writeln!(f, "{indent}- type: {}", ir.error.r#type)?;
+    write_indent(f, indent)?;
+    writeln!(f, "- message: {error}")?;
+    if show_type_name {
+        write_indent(f, indent)?;
+        writeln!(f, "- type: {type_name}")?;
     }
     Ok(())
 }
 
 fn render_governance_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    let metadata = &ir.metadata;
+    let metadata = report.metadata();
     let has_metadata = metadata.error_code.is_some()
         || metadata.severity.is_some()
         || metadata.category.is_some()
@@ -84,12 +92,13 @@ fn render_governance_section(
     if options.show_governance_section && (options.show_empty_sections || has_metadata) {
         writeln!(f, "Governance:")?;
         if !has_metadata {
-            writeln!(f, "{indent}- (none)")?;
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         } else {
-            render_gov_meta(f, metadata, indent)?;
-            render_gov_stack(f, metadata, indent)?;
-            render_gov_causes(f, metadata, indent)?;
-            render_gov_errors(f, metadata, indent)?;
+            render_gov_meta(f, metadata, options.pretty_indent)?;
+            render_gov_stack(f, metadata, options.pretty_indent)?;
+            render_gov_causes(f, metadata, options.pretty_indent)?;
+            render_gov_errors(f, metadata, options.pretty_indent)?;
         }
     }
     Ok(())
@@ -97,59 +106,60 @@ fn render_governance_section(
 
 fn render_gov_meta(
     f: &mut Formatter<'_>,
-    metadata: &DiagnosticIrMetadata<'_>,
-    indent: &str,
+    metadata: &crate::report::ReportMetadata,
+    indent: PrettyIndent,
 ) -> fmt::Result {
-    if let Some(error_code) = metadata.error_code {
-        writeln!(f, "{indent}- error_code: {error_code}")?;
+    if let Some(error_code) = metadata.error_code.as_ref() {
+        write_indent(f, indent)?;
+        writeln!(f, "- error_code: {error_code}")?;
     }
     if let Some(severity) = metadata.severity {
-        writeln!(f, "{indent}- severity: {severity}")?;
+        write_indent(f, indent)?;
+        writeln!(f, "- severity: {severity}")?;
     }
-    if let Some(category) = metadata.category {
-        writeln!(f, "{indent}- category: {category}")?;
+    if let Some(category) = metadata.category.as_ref() {
+        write_indent(f, indent)?;
+        writeln!(f, "- category: {category}")?;
     }
     if let Some(retryable) = metadata.retryable {
-        writeln!(f, "{indent}- retryable: {retryable}")?;
+        write_indent(f, indent)?;
+        writeln!(f, "- retryable: {retryable}")?;
     }
     Ok(())
 }
 
 fn render_gov_stack(
     f: &mut Formatter<'_>,
-    metadata: &DiagnosticIrMetadata<'_>,
-    indent: &str,
+    metadata: &crate::report::ReportMetadata,
+    indent: PrettyIndent,
 ) -> fmt::Result {
-    if let Some(stack_trace) = metadata.stack_trace {
-        writeln!(f, "{indent}- stack_trace.format: {:?}", stack_trace.format)?;
-        writeln!(
-            f,
-            "{indent}- stack_trace.frames: {}",
-            stack_trace.frames.len()
-        )?;
+    if let Some(stack_trace) = metadata.stack_trace.as_ref() {
+        write_indent(f, indent)?;
+        writeln!(f, "- stack_trace.format: {:?}", stack_trace.format)?;
+        write_indent(f, indent)?;
+        writeln!(f, "- stack_trace.frames: {}", stack_trace.frames.len())?;
     }
     Ok(())
 }
 
 fn render_gov_causes(
     f: &mut Formatter<'_>,
-    metadata: &DiagnosticIrMetadata<'_>,
-    indent: &str,
+    metadata: &crate::report::ReportMetadata,
+    indent: PrettyIndent,
 ) -> fmt::Result {
-    if let Some(display_causes) = &metadata.display_causes {
+    if let Some(display_causes) = metadata.display_causes.as_ref() {
+        write_indent(f, indent)?;
+        writeln!(f, "- display_causes.count: {}", display_causes.items.len())?;
+        write_indent(f, indent)?;
         writeln!(
             f,
-            "{indent}- display_causes.count: {}",
-            display_causes.items.len()
-        )?;
-        writeln!(
-            f,
-            "{indent}- display_causes.truncated: {}",
+            "- display_causes.truncated: {}",
             display_causes.truncated
         )?;
+        write_indent(f, indent)?;
         writeln!(
             f,
-            "{indent}- display_causes.cycle_detected: {}",
+            "- display_causes.cycle_detected: {}",
             display_causes.cycle_detected
         )?;
     }
@@ -158,23 +168,18 @@ fn render_gov_causes(
 
 fn render_gov_errors(
     f: &mut Formatter<'_>,
-    metadata: &DiagnosticIrMetadata<'_>,
-    indent: &str,
+    metadata: &crate::report::ReportMetadata,
+    indent: PrettyIndent,
 ) -> fmt::Result {
-    if let Some(source_errors) = &metadata.source_errors {
+    if let Some(source_errors) = metadata.source_errors.as_ref() {
+        write_indent(f, indent)?;
+        writeln!(f, "- source_errors.count: {}", source_errors.items.len())?;
+        write_indent(f, indent)?;
+        writeln!(f, "- source_errors.truncated: {}", source_errors.truncated)?;
+        write_indent(f, indent)?;
         writeln!(
             f,
-            "{indent}- source_errors.count: {}",
-            source_errors.items.len()
-        )?;
-        writeln!(
-            f,
-            "{indent}- source_errors.truncated: {}",
-            source_errors.truncated
-        )?;
-        writeln!(
-            f,
-            "{indent}- source_errors.cycle_detected: {}",
+            "- source_errors.cycle_detected: {}",
             source_errors.cycle_detected
         )?;
     }
@@ -184,38 +189,52 @@ fn render_gov_errors(
 #[cfg(feature = "trace")]
 fn render_trace_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    let trace = ir.trace;
-    let trace_is_empty = trace.map(|value| value.is_empty()).unwrap_or(true);
-    if options.show_trace_section && (options.show_empty_sections || !trace_is_empty) {
+    let Some(trace) = report.trace() else {
+        if options.show_trace_section && options.show_empty_sections {
+            writeln!(f, "Trace:")?;
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        }
+        return Ok(());
+    };
+
+    if options.show_trace_section && (options.show_empty_sections || !trace.is_empty()) {
         writeln!(f, "Trace:")?;
-        if let Some(trace) = trace.filter(|t| !t.is_empty()) {
+        if trace.is_empty() {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        } else {
             if let Some(trace_id) = &trace.context.trace_id {
-                writeln!(f, "{indent}- trace_id: {trace_id}")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- trace_id: {trace_id}")?;
             }
             if let Some(span_id) = &trace.context.span_id {
-                writeln!(f, "{indent}- span_id: {span_id}")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- span_id: {span_id}")?;
             }
             if let Some(parent_span_id) = &trace.context.parent_span_id {
-                writeln!(f, "{indent}- parent_span_id: {parent_span_id}")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- parent_span_id: {parent_span_id}")?;
             }
             if let Some(sampled) = trace.context.sampled {
-                writeln!(f, "{indent}- sampled: {sampled}")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- sampled: {sampled}")?;
             }
             if let Some(trace_state) = &trace.context.trace_state {
-                writeln!(f, "{indent}- trace_state: {trace_state}")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- trace_state: {trace_state}")?;
             }
             if let Some(flags) = trace.context.flags {
-                writeln!(f, "{indent}- flags: {flags}")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- flags: {flags}")?;
             }
             for (idx, event) in trace.events.iter().enumerate() {
-                writeln!(f, "{indent}- event[{idx}]: {}", event.name)?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- event[{idx}]: {}", event.name)?;
             }
-        } else {
-            writeln!(f, "{indent}- (none)")?;
         }
     }
     Ok(())
@@ -223,11 +242,10 @@ fn render_trace_section(
 
 fn render_stack_trace(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    let stack_trace = ir.metadata.stack_trace;
+    let stack_trace = report.metadata().stack_trace.as_ref();
     let has_stack = stack_trace.is_some();
     if !options.show_stack_trace_section || (!options.show_empty_sections && !has_stack) {
         return Ok(());
@@ -235,22 +253,31 @@ fn render_stack_trace(
 
     writeln!(f, "Stack Trace:")?;
     let Some(stack_trace) = stack_trace else {
-        return writeln!(f, "{indent}- (none)");
+        write_indent(f, options.pretty_indent)?;
+        return writeln!(f, "- (none)");
     };
 
-    writeln!(f, "{indent}- format: {:?}", stack_trace.format)?;
+    write_indent(f, options.pretty_indent)?;
+    writeln!(f, "- format: {:?}", stack_trace.format)?;
     if options.stack_trace_include_frames && !stack_trace.frames.is_empty() {
         for (idx, frame) in stack_trace.frames.iter().enumerate() {
+            write_indent(f, options.pretty_indent)?;
             writeln!(
                 f,
-                "{indent}- frame[{idx}]: symbol={:?}, module={:?}, file={:?}, line={:?}, column={:?}",
+                "- frame[{idx}]: symbol={:?}, module={:?}, file={:?}, line={:?}, column={:?}",
                 frame.symbol, frame.module_path, frame.file, frame.line, frame.column
             )?;
         }
     } else if options.stack_trace_include_raw {
-        render_raw_stack_trace(f, stack_trace, options, indent)?;
+        render_raw_stack_trace(
+            f,
+            stack_trace,
+            options.pretty_indent,
+            options.stack_trace_max_lines,
+        )?;
     } else {
-        writeln!(f, "{indent}- (hidden by options)")?;
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- (hidden by options)")?;
     }
     Ok(())
 }
@@ -258,35 +285,47 @@ fn render_stack_trace(
 fn render_raw_stack_trace(
     f: &mut Formatter<'_>,
     stack_trace: &crate::report::StackTrace,
-    options: &ReportRenderOptions,
-    indent: &str,
+    indent: PrettyIndent,
+    max_lines: usize,
 ) -> fmt::Result {
     if let Some(raw) = &stack_trace.raw {
-        for line in raw.lines().take(options.stack_trace_max_lines) {
-            writeln!(f, "{indent}- {line}")?;
+        for line in raw.lines().take(max_lines) {
+            write_indent(f, indent)?;
+            writeln!(f, "- {line}")?;
         }
-        if raw.lines().count() > options.stack_trace_max_lines {
-            writeln!(f, "{indent}- ... truncated stack trace output")?;
+        if raw.lines().count() > max_lines {
+            write_indent(f, indent)?;
+            writeln!(f, "- ... truncated stack trace output")?;
         }
     } else {
-        writeln!(f, "{indent}- (empty)")?;
+        write_indent(f, indent)?;
+        writeln!(f, "- (empty)")?;
     }
     Ok(())
 }
 
 fn render_context_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    if options.show_context_section && (options.show_empty_sections || !ir.context.is_empty()) {
+    let context_count = report
+        .attachments()
+        .iter()
+        .filter(|item| item.as_context().is_some())
+        .count();
+
+    if options.show_context_section && (options.show_empty_sections || context_count > 0) {
         writeln!(f, "Context:")?;
-        if ir.context.is_empty() {
-            writeln!(f, "{indent}- (none)")?;
+        if context_count == 0 {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         } else {
-            for item in &ir.context {
-                writeln!(f, "{indent}- {}: {}", item.key, item.value)?;
+            for item in report.attachments() {
+                if let Some((key, value)) = item.as_context() {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- {key}: {value}")?;
+                }
             }
         }
     }
@@ -295,32 +334,43 @@ fn render_context_section(
 
 fn render_attachments(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    if options.show_attachments_section
-        && (options.show_empty_sections || !ir.attachments.is_empty())
-    {
+    let attachment_count = report
+        .attachments()
+        .iter()
+        .filter(|item| item.as_note().is_some() || item.as_payload().is_some())
+        .count();
+
+    if options.show_attachments_section && (options.show_empty_sections || attachment_count > 0) {
         writeln!(f, "Attachments:")?;
-        if ir.attachments.is_empty() {
-            writeln!(f, "{indent}- (none)")?;
+        if attachment_count == 0 {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         } else {
-            for item in &ir.attachments {
+            for item in report.attachments() {
                 match item {
-                    DiagnosticIrAttachment::Note { message } => {
-                        writeln!(f, "{indent}- note: {message}")?
+                    crate::report::Attachment::Note { message } => {
+                        write_indent(f, options.pretty_indent)?;
+                        writeln!(f, "- note: {message}")?;
                     }
-                    DiagnosticIrAttachment::Payload {
+                    crate::report::Attachment::Payload {
                         name,
                         value,
                         media_type,
-                    } => match media_type {
-                        Some(media_type) => {
-                            writeln!(f, "{indent}- payload {name} ({media_type}): {value}")?
+                    } => {
+                        write_indent(f, options.pretty_indent)?;
+                        match media_type {
+                            Some(media_type) => {
+                                writeln!(f, "- payload {name} ({media_type}): {value}")?;
+                            }
+                            None => {
+                                writeln!(f, "- payload {name}: {value}")?;
+                            }
                         }
-                        None => writeln!(f, "{indent}- payload {name}: {value}")?,
-                    },
+                    }
+                    crate::report::Attachment::Context { .. } => {}
                 }
             }
         }
@@ -330,29 +380,38 @@ fn render_attachments(
 
 fn render_display_causes(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    let causes = ir.metadata.display_causes.as_ref();
-    if options.show_cause_chains_section && (options.show_empty_sections || causes.is_some()) {
+    let traversal_options = crate::report::CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let mut count = 0usize;
+    let traversal = report.for_each_display_cause_with(traversal_options, |cause| {
+        count += 1;
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "{}. {}", count, cause)
+    })?;
+
+    if options.show_cause_chains_section
+        && (options.show_empty_sections
+            || count > 0
+            || traversal.truncated
+            || traversal.cycle_detected)
+    {
         writeln!(f, "Display Causes:")?;
-        if let Some(causes) = causes {
-            if causes.items.is_empty() {
-                writeln!(f, "{indent}- (none)")?;
-            } else {
-                for (idx, cause) in causes.items.iter().enumerate() {
-                    writeln!(f, "{indent}{}. {}", idx + 1, cause)?;
-                }
-            }
-            if causes.truncated {
-                writeln!(f, "{indent}- ... truncated by max_source_depth")?;
-            }
-            if causes.cycle_detected {
-                writeln!(f, "{indent}- ... cycle detected and traversal stopped")?;
-            }
-        } else {
-            writeln!(f, "{indent}- (none)")?;
+        if count == 0 {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        }
+        if traversal.truncated {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- ... truncated by max_source_depth")?;
+        }
+        if traversal.cycle_detected {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- ... cycle detected and traversal stopped")?;
         }
     }
     Ok(())
@@ -360,29 +419,38 @@ fn render_display_causes(
 
 fn render_source_errors(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr<'_>,
-    options: &ReportRenderOptions,
-    indent: &str,
+    report: &Report<impl Error + Display + 'static>,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
-    let sources = ir.metadata.source_errors.as_ref();
-    if options.show_cause_chains_section && (options.show_empty_sections || sources.is_some()) {
+    let traversal_options = crate::report::CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let mut count = 0usize;
+    let traversal = report.for_each_source_error_with(traversal_options, |err| {
+        count += 1;
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "{}. {}", count, err)
+    })?;
+
+    if options.show_cause_chains_section
+        && (options.show_empty_sections
+            || count > 0
+            || traversal.truncated
+            || traversal.cycle_detected)
+    {
         writeln!(f, "Source Errors:")?;
-        if let Some(sources) = sources {
-            if sources.items.is_empty() {
-                writeln!(f, "{indent}- (none)")?;
-            } else {
-                for (idx, source) in sources.items.iter().enumerate() {
-                    writeln!(f, "{indent}{}. {}", idx + 1, source.message)?;
-                }
-            }
-            if sources.truncated {
-                writeln!(f, "{indent}- ... truncated by max_source_depth")?;
-            }
-            if sources.cycle_detected {
-                writeln!(f, "{indent}- ... cycle detected and traversal stopped")?;
-            }
-        } else {
-            writeln!(f, "{indent}- (none)")?;
+        if count == 0 {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        }
+        if traversal.truncated {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- ... truncated by max_source_depth")?;
+        }
+        if traversal.cycle_detected {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- ... cycle detected and traversal stopped")?;
         }
     }
     Ok(())

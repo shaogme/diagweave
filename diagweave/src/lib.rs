@@ -35,9 +35,10 @@ pub mod adapters {
 
 pub mod render {
     pub use crate::render_impl::{
-        Compact, DiagnosticIr, DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError,
-        DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport, ReportRenderOptions,
-        ReportRenderer,
+        Compact, DiagnosticIr, DiagnosticIrAttachment, DiagnosticIrAttachments,
+        DiagnosticIrContext, DiagnosticIrContexts, DiagnosticIrDisplayCauseChain,
+        DiagnosticIrError, DiagnosticIrMetadata, DiagnosticIrSourceErrorChain, Pretty,
+        PrettyIndent, RenderedReport, ReportRenderOptions, ReportRenderer,
     };
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
@@ -47,10 +48,10 @@ pub mod render {
 
 pub mod report {
     pub use crate::report_impl::{
-        Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind, Diagnostic,
-        DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalContext, Report, ReportMetadata,
-        ReportResultExt, ReportResultInspectExt, Severity, SourceError, SourceErrorChain,
-        StackFrame, StackTrace, StackTraceFormat,
+        Attachment, AttachmentValue, CauseCollectOptions, CauseKind, CauseTraversalState,
+        Diagnostic, DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalContext, Report,
+        ReportMetadata, ReportResultExt, ReportResultInspectExt, Severity, SourceError,
+        SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};

@@ -271,8 +271,8 @@ Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
 - `error_code()`, `severity()`, `category()`, `retryable()`
-- `display_causes()` / `display_causes_with(options)`
-- `source_errors()` / `source_errors_with(options)`
+- `visit_display_causes(visit)` / `visit_display_causes_with(options, visit)`
+- `visit_source_errors(visit)` / `visit_source_errors_with(options, visit)`
 
 Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
@@ -347,6 +347,47 @@ let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 let tracing_fields = ir.to_tracing_fields();
 let otel = ir.to_otel_envelope();
 ```
+
+`DiagnosticIrContexts` and `DiagnosticIrAttachments` are borrowed iterable views, so you can use them directly:
+
+```rust
+use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+
+# use diagweave::prelude::{AttachmentValue, Report};
+# #[derive(Debug)]
+# struct DemoError;
+# impl core::fmt::Display for DemoError {
+#     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+#         write!(f, "demo error")
+#     }
+# }
+# impl std::error::Error for DemoError {}
+# let report = Report::new(DemoError)
+#     .attach("request_id", "req-42")
+#     .attach_printable("note")
+#     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
+#     .with_display_cause("retry later")
+#     .with_source_error(std::io::Error::other("upstream"));
+
+let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+
+let context_count = ir.context.len();
+for ctx in &ir.context {
+    println!("context {} = {}", ctx.key, ctx.value);
+}
+
+let attachment_count = ir.attachments.len();
+for attachment in &ir.attachments {
+    match attachment {
+        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
+        DiagnosticIrAttachment::Payload { name, value, media_type } => {
+            println!("payload {name} ({:?}): {value}", media_type);
+        }
+    }
+}
+```
+
+`DiagnosticIrContext` is the borrowed key/value shape for a context item, and `DiagnosticIrAttachment` is the borrowed shape for note/payload items.
 
 JSON renderer (`json` feature):
 

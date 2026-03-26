@@ -271,26 +271,3 @@ impl CauseCollectOptions {
         self
     }
 }
-
-/// A collection of cause messages and metadata.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct CauseCollection {
-    /// The collected cause message strings.
-    pub messages: Vec<Cow<'static, str>>,
-    /// Whether the collection was truncated due to depth limits.
-    pub truncated: bool,
-    /// Whether a circular reference was detected.
-    pub cycle_detected: bool,
-}
-
-impl CauseCollection {
-    /// Returns true if no messages were collected.
-    pub fn is_empty(&self) -> bool {
-        self.messages.is_empty()
-    }
-
-    /// Returns the number of collected messages.
-    pub fn len(&self) -> usize {
-        self.messages.len()
-    }
-}

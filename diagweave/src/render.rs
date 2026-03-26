@@ -6,7 +6,6 @@ mod pretty;
 
 use alloc::borrow::Cow;
 use alloc::format;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::any;
 use core::error::Error;
@@ -15,8 +14,7 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, DisplayCauseChain,
-    ErrorCode, Report, Severity, SourceError, SourceErrorChain, StackTrace,
+    Attachment, AttachmentValue, CauseCollectOptions, ErrorCode, Report, Severity, StackTrace,
 };
 
 pub use pretty::Pretty;
@@ -90,16 +88,14 @@ pub struct DiagnosticIrError<'a> {
 }
 
 /// Metadata information in the Diagnostic Intermediate Representation.
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize))]
 pub struct DiagnosticIrMetadata<'a> {
     pub error_code: Option<&'a ErrorCode>,
     pub severity: Option<Severity>,
     pub category: Option<&'a Cow<'static, str>>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<&'a StackTrace>,
-    pub display_causes: Option<DisplayCauseChain>,
-    pub source_errors: Option<SourceErrorChain>,
+    pub display_causes: Option<DiagnosticIrDisplayCauseChain<'a>>,
+    pub source_errors: Option<DiagnosticIrSourceErrorChain<'a>>,
 }
 
 /// Context item in the Diagnostic Intermediate Representation.
@@ -125,9 +121,354 @@ pub enum DiagnosticIrAttachment<'a> {
     },
 }
 
+/// Context items borrowed from the report attachments.
+pub struct DiagnosticIrContexts<'a> {
+    attachments: &'a [Attachment],
+    count: usize,
+}
+
+impl<'a> DiagnosticIrContexts<'a> {
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    pub fn iter(&self) -> DiagnosticIrContextIter<'a> {
+        DiagnosticIrContextIter {
+            attachments: self.attachments.iter(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for DiagnosticIrContexts<'a> {
+    type Item = DiagnosticIrContext<'a>;
+    type IntoIter = DiagnosticIrContextIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DiagnosticIrContexts<'a> {
+    type Item = DiagnosticIrContext<'a>;
+    type IntoIter = DiagnosticIrContextIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Iterator over context items.
+pub struct DiagnosticIrContextIter<'a> {
+    attachments: core::slice::Iter<'a, Attachment>,
+}
+
+impl<'a> Iterator for DiagnosticIrContextIter<'a> {
+    type Item = DiagnosticIrContext<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for item in self.attachments.by_ref() {
+            if let Attachment::Context { key, value } = item {
+                return Some(DiagnosticIrContext {
+                    key: Cow::Borrowed(key),
+                    value,
+                });
+            }
+        }
+        None
+    }
+}
+
+/// Attachment items borrowed from the report attachments.
+pub struct DiagnosticIrAttachments<'a> {
+    attachments: &'a [Attachment],
+    count: usize,
+}
+
+impl<'a> DiagnosticIrAttachments<'a> {
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    pub fn iter(&self) -> DiagnosticIrAttachmentIter<'a> {
+        DiagnosticIrAttachmentIter {
+            attachments: self.attachments.iter(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for DiagnosticIrAttachments<'a> {
+    type Item = DiagnosticIrAttachment<'a>;
+    type IntoIter = DiagnosticIrAttachmentIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DiagnosticIrAttachments<'a> {
+    type Item = DiagnosticIrAttachment<'a>;
+    type IntoIter = DiagnosticIrAttachmentIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Iterator over attachment items.
+pub struct DiagnosticIrAttachmentIter<'a> {
+    attachments: core::slice::Iter<'a, Attachment>,
+}
+
+impl<'a> Iterator for DiagnosticIrAttachmentIter<'a> {
+    type Item = DiagnosticIrAttachment<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        for item in self.attachments.by_ref() {
+            match item {
+                Attachment::Context { .. } => {}
+                Attachment::Note { message } => {
+                    return Some(DiagnosticIrAttachment::Note { message });
+                }
+                Attachment::Payload {
+                    name,
+                    value,
+                    media_type,
+                } => {
+                    return Some(DiagnosticIrAttachment::Payload {
+                        name,
+                        value,
+                        media_type: media_type.as_ref(),
+                    });
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Display cause items borrowed from the report.
+pub struct DiagnosticIrDisplayCauseItems<'a> {
+    causes: &'a [Box<dyn Display + 'static>],
+    count: usize,
+}
+
+impl<'a> DiagnosticIrDisplayCauseItems<'a> {
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    pub fn iter(&self) -> DiagnosticIrDisplayCauseIter<'a> {
+        DiagnosticIrDisplayCauseIter {
+            causes: self.causes.iter().take(self.count),
+        }
+    }
+}
+
+impl<'a> IntoIterator for DiagnosticIrDisplayCauseItems<'a> {
+    type Item = &'a dyn Display;
+    type IntoIter = DiagnosticIrDisplayCauseIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DiagnosticIrDisplayCauseItems<'a> {
+    type Item = &'a dyn Display;
+    type IntoIter = DiagnosticIrDisplayCauseIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+/// Iterator over display causes.
+pub struct DiagnosticIrDisplayCauseIter<'a> {
+    causes: core::iter::Take<core::slice::Iter<'a, Box<dyn Display + 'static>>>,
+}
+
+impl<'a> Iterator for DiagnosticIrDisplayCauseIter<'a> {
+    type Item = &'a dyn Display;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.causes.next().map(|cause| cause.as_ref())
+    }
+}
+
+/// A borrowed display cause chain.
+pub struct DiagnosticIrDisplayCauseChain<'a> {
+    pub items: DiagnosticIrDisplayCauseItems<'a>,
+    pub truncated: bool,
+    pub cycle_detected: bool,
+}
+
+/// Source error items borrowed from the report.
+pub struct DiagnosticIrSourceErrorItems<'a> {
+    source_errors: &'a [Box<dyn Error + 'static>],
+    root_source: Option<&'a (dyn Error + 'static)>,
+    count: usize,
+    max_depth: usize,
+    detect_cycle: bool,
+}
+
+impl<'a> DiagnosticIrSourceErrorItems<'a> {
+    pub fn len(&self) -> usize {
+        self.count
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    pub fn iter(&self) -> DiagnosticIrSourceErrorIter<'a> {
+        DiagnosticIrSourceErrorIter {
+            source_errors: self.source_errors.iter().take(self.source_errors.len()),
+            root_source: self.root_source,
+            stage: SourceErrorStage::Attached,
+            depth: 0,
+            remaining: self.count,
+            max_depth: self.max_depth,
+            detect_cycle: self.detect_cycle,
+            seen: SeenErrorAddrs::new(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for DiagnosticIrSourceErrorItems<'a> {
+    type Item = &'a (dyn Error + 'static);
+    type IntoIter = DiagnosticIrSourceErrorIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a DiagnosticIrSourceErrorItems<'a> {
+    type Item = &'a (dyn Error + 'static);
+    type IntoIter = DiagnosticIrSourceErrorIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+enum SourceErrorStage {
+    Attached,
+    Inner,
+    Done,
+}
+
+struct SeenErrorAddrs {
+    inline: [usize; 8],
+    len: usize,
+    spill: Vec<usize>,
+}
+
+impl SeenErrorAddrs {
+    fn new() -> Self {
+        Self {
+            inline: [0usize; 8],
+            len: 0,
+            spill: Vec::new(),
+        }
+    }
+
+    fn insert(&mut self, addr: usize) -> bool {
+        if self.contains(addr) {
+            return false;
+        }
+        if self.len < self.inline.len() {
+            self.inline[self.len] = addr;
+            self.len += 1;
+        } else {
+            self.spill.push(addr);
+        }
+        true
+    }
+
+    fn contains(&self, addr: usize) -> bool {
+        self.inline[..self.len].contains(&addr) || self.spill.contains(&addr)
+    }
+}
+
+/// Iterator over source errors.
+pub struct DiagnosticIrSourceErrorIter<'a> {
+    source_errors: core::iter::Take<core::slice::Iter<'a, Box<dyn Error + 'static>>>,
+    root_source: Option<&'a (dyn Error + 'static)>,
+    stage: SourceErrorStage,
+    depth: usize,
+    remaining: usize,
+    max_depth: usize,
+    detect_cycle: bool,
+    seen: SeenErrorAddrs,
+}
+
+impl<'a> Iterator for DiagnosticIrSourceErrorIter<'a> {
+    type Item = &'a (dyn Error + 'static);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.remaining == 0 {
+                self.stage = SourceErrorStage::Done;
+                return None;
+            }
+            match self.stage {
+                SourceErrorStage::Attached => {
+                    if let Some(err) = self.source_errors.next() {
+                        self.remaining -= 1;
+                        return Some(err.as_ref());
+                    }
+                    self.stage = SourceErrorStage::Inner;
+                }
+                SourceErrorStage::Inner => {
+                    let Some(current) = self.root_source else {
+                        self.stage = SourceErrorStage::Done;
+                        return None;
+                    };
+
+                    if self.depth >= self.max_depth {
+                        self.stage = SourceErrorStage::Done;
+                        return None;
+                    }
+                    if self.detect_cycle {
+                        let ptr = (current as *const dyn Error) as *const ();
+                        let addr = ptr as usize;
+                        if !self.seen.insert(addr) {
+                            self.stage = SourceErrorStage::Done;
+                            return None;
+                        }
+                    }
+                    self.depth += 1;
+                    self.remaining -= 1;
+                    self.root_source = current.source();
+                    return Some(current);
+                }
+                SourceErrorStage::Done => return None,
+            }
+        }
+    }
+}
+
+/// A borrowed source error chain.
+pub struct DiagnosticIrSourceErrorChain<'a> {
+    pub items: DiagnosticIrSourceErrorItems<'a>,
+    pub truncated: bool,
+    pub cycle_detected: bool,
+}
+
 /// A platform-agnostic intermediate representation of a diagnostic report.
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize))]
 pub struct DiagnosticIr<'a> {
     #[cfg(feature = "json")]
     pub schema_version: Cow<'static, str>,
@@ -135,8 +476,8 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
-    pub context: Vec<DiagnosticIrContext<'a>>,
-    pub attachments: Vec<DiagnosticIrAttachment<'a>>,
+    pub context: DiagnosticIrContexts<'a>,
+    pub attachments: DiagnosticIrAttachments<'a>,
 }
 
 /// A renderer that produces a compact display of the report.
@@ -179,8 +520,9 @@ where
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         };
-        let (context, attachments) = split_attachments(self.attachments());
         let metadata = self.metadata();
+        let attachments = self.attachments();
+        let (context_count, attachment_count) = count_attachments(attachments);
 
         DiagnosticIr {
             #[cfg(feature = "json")]
@@ -195,89 +537,152 @@ where
                 category: metadata.category.as_ref(),
                 retryable: metadata.retryable,
                 stack_trace: metadata.stack_trace.as_ref(),
-                display_causes: to_display_causes(&self.display_causes_with(collect_opts)),
-                source_errors: to_source_errors(&self.source_errors_with(collect_opts)),
+                display_causes: build_display_causes(self, collect_opts),
+                source_errors: build_source_errors(self, collect_opts),
             },
             #[cfg(feature = "trace")]
             trace: self.trace(),
-            context,
-            attachments,
+            context: DiagnosticIrContexts {
+                attachments,
+                count: context_count,
+            },
+            attachments: DiagnosticIrAttachments {
+                attachments,
+                count: attachment_count,
+            },
         }
     }
 }
 
-fn split_attachments(
-    report_attachments: &[Attachment],
-) -> (
-    Vec<DiagnosticIrContext<'_>>,
-    Vec<DiagnosticIrAttachment<'_>>,
-) {
-    let mut context = Vec::new();
-    let mut attachments = Vec::new();
+fn count_attachments(report_attachments: &[Attachment]) -> (usize, usize) {
+    let mut context = 0usize;
+    let mut attachments = 0usize;
     for item in report_attachments {
         match item {
-            Attachment::Context { key, value } => context.push(DiagnosticIrContext {
-                key: Cow::Borrowed(key),
-                value,
-            }),
-            Attachment::Note { message } => {
-                attachments.push(DiagnosticIrAttachment::Note { message });
-            }
-            Attachment::Payload {
-                name,
-                value,
-                media_type,
-            } => attachments.push(DiagnosticIrAttachment::Payload {
-                name,
-                value,
-                media_type: media_type.as_ref(),
-            }),
+            Attachment::Context { .. } => context += 1,
+            Attachment::Note { .. } | Attachment::Payload { .. } => attachments += 1,
         }
     }
     (context, attachments)
 }
 
-fn to_display_causes(collection: &CauseCollection) -> Option<DisplayCauseChain> {
-    if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
+fn build_display_causes<E>(
+    report: &Report<E>,
+    options: CauseCollectOptions,
+) -> Option<DiagnosticIrDisplayCauseChain<'_>>
+where
+    E: Error + Display + 'static,
+{
+    let items = report.display_causes();
+    let count = items.len().min(options.max_depth);
+    if count == 0 && items.is_empty() {
         return None;
     }
 
-    let items = collection
-        .messages
-        .iter()
-        .map(|message| {
-            message
-                .strip_prefix("event: ")
-                .unwrap_or(message)
-                .to_string()
-        })
-        .collect();
-
-    Some(DisplayCauseChain {
-        items,
-        truncated: collection.truncated,
-        cycle_detected: collection.cycle_detected,
+    Some(DiagnosticIrDisplayCauseChain {
+        items: DiagnosticIrDisplayCauseItems {
+            causes: items,
+            count,
+        },
+        truncated: items.len() > options.max_depth,
+        cycle_detected: false,
     })
 }
 
-fn to_source_errors(collection: &CauseCollection) -> Option<SourceErrorChain> {
-    if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
+fn build_source_errors<E>(
+    report: &Report<E>,
+    options: CauseCollectOptions,
+) -> Option<DiagnosticIrSourceErrorChain<'_>>
+where
+    E: Error + Display + 'static,
+{
+    let source_errors = report.source_errors();
+    let root_source = report.inner().source();
+    let (count, truncated, cycle_detected) =
+        count_source_errors(source_errors, root_source, options);
+
+    if count == 0 && !truncated && !cycle_detected {
         return None;
     }
 
-    let items = collection
-        .messages
-        .iter()
-        .map(|message| SourceError {
-            message: message.clone(),
-        })
-        .collect();
-
-    Some(SourceErrorChain {
-        items,
-        truncated: collection.truncated,
-        cycle_detected: collection.cycle_detected,
+    Some(DiagnosticIrSourceErrorChain {
+        items: DiagnosticIrSourceErrorItems {
+            source_errors,
+            root_source,
+            count,
+            max_depth: options.max_depth,
+            detect_cycle: options.detect_cycle,
+        },
+        truncated,
+        cycle_detected,
     })
+}
+
+fn count_source_errors(
+    source_errors: &[Box<dyn Error + 'static>],
+    root_source: Option<&(dyn Error + 'static)>,
+    options: CauseCollectOptions,
+) -> (usize, bool, bool) {
+    let mut count = 0usize;
+    let mut truncated = false;
+    let mut cycle_detected = false;
+    let mut depth = 0usize;
+    let mut seen = SeenErrorAddrs::new();
+
+    for err in source_errors {
+        if visit_error_chain_count(
+            Some(err.as_ref()),
+            options,
+            &mut count,
+            &mut truncated,
+            &mut cycle_detected,
+            &mut depth,
+            &mut seen,
+        ) {
+            return (count, truncated, cycle_detected);
+        }
+    }
+
+    visit_error_chain_count(
+        root_source,
+        options,
+        &mut count,
+        &mut truncated,
+        &mut cycle_detected,
+        &mut depth,
+        &mut seen,
+    );
+
+    (count, truncated, cycle_detected)
+}
+
+fn visit_error_chain_count(
+    mut current: Option<&(dyn Error + 'static)>,
+    options: CauseCollectOptions,
+    count: &mut usize,
+    truncated: &mut bool,
+    cycle_detected: &mut bool,
+    depth: &mut usize,
+    seen: &mut SeenErrorAddrs,
+) -> bool {
+    while let Some(err) = current {
+        if *depth >= options.max_depth {
+            *truncated = true;
+            return true;
+        }
+        if options.detect_cycle {
+            let ptr = (err as *const dyn Error) as *const ();
+            let addr = ptr as usize;
+            if !seen.insert(addr) {
+                *cycle_detected = true;
+                return true;
+            }
+        }
+        *count += 1;
+        *depth += 1;
+        current = err.source();
+    }
+    false
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.

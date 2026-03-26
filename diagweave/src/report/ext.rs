@@ -1,7 +1,7 @@
 use alloc::string::String;
 use core::fmt::Display;
 
-use super::{AttachmentValue, ErrorCode, Report, ReportMetadata, Severity, StackTrace};
+use super::{Attachment, AttachmentValue, ErrorCode, Report, ReportMetadata, Severity, StackTrace};
 #[cfg(feature = "trace")]
 use super::{ReportTrace, TraceEvent, TraceEventAttribute, TraceEventLevel};
 use core::error::Error;
@@ -151,6 +151,23 @@ pub trait ReportResultExt<T, E> {
         Report<E>: Error + 'static;
 
     fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer>>;
+}
+
+/// Read-only extension trait for `Result<T, Report<E>>`.
+pub trait ReportResultInspectExt<T, E> {
+    fn report_ref(&self) -> Option<&Report<E>>;
+
+    fn report_attachments(&self) -> Option<&[Attachment]>;
+
+    fn report_metadata(&self) -> Option<&ReportMetadata>;
+
+    fn report_error_code(&self) -> Option<&ErrorCode>;
+
+    fn report_severity(&self) -> Option<Severity>;
+
+    fn report_category(&self) -> Option<&str>;
+
+    fn report_retryable(&self) -> Option<bool>;
 }
 
 impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
@@ -335,5 +352,35 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
 
     fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer>> {
         self.map_err(|report| report.wrap_with(map))
+    }
+}
+
+impl<T, E> ReportResultInspectExt<T, E> for Result<T, Report<E>> {
+    fn report_ref(&self) -> Option<&Report<E>> {
+        self.as_ref().err()
+    }
+
+    fn report_attachments(&self) -> Option<&[Attachment]> {
+        self.report_ref().map(Report::attachments)
+    }
+
+    fn report_metadata(&self) -> Option<&ReportMetadata> {
+        self.report_ref().map(Report::metadata)
+    }
+
+    fn report_error_code(&self) -> Option<&ErrorCode> {
+        self.report_ref().and_then(Report::error_code)
+    }
+
+    fn report_severity(&self) -> Option<Severity> {
+        self.report_ref().and_then(Report::severity)
+    }
+
+    fn report_category(&self) -> Option<&str> {
+        self.report_ref().and_then(Report::category)
+    }
+
+    fn report_retryable(&self) -> Option<bool> {
+        self.report_ref().and_then(Report::retryable)
     }
 }

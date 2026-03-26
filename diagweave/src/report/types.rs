@@ -1,7 +1,8 @@
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::convert::TryFrom;
 use core::fmt::{self, Display, Formatter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +40,12 @@ pub enum ErrorCode {
     String(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorCodeIntError {
+    InvalidIntegerString,
+    OutOfRange,
+}
+
 impl Display for ErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -48,47 +55,120 @@ impl Display for ErrorCode {
     }
 }
 
-impl From<i8> for ErrorCode {
-    fn from(v: i8) -> Self {
-        Self::Integer(v as i64)
+impl From<ErrorCode> for String {
+    fn from(value: ErrorCode) -> Self {
+        match value {
+            ErrorCode::Integer(v) => v.to_string(),
+            ErrorCode::String(v) => v,
+        }
     }
 }
 
-impl From<i16> for ErrorCode {
-    fn from(v: i16) -> Self {
-        Self::Integer(v as i64)
+impl From<&ErrorCode> for String {
+    fn from(value: &ErrorCode) -> Self {
+        value.to_string()
     }
 }
 
-impl From<i32> for ErrorCode {
-    fn from(v: i32) -> Self {
-        Self::Integer(v as i64)
-    }
+macro_rules! impl_error_code_from_integer_try_into_i64 {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl From<$ty> for ErrorCode {
+                fn from(v: $ty) -> Self {
+                    match i64::try_from(v) {
+                        Ok(value) => Self::Integer(value),
+                        Err(_) => Self::String(v.to_string()),
+                    }
+                }
+            }
+        )*
+    };
 }
 
-impl From<i64> for ErrorCode {
-    fn from(v: i64) -> Self {
-        Self::Integer(v)
-    }
+impl_error_code_from_integer_try_into_i64!(
+    i8, i16, i32, i64, isize,
+    u8, u16, u32, u64, usize,
+    i128, u128,
+);
+
+macro_rules! impl_try_from_error_code_for_signed_int {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl TryFrom<ErrorCode> for $ty {
+                type Error = ErrorCodeIntError;
+
+                fn try_from(value: ErrorCode) -> Result<Self, Self::Error> {
+                    match value {
+                        ErrorCode::Integer(v) => <$ty>::try_from(v).map_err(|_| ErrorCodeIntError::OutOfRange),
+                        ErrorCode::String(v) => {
+                            let parsed = v
+                                .parse::<i128>()
+                                .map_err(|_| ErrorCodeIntError::InvalidIntegerString)?;
+                            <$ty>::try_from(parsed).map_err(|_| ErrorCodeIntError::OutOfRange)
+                        }
+                    }
+                }
+            }
+
+            impl TryFrom<&ErrorCode> for $ty {
+                type Error = ErrorCodeIntError;
+
+                fn try_from(value: &ErrorCode) -> Result<Self, Self::Error> {
+                    match value {
+                        ErrorCode::Integer(v) => <$ty>::try_from(*v).map_err(|_| ErrorCodeIntError::OutOfRange),
+                        ErrorCode::String(v) => {
+                            let parsed = v
+                                .parse::<i128>()
+                                .map_err(|_| ErrorCodeIntError::InvalidIntegerString)?;
+                            <$ty>::try_from(parsed).map_err(|_| ErrorCodeIntError::OutOfRange)
+                        }
+                    }
+                }
+            }
+        )*
+    };
 }
 
-impl From<u8> for ErrorCode {
-    fn from(v: u8) -> Self {
-        Self::Integer(v as i64)
-    }
+macro_rules! impl_try_from_error_code_for_unsigned_int {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl TryFrom<ErrorCode> for $ty {
+                type Error = ErrorCodeIntError;
+
+                fn try_from(value: ErrorCode) -> Result<Self, Self::Error> {
+                    match value {
+                        ErrorCode::Integer(v) => <$ty>::try_from(v).map_err(|_| ErrorCodeIntError::OutOfRange),
+                        ErrorCode::String(v) => {
+                            let parsed = v
+                                .parse::<u128>()
+                                .map_err(|_| ErrorCodeIntError::InvalidIntegerString)?;
+                            <$ty>::try_from(parsed).map_err(|_| ErrorCodeIntError::OutOfRange)
+                        }
+                    }
+                }
+            }
+
+            impl TryFrom<&ErrorCode> for $ty {
+                type Error = ErrorCodeIntError;
+
+                fn try_from(value: &ErrorCode) -> Result<Self, Self::Error> {
+                    match value {
+                        ErrorCode::Integer(v) => <$ty>::try_from(*v).map_err(|_| ErrorCodeIntError::OutOfRange),
+                        ErrorCode::String(v) => {
+                            let parsed = v
+                                .parse::<u128>()
+                                .map_err(|_| ErrorCodeIntError::InvalidIntegerString)?;
+                            <$ty>::try_from(parsed).map_err(|_| ErrorCodeIntError::OutOfRange)
+                        }
+                    }
+                }
+            }
+        )*
+    };
 }
 
-impl From<u16> for ErrorCode {
-    fn from(v: u16) -> Self {
-        Self::Integer(v as i64)
-    }
-}
-
-impl From<u32> for ErrorCode {
-    fn from(v: u32) -> Self {
-        Self::Integer(v as i64)
-    }
-}
+impl_try_from_error_code_for_signed_int!(i8, i16, i32, i64, isize, i128);
+impl_try_from_error_code_for_unsigned_int!(u8, u16, u32, u64, usize, u128);
 
 impl From<String> for ErrorCode {
     fn from(v: String) -> Self {

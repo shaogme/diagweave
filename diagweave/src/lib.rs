@@ -43,8 +43,9 @@ pub mod render {
 pub mod report {
     pub use crate::report_impl::{
         Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind, Diagnostic,
-        DisplayCauseChain, ErrorCode, GlobalContext, Report, ReportMetadata, ReportResultExt,
-        Severity, SourceError, SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
+        DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalContext, Report, ReportMetadata,
+        ReportResultExt, ReportResultInspectExt, Severity, SourceError, SourceErrorChain,
+        StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
@@ -63,7 +64,9 @@ pub mod trace {
 
 pub mod prelude {
     pub use crate::render::{Compact, Pretty, ReportRenderOptions, ReportRenderer};
-    pub use crate::report::{AttachmentValue, Diagnostic, Report, ReportResultExt, Severity};
+    pub use crate::report::{
+        AttachmentValue, Diagnostic, Report, ReportResultExt, ReportResultInspectExt, Severity,
+    };
     #[cfg(feature = "std")]
     pub use crate::report::{GlobalContext, register_global_injector};
     #[cfg(feature = "trace")]

@@ -1,5 +1,6 @@
 mod report_common;
 use diagweave::prelude::*;
+use diagweave::report::{CauseCollectOptions, ErrorCode, ErrorCodeIntError};
 use report_common::*;
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -345,6 +346,70 @@ fn stack_trace_metadata_api_works() {
 }
 
 #[test]
+fn report_field_getters_are_exposed() {
+    let _guard = init_test();
+
+    let report = Report::new(AuthError::InvalidToken)
+        .with_error_code("AUTH.INVALID_TOKEN")
+        .with_severity(Severity::Warn)
+        .with_category("auth")
+        .with_retryable(false);
+
+    assert_eq!(
+        report.error_code().map(ToString::to_string),
+        Some("AUTH.INVALID_TOKEN".to_owned())
+    );
+    assert_eq!(report.severity(), Some(Severity::Warn));
+    assert_eq!(report.category(), Some("auth"));
+    assert_eq!(report.retryable(), Some(false));
+}
+
+#[test]
+fn public_cause_collection_apis_are_accessible() {
+    let _guard = init_test();
+
+    let report = Report::new(AuthError::InvalidToken)
+        .with_display_cause("token stale")
+        .with_source_error(ApiError::Unauthorized);
+    let display = report.display_causes();
+    let source = report.source_errors();
+
+    assert_eq!(display.messages, vec!["event: token stale".to_owned()]);
+    assert_eq!(source.messages, vec!["api unauthorized".to_owned()]);
+
+    let cycle = Report::new(LoopError).source_errors_with(CauseCollectOptions {
+        max_depth: 8,
+        detect_cycle: true,
+    });
+    assert!(cycle.cycle_detected);
+}
+
+#[test]
+fn result_inspect_ext_reads_report_fields() {
+    let _guard = init_test();
+
+    let err: Result<(), Report<AuthError>> = fail_auth()
+        .diag()
+        .with_error_code("AUTH.INVALID_TOKEN")
+        .with_severity(Severity::Error)
+        .with_category("auth")
+        .with_retryable(false)
+        .with_context("request_id", "req-inspect");
+
+    assert_eq!(
+        err.report_error_code().map(ToString::to_string),
+        Some("AUTH.INVALID_TOKEN".to_owned())
+    );
+    assert_eq!(err.report_severity(), Some(Severity::Error));
+    assert_eq!(err.report_category(), Some("auth"));
+    assert_eq!(err.report_retryable(), Some(false));
+    assert_eq!(err.report_attachments().map(|items| items.len()), Some(1));
+
+    let ok: Result<(), Report<AuthError>> = Ok(());
+    assert!(ok.report_ref().is_none());
+}
+
+#[test]
 fn pretty_options_can_hide_specific_sections() {
     let _guard = init_test();
 
@@ -365,4 +430,44 @@ fn pretty_options_can_hide_specific_sections() {
     assert!(!pretty.contains("Attachments:"));
     assert!(!pretty.contains("Display Causes:"));
     assert!(!pretty.contains("Source Errors:"));
+}
+
+#[test]
+fn error_code_accepts_try_into_integers_and_falls_back_to_string() {
+    let _guard = init_test();
+
+    assert_eq!(ErrorCode::from(42usize), ErrorCode::Integer(42));
+    assert_eq!(ErrorCode::from(-7isize), ErrorCode::Integer(-7));
+
+    let too_large = u128::MAX;
+    let code = ErrorCode::from(too_large);
+    assert_eq!(code, ErrorCode::String(too_large.to_string()));
+    assert_eq!(code.to_string(), too_large.to_string());
+}
+
+#[test]
+fn error_code_supports_try_into_integer_and_into_string() {
+    let _guard = init_test();
+
+    let v: i32 = ErrorCode::from("42")
+        .try_into()
+        .expect("string integer should parse");
+    assert_eq!(v, 42);
+
+    let by_ref: u64 = (&ErrorCode::from(9u8))
+        .try_into()
+        .expect("integer variant should convert");
+    assert_eq!(by_ref, 9);
+
+    let out_of_range: Result<u8, ErrorCodeIntError> = ErrorCode::from(300i32).try_into();
+    assert_eq!(out_of_range, Err(ErrorCodeIntError::OutOfRange));
+
+    let invalid: Result<i64, ErrorCodeIntError> = ErrorCode::from("E_AUTH").try_into();
+    assert_eq!(invalid, Err(ErrorCodeIntError::InvalidIntegerString));
+
+    let s_from_into: String = ErrorCode::from(123u16).into();
+    assert_eq!(s_from_into, "123");
+
+    let s_from_to_string = ErrorCode::from("AUTH.INVALID_TOKEN").to_string();
+    assert_eq!(s_from_to_string, "AUTH.INVALID_TOKEN");
 }

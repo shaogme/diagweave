@@ -156,10 +156,34 @@ pub struct Report<E> {
 | `report.into_inner()` | Consumes the report and returns the original error |
 | `report.attachments()` | Returns a list of all associated attachments (`&[Attachment]`) |
 | `report.metadata()` | Returns a reference to the raw metadata (`&ReportMetadata`) |
+| `report.error_code()` | Reads metadata error code (`Option<&ErrorCode>`) |
+| `report.severity()` | Reads metadata severity (`Option<Severity>`) |
+| `report.category()` | Reads metadata category (`Option<&str>`) |
+| `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
+| `report.display_causes()` | Collects display causes with default options (`CauseCollection`) |
+| `report.display_causes_with(options)` | Collects display causes with custom options (`CauseCollection`) |
+| `report.source_errors()` | Collects source errors with default options (`CauseCollection`) |
+| `report.source_errors_with(options)` | Collects source errors with custom options (`CauseCollection`) |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
+
+### `ErrorCode` Design and Conversions
+- Internal model:
+  - `ErrorCode::Integer(i64)` for compact numeric codes
+  - `ErrorCode::String(String)` for symbolic or oversized numeric codes
+- Input conversion (`impl Into<ErrorCode>`):
+  - Integer inputs (`i8..i128`, `u8..u128`, `isize`, `usize`) attempt `TryInto<i64>`
+  - On success: stored as `Integer`
+  - On overflow: stored as `String(v.to_string())`
+- Output conversion:
+  - `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` to integer types (`i8..i128`, `u8..u128`, `isize`, `usize`)
+  - `From<ErrorCode> for String` and `From<&ErrorCode> for String`
+  - `Display` / `to_string()` outputs canonical text form
+- Integer extraction errors:
+  - `ErrorCodeIntError::InvalidIntegerString`
+  - `ErrorCodeIntError::OutOfRange`
 
 ### Global Injection
 Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
@@ -180,7 +204,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<String>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
-| `with_category` | `impl Into<ErrorCode>` | Set error category (for monitoring metrics) |
+| `with_category` | `impl Into<String>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |
@@ -211,7 +235,7 @@ let report = Report::new(MyError::Timeout)
 
 ---
 
-## 5. `Result` Extension Traits (`Diagnostic` & `ReportResultExt`)
+## 5. `Result` Extension Traits (`Diagnostic` / `ReportResultExt` / `ReportResultInspectExt`)
 
 ### Overview
 Provides pipelines for seamless diagnostic info injection on error paths by implementing extension traits for `Result<T, E>` and `Result<T, Report<E>>`.
@@ -231,6 +255,11 @@ Proxy versions of all `Report` chained configuration methods:
 - **Source Errors**: `with_source_error(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **Wrapping**: `wrap(outer)`, `wrap_with(map)`
+
+#### 3. `ReportResultInspectExt` (on `Result<T, Report<E>>`)
+Read-only helpers for error-path inspection without manually matching `Err`:
+- `report_ref()`, `report_metadata()`, `report_attachments()`
+- `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`
 
 
 ### Usage Example

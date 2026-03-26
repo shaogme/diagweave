@@ -267,6 +267,27 @@ pub enum MyError {
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
 
+`Report<E>` 的读取接口：
+
+- `attachments()`、`metadata()`、`stack_trace()`
+- `error_code()`、`severity()`、`category()`、`retryable()`
+- `display_causes()` / `display_causes_with(options)`
+- `source_errors()` / `source_errors_with(options)`
+
+`Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
+
+- `report_ref()`、`report_metadata()`、`report_attachments()`
+- `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`
+
+`ErrorCode` 设计：
+
+- 双表示：`Integer(i64)` 或 `String(String)`
+- 写入路径：`with_error_code(x)` 接收 `impl Into<ErrorCode>`
+- 整型输入若可放入 `i64` 则存为 `Integer`；超范围自动降级为十进制字符串 `String`
+- 读取路径：支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
+- 字符串路径：同时支持 `Into<String>` 与 `to_string()`
+- 整型解析失败错误：`ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
+
 原因语义说明：
 
 - `with_display_cause` / `with_display_causes` 接收 `impl Display`，并追加到展示原因字符串链（用于渲染与 IR）。

@@ -267,6 +267,27 @@ Common enrichers on `Result<T, Report<E>>`:
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
 
+Read APIs on `Report<E>`:
+
+- `attachments()`, `metadata()`, `stack_trace()`
+- `error_code()`, `severity()`, `category()`, `retryable()`
+- `display_causes()` / `display_causes_with(options)`
+- `source_errors()` / `source_errors_with(options)`
+
+Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
+
+- `report_ref()`, `report_metadata()`, `report_attachments()`
+- `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`
+
+`ErrorCode` design:
+
+- dual representation: `Integer(i64)` or `String(String)`
+- write path: `with_error_code(x)` accepts `impl Into<ErrorCode>`
+- integer inputs that fit in `i64` are stored as `Integer`; overflow falls back to decimal `String`
+- read path: `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` to integer types (`i8..i128`, `u8..u128`, `isize`, `usize`)
+- string path: `Into<String>` and `to_string()` are both supported
+- integer parse failures return `ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
+
 Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display` and append display-cause strings (for rendering/IR).

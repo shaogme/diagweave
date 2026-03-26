@@ -156,10 +156,34 @@ pub struct Report<E> {
 | `report.into_inner()` | 消费报告并返回原始错误 |
 | `report.attachments()` | 返回关联的所有附件列表 (`&[Attachment]`) |
 | `report.metadata()` | 返回原始元数据引用 (`&ReportMetadata`) |
+| `report.error_code()` | 读取元数据错误码 (`Option<&ErrorCode>`) |
+| `report.severity()` | 读取元数据严重级别 (`Option<Severity>`) |
+| `report.category()` | 读取元数据分类 (`Option<&str>`) |
+| `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
+| `report.display_causes()` | 使用默认选项收集展示原因 (`CauseCollection`) |
+| `report.display_causes_with(options)` | 使用自定义选项收集展示原因 (`CauseCollection`) |
+| `report.source_errors()` | 使用默认选项收集错误源链 (`CauseCollection`) |
+| `report.source_errors_with(options)` | 使用自定义选项收集错误源链 (`CauseCollection`) |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
+
+### `ErrorCode` 设计与转换规则
+- 内部模型：
+  - `ErrorCode::Integer(i64)`：紧凑数值错误码
+  - `ErrorCode::String(String)`：符号型错误码或超范围数值错误码
+- 输入转换（`impl Into<ErrorCode>`）：
+  - 整型输入（`i8..i128`、`u8..u128`、`isize`、`usize`）先尝试 `TryInto<i64>`
+  - 成功则存为 `Integer`
+  - 溢出则存为 `String(v.to_string())`
+- 输出转换：
+  - 支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
+  - 支持 `From<ErrorCode> for String` 与 `From<&ErrorCode> for String`
+  - 支持 `Display` / `to_string()` 输出标准文本形态
+- 整型提取错误：
+  - `ErrorCodeIntError::InvalidIntegerString`
+  - `ErrorCodeIntError::OutOfRange`
 
 ### 全局注入 (Global Injection)
 用于跨层级自动注入上下文（如 RequestID、SessionID）。
@@ -180,7 +204,7 @@ pub struct Report<E> {
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<String>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
-| `with_category` | `impl Into<ErrorCode>` | 设置错误分类 (用于监控指标) |
+| `with_category` | `impl Into<String>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
 | `with_display_cause` | `impl Display` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因字符串 |
@@ -211,7 +235,7 @@ let report = Report::new(MyError::Timeout)
 
 ---
 
-## 5. `Result` 扩展特质 (`Diagnostic` & `ReportResultExt`)
+## 5. `Result` 扩展特质 (`Diagnostic` / `ReportResultExt` / `ReportResultInspectExt`)
 
 ### 概览
 通过为 `Result<T, E>` 和 `Result<T, Report<E>>` 实现扩展特质，提供在错误路径上无缝注入诊断信息的管道。
@@ -231,6 +255,11 @@ let report = Report::new(MyError::Timeout)
 - **错误源**: `with_source_error(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **包装**: `wrap(outer)`, `wrap_with(map)`
+
+#### 3. `ReportResultInspectExt` (作用于 `Result<T, Report<E>>`)
+用于在错误路径做只读查询，避免手动 `match Err(report)`：
+- `report_ref()`、`report_metadata()`、`report_attachments()`
+- `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`
 
 
 ### 用法示例

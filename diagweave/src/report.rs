@@ -17,11 +17,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
-pub use ext::{Diagnostic, ReportResultExt};
+pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind,
-    DisplayCauseChain, ErrorCode, ReportMetadata, Severity, SourceError, SourceErrorChain,
-    StackFrame, StackTrace, StackTraceFormat,
+    DisplayCauseChain, ErrorCode, ErrorCodeIntError, ReportMetadata, Severity, SourceError,
+    SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
@@ -134,6 +134,26 @@ impl<E> Report<E> {
             .as_ref()
             .map(|cold| &cold.metadata)
             .unwrap_or(&EMPTY_REPORT_METADATA)
+    }
+
+    /// Returns the error code from report metadata, if present.
+    pub fn error_code(&self) -> Option<&ErrorCode> {
+        self.metadata().error_code.as_ref()
+    }
+
+    /// Returns the severity from report metadata, if present.
+    pub fn severity(&self) -> Option<Severity> {
+        self.metadata().severity
+    }
+
+    /// Returns the category from report metadata, if present.
+    pub fn category(&self) -> Option<&str> {
+        self.metadata().category.as_deref()
+    }
+
+    /// Returns whether the report is marked retryable, if present.
+    pub fn retryable(&self) -> Option<bool> {
+        self.metadata().retryable
     }
 
     /// Returns the stack trace associated with the report, if any.
@@ -442,7 +462,16 @@ impl<E> Report<E> {
         Report { inner: outer, cold }
     }
 
-    pub(crate) fn display_causes(&self, options: CauseCollectOptions) -> CauseCollection
+    /// Collects display causes using default collection options.
+    pub fn display_causes(&self) -> CauseCollection
+    where
+        E: Error + 'static,
+    {
+        self.display_causes_with(CauseCollectOptions::default())
+    }
+
+    /// Collects display causes using custom collection options.
+    pub fn display_causes_with(&self, options: CauseCollectOptions) -> CauseCollection
     where
         E: Error + 'static,
     {
@@ -461,7 +490,16 @@ impl<E> Report<E> {
         state
     }
 
-    pub(crate) fn source_errors(&self, options: CauseCollectOptions) -> CauseCollection
+    /// Collects source errors using default collection options.
+    pub fn source_errors(&self) -> CauseCollection
+    where
+        E: Error + 'static,
+    {
+        self.source_errors_with(CauseCollectOptions::default())
+    }
+
+    /// Collects source errors using custom collection options.
+    pub fn source_errors_with(&self, options: CauseCollectOptions) -> CauseCollection
     where
         E: Error + 'static,
     {

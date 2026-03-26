@@ -183,12 +183,12 @@ where
 {
     /// Converts the report to a platform-agnostic intermediate representation.
     pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr {
-        let display_cause_collection = self.display_causes(CauseCollectOptions {
+        let display_cause_collection = self.display_causes_with(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });
         let display_causes = to_display_causes(&display_cause_collection);
-        let source_error_collection = self.source_errors(CauseCollectOptions {
+        let source_error_collection = self.source_errors_with(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });

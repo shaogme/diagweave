@@ -1,6 +1,8 @@
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
@@ -10,6 +12,7 @@ use core::fmt::{self, Display, Formatter};
     feature = "json",
     serde(tag = "kind", content = "value", rename_all = "snake_case")
 )]
+/// Represents a value that can be attached to a diagnostic report.
 pub enum AttachmentValue {
     #[default]
     Null,
@@ -224,22 +227,173 @@ impl From<serde_json::Value> for AttachmentValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "json", serde(tag = "kind", rename_all = "snake_case"))]
+/// Represents an attachment to a diagnostic report, such as context, notes, or payloads.
 pub enum Attachment {
     Context {
         key: Cow<'static, str>,
         value: AttachmentValue,
     },
     Note {
-        message: Cow<'static, str>,
+        message: Box<dyn Display + 'static>,
     },
     Payload {
         name: Cow<'static, str>,
         value: AttachmentValue,
         media_type: Option<Cow<'static, str>>,
     },
+}
+
+impl Clone for Attachment {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Context { key, value } => Self::Context {
+                key: key.clone(),
+                value: value.clone(),
+            },
+            Self::Note { message } => Self::Note {
+                message: Box::new(message.to_string()),
+            },
+            Self::Payload {
+                name,
+                value,
+                media_type,
+            } => Self::Payload {
+                name: name.clone(),
+                value: value.clone(),
+                media_type: media_type.clone(),
+            },
+        }
+    }
+}
+
+impl PartialEq for Attachment {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Context {
+                    key: l_key,
+                    value: l_value,
+                },
+                Self::Context {
+                    key: r_key,
+                    value: r_value,
+                },
+            ) => l_key == r_key && l_value == r_value,
+            (Self::Note { message: l }, Self::Note { message: r }) => {
+                l.to_string() == r.to_string()
+            }
+            (
+                Self::Payload {
+                    name: l_name,
+                    value: l_value,
+                    media_type: l_media_type,
+                },
+                Self::Payload {
+                    name: r_name,
+                    value: r_value,
+                    media_type: r_media_type,
+                },
+            ) => l_name == r_name && l_value == r_value && l_media_type == r_media_type,
+            _ => false,
+        }
+    }
+}
+
+impl core::fmt::Debug for Attachment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Context { key, value } => f
+                .debug_struct("Context")
+                .field("key", key)
+                .field("value", value)
+                .finish(),
+            Self::Note { message } => f
+                .debug_struct("Note")
+                .field("message", &message.to_string())
+                .finish(),
+            Self::Payload {
+                name,
+                value,
+                media_type,
+            } => f
+                .debug_struct("Payload")
+                .field("name", name)
+                .field("value", value)
+                .field("media_type", media_type)
+                .finish(),
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum AttachmentSerde {
+    Context {
+        key: Cow<'static, str>,
+        value: AttachmentValue,
+    },
+    Note {
+        message: String,
+    },
+    Payload {
+        name: Cow<'static, str>,
+        value: AttachmentValue,
+        media_type: Option<Cow<'static, str>>,
+    },
+}
+
+#[cfg(feature = "json")]
+impl serde::Serialize for Attachment {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let helper = match self {
+            Self::Context { key, value } => AttachmentSerde::Context {
+                key: key.clone(),
+                value: value.clone(),
+            },
+            Self::Note { message } => AttachmentSerde::Note {
+                message: message.to_string(),
+            },
+            Self::Payload {
+                name,
+                value,
+                media_type,
+            } => AttachmentSerde::Payload {
+                name: name.clone(),
+                value: value.clone(),
+                media_type: media_type.clone(),
+            },
+        };
+        helper.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "json")]
+impl<'de> serde::Deserialize<'de> for Attachment {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let helper = AttachmentSerde::deserialize(deserializer)?;
+        Ok(match helper {
+            AttachmentSerde::Context { key, value } => Self::Context { key, value },
+            AttachmentSerde::Note { message } => Self::Note {
+                message: Box::new(message),
+            },
+            AttachmentSerde::Payload {
+                name,
+                value,
+                media_type,
+            } => Self::Payload {
+                name,
+                value,
+                media_type,
+            },
+        })
+    }
 }
 
 impl Attachment {
@@ -252,9 +406,9 @@ impl Attachment {
     }
 
     /// Creates a new note attachment with a message.
-    pub fn note(message: impl Into<Cow<'static, str>>) -> Self {
+    pub fn note(message: impl Display + 'static) -> Self {
         Self::Note {
-            message: message.into(),
+            message: Box::new(message),
         }
     }
 
@@ -280,7 +434,15 @@ impl Attachment {
     }
 
     /// Attempts to interpret the attachment as a note message.
-    pub fn as_note(&self) -> Option<&str> {
+    pub fn as_note(&self) -> Option<Cow<'_, str>> {
+        match self {
+            Self::Note { message } => Some(Cow::Owned(message.to_string())),
+            Self::Context { .. } | Self::Payload { .. } => None,
+        }
+    }
+
+    /// Returns the note as `Display` for zero-allocation access.
+    pub fn as_note_display(&self) -> Option<&(dyn Display + 'static)> {
         match self {
             Self::Note { message } => Some(message.as_ref()),
             Self::Context { .. } | Self::Payload { .. } => None,

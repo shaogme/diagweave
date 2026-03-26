@@ -5,7 +5,8 @@ mod json;
 mod pretty;
 
 use alloc::borrow::Cow;
-use alloc::format;
+use alloc::borrow::ToOwned;
+use alloc::string::{String, ToString};
 use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
@@ -82,8 +83,71 @@ pub trait ReportRenderer<E> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize))]
 pub struct DiagnosticIrError<'a> {
-    pub message: Cow<'a, str>,
+    pub message: DiagnosticIrMessage<'a>,
     pub r#type: Cow<'a, str>,
+}
+
+/// Lazily-resolved diagnostic message payload.
+#[derive(Clone)]
+pub enum DiagnosticIrMessage<'a> {
+    Borrowed(&'a str),
+    Owned(Cow<'a, str>),
+    Display(&'a (dyn Display + 'a)),
+}
+
+impl DiagnosticIrMessage<'_> {
+    /// Materializes the value as an owned `String`.
+    pub fn to_string_owned(&self) -> String {
+        match self {
+            Self::Borrowed(v) => (*v).to_owned(),
+            Self::Owned(v) => v.as_ref().to_owned(),
+            Self::Display(v) => v.to_string(),
+        }
+    }
+}
+
+impl Display for DiagnosticIrMessage<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Borrowed(v) => f.write_str(v),
+            Self::Owned(v) => f.write_str(v.as_ref()),
+            Self::Display(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl core::fmt::Debug for DiagnosticIrMessage<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.to_string_owned())
+    }
+}
+
+impl PartialEq for DiagnosticIrMessage<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string_owned() == other.to_string_owned()
+    }
+}
+
+impl Eq for DiagnosticIrMessage<'_> {}
+
+impl PartialEq<&str> for DiagnosticIrMessage<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            Self::Borrowed(v) => v == other,
+            Self::Owned(v) => v.as_ref() == *other,
+            Self::Display(v) => v.to_string() == *other,
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+impl serde::Serialize for DiagnosticIrMessage<'_> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string_owned())
+    }
 }
 
 /// Cause chain summary information in the Diagnostic Intermediate Representation.
@@ -165,7 +229,7 @@ where
             #[cfg(feature = "json")]
             schema_version: Cow::Borrowed(REPORT_JSON_SCHEMA_VERSION),
             error: DiagnosticIrError {
-                message: format!("{}", self.inner()).into(),
+                message: DiagnosticIrMessage::Display(self.inner()),
                 r#type: Cow::Borrowed(any::type_name::<E>()),
             },
             metadata: DiagnosticIrMetadata {

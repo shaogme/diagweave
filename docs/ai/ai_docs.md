@@ -217,7 +217,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | Add context key-value pairs |
-| `with_note` / `attach_printable` | `impl Display` | Add remarks or resolution suggestions |
+| `with_note` / `attach_printable` | `impl Display + 'static` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<impl Into<Cow<'static, str>>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
@@ -339,6 +339,10 @@ Strongly typed values supported by `Report` attachments, converted automatically
 | `Object` | `BTreeMap<String, AttachmentValue>` | Key-Value mapping |
 | `Bytes` | `Vec<u8>` | Binary data content |
 | `Redacted` | `{ kind, reason }` | Placeholder for sensitive data |
+
+Attachment note access:
+- `Attachment::as_note() -> Option<Cow<'_, str>>` returns a materialized note string.
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` returns a zero-allocation display reference.
 
 ---
 

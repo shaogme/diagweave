@@ -10,6 +10,16 @@ use crate::report::{ErrorCode, Report};
 
 use super::{ReportRenderOptions, ReportRenderer};
 
+const INDENT_SPACES: &str = {
+    const LEN: usize = 64;
+    const SPACES: [u8; LEN] = [b' '; LEN];
+    match alloc::str::from_utf8(&SPACES) {
+        Ok(s) => s,
+        Err(_) => panic!("Invalid UTF-8"),
+    }
+};
+const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
+
 /// A renderer that outputs the diagnostic report in JSON format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Json {
@@ -98,7 +108,10 @@ fn write_option_string(f: &mut Formatter<'_>, value: Option<&str>) -> fmt::Resul
     }
 }
 
-fn write_json_display(f: &mut Formatter<'_>, value: &(impl Display + ?Sized)) -> fmt::Result {
+pub(super) fn write_json_display(
+    f: &mut Formatter<'_>,
+    value: &(impl Display + ?Sized),
+) -> fmt::Result {
     f.write_char('"')?;
     {
         let mut escaper = JsonStringEscaper { out: f };
@@ -122,19 +135,46 @@ struct JsonStringEscaper<'a, 'b> {
 
 impl Write for JsonStringEscaper<'_, '_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        for ch in s.chars() {
-            match ch {
-                '"' => self.out.write_str("\\\"")?,
-                '\\' => self.out.write_str("\\\\")?,
-                '\n' => self.out.write_str("\\n")?,
-                '\r' => self.out.write_str("\\r")?,
-                '\t' => self.out.write_str("\\t")?,
-                '\u{08}' => self.out.write_str("\\b")?,
-                '\u{0C}' => self.out.write_str("\\f")?,
-                c if c <= '\u{1F}' => write!(self.out, "\\u{:04X}", c as u32)?,
-                c => self.out.write_char(c)?,
+        let bytes = s.as_bytes();
+        let mut start = 0usize;
+
+        for (idx, &b) in bytes.iter().enumerate() {
+            let escaped = match b {
+                b'"' => Some("\\\""),
+                b'\\' => Some("\\\\"),
+                b'\n' => Some("\\n"),
+                b'\r' => Some("\\r"),
+                b'\t' => Some("\\t"),
+                0x08 => Some("\\b"),
+                0x0C => Some("\\f"),
+                _ => None,
+            };
+
+            if let Some(seq) = escaped {
+                if start < idx {
+                    self.out.write_str(&s[start..idx])?;
+                }
+                self.out.write_str(seq)?;
+                start = idx + 1;
+                continue;
+            }
+
+            if b <= 0x1F {
+                if start < idx {
+                    self.out.write_str(&s[start..idx])?;
+                }
+                self.out.write_str("\\u00")?;
+                self.out.write_char(HEX_DIGITS[(b >> 4) as usize] as char)?;
+                self.out
+                    .write_char(HEX_DIGITS[(b & 0x0F) as usize] as char)?;
+                start = idx + 1;
             }
         }
+
+        if start < s.len() {
+            self.out.write_str(&s[start..])?;
+        }
+
         Ok(())
     }
 }
@@ -202,8 +242,11 @@ fn close_array(f: &mut Formatter<'_>, pretty: bool, depth: usize, empty: bool) -
 }
 
 fn write_indent(f: &mut Formatter<'_>, depth: usize) -> fmt::Result {
-    for _ in 0..depth {
-        f.write_str("  ")?;
+    let mut remaining = depth.saturating_mul(2);
+    while remaining > 0 {
+        let chunk = remaining.min(INDENT_SPACES.len());
+        f.write_str(&INDENT_SPACES[..chunk])?;
+        remaining -= chunk;
     }
     Ok(())
 }

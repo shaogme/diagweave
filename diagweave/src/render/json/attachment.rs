@@ -1,6 +1,6 @@
 use super::{
-    close_array, close_object, write_array_item_prefix, write_json_string, write_object_field,
-    write_option_string,
+    close_array, close_object, write_array_item_prefix, write_json_display, write_json_string,
+    write_object_field, write_option_string,
 };
 use crate::report::{AttachmentValue, AttachmentVisit, Report};
 use core::error::Error;
@@ -43,7 +43,7 @@ where
             AttachmentVisit::Context { .. } => {}
             AttachmentVisit::Note { message } => {
                 write_array_item_prefix(f, pretty, depth, &mut first)?;
-                write_note_obj(f, pretty, depth + 1, message.as_ref())?;
+                write_note_obj(f, pretty, depth + 1, message)?;
             }
             AttachmentVisit::Payload {
                 name,
@@ -66,14 +66,19 @@ where
     close_array(f, pretty, depth, first)
 }
 
-fn write_note_obj(f: &mut Formatter<'_>, pretty: bool, depth: usize, message: &str) -> fmt::Result {
+fn write_note_obj(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    message: &(impl Display + ?Sized),
+) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "kind", |f| {
         write_json_string(f, "note")
     })?;
     write_object_field(f, pretty, depth, &mut first, "message", |f| {
-        write_json_string(f, message)
+        write_json_display(f, message)
     })?;
     close_object(f, pretty, depth, first)
 }

@@ -274,6 +274,11 @@ Read APIs on `Report<E>`:
 - `visit_display_causes(visit)` / `visit_display_causes_with(options, visit)`
 - `visit_source_errors(visit)` / `visit_source_errors_with(options, visit)`
 
+Attachment note access:
+
+- `Attachment::as_note() -> Option<Cow<'_, str>>` (materialized text view)
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` (zero-allocation display view)
+
 Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
 - `report_ref()`, `report_metadata()`, `report_attachments()`

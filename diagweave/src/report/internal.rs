@@ -33,14 +33,13 @@ pub enum SourceErrorIterStage {
 }
 
 /// A streamed attachment item for visitor-based traversal.
-#[derive(Debug, Clone, PartialEq)]
 pub enum AttachmentVisit<'a> {
     Context {
         key: &'a Cow<'static, str>,
         value: &'a AttachmentValue,
     },
     Note {
-        message: &'a Cow<'static, str>,
+        message: &'a (dyn Display + 'static),
     },
     Payload {
         name: &'a Cow<'static, str>,

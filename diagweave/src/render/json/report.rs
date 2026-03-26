@@ -6,12 +6,12 @@ use crate::report::{CauseCollectOptions, Report, StackTrace};
 #[cfg(feature = "trace")]
 use crate::report::{TraceContext, TraceEvent, TraceEventAttribute};
 
+#[cfg(feature = "trace")]
+use super::attachment;
 use super::{
     ReportRenderOptions, close_array, close_object, write_array_item_prefix, write_error_code,
     write_json_display, write_json_string, write_object_field, write_option_string,
 };
-#[cfg(feature = "trace")]
-use super::attachment;
 
 pub(super) fn write_error_object<E>(
     f: &mut Formatter<'_>,

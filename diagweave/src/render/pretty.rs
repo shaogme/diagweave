@@ -5,6 +5,14 @@ use crate::report::{AttachmentVisit, Report};
 
 use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
 
+const INDENT_SPACES: &str = {
+    const LEN: usize = 64;
+    const SPACES: [u8; LEN] = [b' '; LEN];
+    match alloc::str::from_utf8(&SPACES) {
+        Ok(s) => s,
+        Err(_) => panic!("Invalid UTF-8"),
+    }
+};
 /// A renderer that outputs the diagnostic report in a human-readable pretty format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Pretty {
@@ -46,8 +54,11 @@ where
 fn write_indent(f: &mut Formatter<'_>, indent: PrettyIndent) -> fmt::Result {
     match indent {
         PrettyIndent::Spaces(n) => {
-            for _ in 0..n {
-                f.write_str(" ")?;
+            let mut remaining = usize::from(n);
+            while remaining > 0 {
+                let chunk = remaining.min(INDENT_SPACES.len());
+                f.write_str(&INDENT_SPACES[..chunk])?;
+                remaining -= chunk;
             }
         }
         PrettyIndent::Tab => {
@@ -362,7 +373,7 @@ fn render_attachment_section(
                     writeln!(f, "Attachments:")?;
                 }
                 write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- note: {}", message.as_ref())?;
+                writeln!(f, "- note: {message}")?;
             }
             AttachmentVisit::Payload {
                 name,
@@ -406,36 +417,44 @@ fn render_display_causes(
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
+    if !options.show_cause_chains_section {
+        return Ok(());
+    }
+
     let traversal_options = crate::report::CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
     let mut count = 0usize;
+    let mut wrote_header = false;
     let traversal = report.visit_causes_ext(traversal_options, |cause| {
+        if !wrote_header {
+            wrote_header = true;
+            writeln!(f, "Display Causes:")?;
+        }
         count += 1;
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "{}. {}", count, cause)
     })?;
 
-    if options.show_cause_chains_section
-        && (options.show_empty_sections
-            || count > 0
-            || traversal.truncated
-            || traversal.cycle_detected)
-    {
+    let should_show_section =
+        options.show_empty_sections || count > 0 || traversal.truncated || traversal.cycle_detected;
+    if should_show_section && !wrote_header {
         writeln!(f, "Display Causes:")?;
-        if count == 0 {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
-        }
-        if traversal.truncated {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- ... truncated by max_source_depth")?;
-        }
-        if traversal.cycle_detected {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- ... cycle detected and traversal stopped")?;
-        }
+        wrote_header = true;
+    }
+
+    if wrote_header && count == 0 && options.show_empty_sections {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- (none)")?;
+    }
+    if wrote_header && traversal.truncated {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- ... truncated by max_source_depth")?;
+    }
+    if wrote_header && traversal.cycle_detected {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- ... cycle detected and traversal stopped")?;
     }
     Ok(())
 }
@@ -445,36 +464,44 @@ fn render_source_errors(
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
+    if !options.show_cause_chains_section {
+        return Ok(());
+    }
+
     let traversal_options = crate::report::CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
     let mut count = 0usize;
+    let mut wrote_header = false;
     let traversal = report.visit_sources_ext(traversal_options, |err| {
+        if !wrote_header {
+            wrote_header = true;
+            writeln!(f, "Source Errors:")?;
+        }
         count += 1;
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "{}. {}", count, err)
     })?;
 
-    if options.show_cause_chains_section
-        && (options.show_empty_sections
-            || count > 0
-            || traversal.truncated
-            || traversal.cycle_detected)
-    {
+    let should_show_section =
+        options.show_empty_sections || count > 0 || traversal.truncated || traversal.cycle_detected;
+    if should_show_section && !wrote_header {
         writeln!(f, "Source Errors:")?;
-        if count == 0 {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
-        }
-        if traversal.truncated {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- ... truncated by max_source_depth")?;
-        }
-        if traversal.cycle_detected {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- ... cycle detected and traversal stopped")?;
-        }
+        wrote_header = true;
+    }
+
+    if wrote_header && count == 0 && options.show_empty_sections {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- (none)")?;
+    }
+    if wrote_header && traversal.truncated {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- ... truncated by max_source_depth")?;
+    }
+    if wrote_header && traversal.cycle_detected {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- ... cycle detected and traversal stopped")?;
     }
     Ok(())
 }

@@ -36,8 +36,8 @@ pub mod adapters {
 pub mod render {
     pub use crate::render_impl::{
         Compact, DiagnosticIr, DiagnosticIrCauseChainSummary, DiagnosticIrError,
-        DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport, ReportRenderOptions,
-        ReportRenderer,
+        DiagnosticIrMessage, DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport,
+        ReportRenderOptions, ReportRenderer,
     };
     #[cfg(feature = "json")]
     pub use crate::render_impl::{

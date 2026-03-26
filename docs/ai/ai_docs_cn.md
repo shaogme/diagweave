@@ -217,7 +217,7 @@ pub struct Report<E> {
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | 添加上下文键值对 |
-| `with_note` / `attach_printable` | `impl Display` | 添加备注或解决建议 |
+| `with_note` / `attach_printable` | `impl Display + 'static` | 添加备注或解决建议 |
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<Cow<'static, str>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
@@ -339,6 +339,10 @@ fn process() -> Result<(), Report<io::Error>> {
 | `Object` | `BTreeMap<String, AttachmentValue>`| 键值对映射 |
 | `Bytes` | `Vec<u8>` | 二进制数据内容 |
 | `Redacted` | `{ kind, reason }` | 脱敏数据占位符 |
+
+Note 附件读取：
+- `Attachment::as_note() -> Option<Cow<'_, str>>`：返回物化后的 note 文本。
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`：返回零分配的显示引用。
 
 ---
 

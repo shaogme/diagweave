@@ -274,6 +274,11 @@ pub enum MyError {
 - `visit_display_causes(visit)` / `visit_display_causes_with(options, visit)`
 - `visit_source_errors(visit)` / `visit_source_errors_with(options, visit)`
 
+Note 附件读取：
+
+- `Attachment::as_note() -> Option<Cow<'_, str>>`（物化后的文本视图）
+- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`（零分配显示视图）
+
 `Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
 
 - `report_ref()`、`report_metadata()`、`report_attachments()`

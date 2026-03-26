@@ -104,7 +104,7 @@ impl DiagnosticIr<'_> {
     fn tracing_error(&self, fields: &mut Vec<TracingField>) {
         fields.push(TracingField {
             key: "error.message".into(),
-            value: AdapterValue::String(self.error.message.clone().into_owned().into()),
+            value: AdapterValue::String(self.error.message.to_string_owned().into()),
         });
         fields.push(TracingField {
             key: "error.type".into(),
@@ -320,7 +320,7 @@ impl DiagnosticIr<'_> {
     fn otel_error(&self, attributes: &mut Vec<OtelAttribute>) {
         attributes.push(OtelAttribute {
             key: "error.message".into(),
-            value: AdapterValue::String(self.error.message.clone().into_owned().into()),
+            value: AdapterValue::String(self.error.message.to_string_owned().into()),
         });
         attributes.push(OtelAttribute {
             key: "error.type".into(),

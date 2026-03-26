@@ -9,7 +9,6 @@ mod types;
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
@@ -81,7 +80,9 @@ impl<E> Report<E> {
                     visit(AttachmentVisit::Context { key, value })?;
                 }
                 Attachment::Note { message } => {
-                    visit(AttachmentVisit::Note { message })?;
+                    visit(AttachmentVisit::Note {
+                        message: message.as_ref(),
+                    })?;
                 }
                 Attachment::Payload {
                     name,
@@ -190,10 +191,10 @@ impl<E> Report<E> {
     }
 
     /// Attaches a printable note to the report.
-    pub fn attach_printable(mut self, message: impl Display) -> Self {
-        self.diagnostics_mut().attachments.push(Attachment::Note {
-            message: Cow::Owned(message.to_string()),
-        });
+    pub fn attach_printable(mut self, message: impl Display + 'static) -> Self {
+        self.diagnostics_mut()
+            .attachments
+            .push(Attachment::note(message));
         self
     }
 
@@ -222,7 +223,7 @@ impl<E> Report<E> {
     }
 
     /// Adds a note to the report (alias for `attach_printable`).
-    pub fn with_note(self, message: impl Display) -> Self {
+    pub fn with_note(self, message: impl Display + 'static) -> Self {
         self.attach_printable(message)
     }
 

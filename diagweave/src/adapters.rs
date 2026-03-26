@@ -1,10 +1,12 @@
 use alloc::borrow::Cow;
+#[cfg(feature = "trace")]
 use alloc::format;
 use alloc::string::{String, ToString};
+#[cfg(feature = "trace")]
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::render::{DiagnosticIr, DiagnosticIrAttachment};
+use crate::render::DiagnosticIr;
 use crate::report::{AttachmentValue, ErrorCode};
 
 /// A generic value type used for Adapters (e.g., Tracing, OpenTelemetry).
@@ -94,8 +96,7 @@ impl DiagnosticIr<'_> {
         #[cfg(feature = "trace")]
         self.tracing_trace(&mut fields);
         self.tracing_causes(&mut fields);
-        self.tracing_context(&mut fields);
-        self.tracing_attachments(&mut fields);
+        self.tracing_stats(&mut fields);
 
         fields
     }
@@ -236,11 +237,6 @@ impl DiagnosticIr<'_> {
     }
 
     fn tracing_causes(&self, fields: &mut Vec<TracingField>) {
-        self.tracing_display(fields);
-        self.tracing_source(fields);
-    }
-
-    fn tracing_display(&self, fields: &mut Vec<TracingField>) {
         if let Some(display_causes) = &self.metadata.display_causes {
             fields.push(TracingField {
                 key: "display_causes.present".into(),
@@ -248,7 +244,7 @@ impl DiagnosticIr<'_> {
             });
             fields.push(TracingField {
                 key: "display_causes.count".into(),
-                value: AdapterValue::U64(display_causes.items.len() as u64),
+                value: AdapterValue::U64(display_causes.count as u64),
             });
             fields.push(TracingField {
                 key: "display_causes.truncated".into(),
@@ -258,21 +254,13 @@ impl DiagnosticIr<'_> {
                 key: "display_causes.cycle_detected".into(),
                 value: AdapterValue::Bool(display_causes.cycle_detected),
             });
-            for (idx, cause) in display_causes.items.iter().enumerate() {
-                fields.push(TracingField {
-                    key: format!("display_causes.{idx}.message").into(),
-                    value: AdapterValue::String(cause.to_string().into()),
-                });
-            }
         } else {
             fields.push(TracingField {
                 key: "display_causes.present".into(),
                 value: AdapterValue::Bool(false),
             });
         }
-    }
 
-    fn tracing_source(&self, fields: &mut Vec<TracingField>) {
         if let Some(source_errors) = &self.metadata.source_errors {
             fields.push(TracingField {
                 key: "source_errors.present".into(),
@@ -280,7 +268,7 @@ impl DiagnosticIr<'_> {
             });
             fields.push(TracingField {
                 key: "source_errors.count".into(),
-                value: AdapterValue::U64(source_errors.items.len() as u64),
+                value: AdapterValue::U64(source_errors.count as u64),
             });
             fields.push(TracingField {
                 key: "source_errors.truncated".into(),
@@ -290,12 +278,6 @@ impl DiagnosticIr<'_> {
                 key: "source_errors.cycle_detected".into(),
                 value: AdapterValue::Bool(source_errors.cycle_detected),
             });
-            for (idx, source) in source_errors.items.iter().enumerate() {
-                fields.push(TracingField {
-                    key: format!("source_errors.{idx}.message").into(),
-                    value: AdapterValue::String(source.to_string().into()),
-                });
-            }
         } else {
             fields.push(TracingField {
                 key: "source_errors.present".into(),
@@ -304,43 +286,30 @@ impl DiagnosticIr<'_> {
         }
     }
 
-    fn tracing_context(&self, fields: &mut Vec<TracingField>) {
-        for item in &self.context {
-            fields.push(TracingField {
-                key: format!("context.{}", item.key).into(),
-                value: AdapterValue::from(item.value),
-            });
-        }
-    }
-
-    fn tracing_attachments(&self, fields: &mut Vec<TracingField>) {
-        for (idx, item) in self.attachments.iter().enumerate() {
-            match item {
-                DiagnosticIrAttachment::Note { message } => fields.push(TracingField {
-                    key: format!("attachment.note.{idx}").into(),
-                    value: AdapterValue::String((*message).clone()),
-                }),
-                DiagnosticIrAttachment::Payload { name, value, .. } => fields.push(TracingField {
-                    key: format!("attachment.payload.{idx}.{name}").into(),
-                    value: AdapterValue::from(value),
-                }),
-            }
-        }
+    fn tracing_stats(&self, fields: &mut Vec<TracingField>) {
+        fields.push(TracingField {
+            key: "report.context_count".into(),
+            value: AdapterValue::U64(self.context_count as u64),
+        });
+        fields.push(TracingField {
+            key: "report.attachment_count".into(),
+            value: AdapterValue::U64(self.attachment_count as u64),
+        });
     }
 
     /// Converts the diagnostic IR to an OpenTelemetry envelope.
     pub fn to_otel_envelope(&self) -> OtelEnvelope {
         let mut attributes = Vec::new();
+        #[cfg(feature = "trace")]
         let mut events = Vec::new();
+        #[cfg(not(feature = "trace"))]
+        let events = Vec::new();
 
         self.otel_error(&mut attributes);
         self.otel_meta(&mut attributes);
         self.otel_stats(&mut attributes);
         #[cfg(feature = "trace")]
         self.otel_trace(&mut attributes);
-
-        self.otel_context(&mut attributes);
-        self.otel_attachments(&mut events);
         #[cfg(feature = "trace")]
         self.otel_trace_ev(&mut events);
 
@@ -399,10 +368,6 @@ impl DiagnosticIr<'_> {
             });
         }
 
-        self.otel_meta_causes(attributes);
-    }
-
-    fn otel_meta_causes(&self, attributes: &mut Vec<OtelAttribute>) {
         if let Some(display_causes) = &self.metadata.display_causes {
             attributes.push(OtelAttribute {
                 key: "display_causes.present".into(),
@@ -410,7 +375,7 @@ impl DiagnosticIr<'_> {
             });
             attributes.push(OtelAttribute {
                 key: "display_causes.count".into(),
-                value: AdapterValue::U64(display_causes.items.len() as u64),
+                value: AdapterValue::U64(display_causes.count as u64),
             });
             attributes.push(OtelAttribute {
                 key: "display_causes.truncated".into(),
@@ -434,7 +399,7 @@ impl DiagnosticIr<'_> {
             });
             attributes.push(OtelAttribute {
                 key: "source_errors.count".into(),
-                value: AdapterValue::U64(source_errors.items.len() as u64),
+                value: AdapterValue::U64(source_errors.count as u64),
             });
             attributes.push(OtelAttribute {
                 key: "source_errors.truncated".into(),
@@ -455,11 +420,11 @@ impl DiagnosticIr<'_> {
     fn otel_stats(&self, attributes: &mut Vec<OtelAttribute>) {
         attributes.push(OtelAttribute {
             key: "report.context_count".into(),
-            value: AdapterValue::U64(self.context.len() as u64),
+            value: AdapterValue::U64(self.context_count as u64),
         });
         attributes.push(OtelAttribute {
             key: "report.attachment_count".into(),
-            value: AdapterValue::U64(self.attachments.len() as u64),
+            value: AdapterValue::U64(self.attachment_count as u64),
         });
         #[cfg(feature = "trace")]
         if let Some(trace) = self.trace {
@@ -511,65 +476,6 @@ impl DiagnosticIr<'_> {
                 key: "trace.flags".into(),
                 value: AdapterValue::U64(flags as u64),
             });
-        }
-    }
-
-    fn otel_context(&self, attributes: &mut Vec<OtelAttribute>) {
-        for item in &self.context {
-            attributes.push(OtelAttribute {
-                key: format!("context.{}", item.key).into(),
-                value: AdapterValue::from(item.value),
-            });
-        }
-    }
-
-    fn otel_attachments(&self, events: &mut Vec<OtelEvent>) {
-        for (idx, item) in self.attachments.iter().enumerate() {
-            match item {
-                DiagnosticIrAttachment::Note { message } => events.push(OtelEvent {
-                    name: "report.attachment.note".into(),
-                    attributes: vec![
-                        OtelAttribute {
-                            key: "attachment.index".into(),
-                            value: AdapterValue::U64(idx as u64),
-                        },
-                        OtelAttribute {
-                            key: "attachment.message".into(),
-                            value: AdapterValue::String((*message).clone()),
-                        },
-                    ],
-                }),
-                DiagnosticIrAttachment::Payload {
-                    name,
-                    value,
-                    media_type,
-                } => {
-                    let mut event_attributes = vec![
-                        OtelAttribute {
-                            key: "attachment.index".into(),
-                            value: AdapterValue::U64(idx as u64),
-                        },
-                        OtelAttribute {
-                            key: "attachment.name".into(),
-                            value: AdapterValue::String((*name).clone()),
-                        },
-                        OtelAttribute {
-                            key: "attachment.value".into(),
-                            value: AdapterValue::from(value),
-                        },
-                    ];
-                    if let Some(media_type) = media_type {
-                        event_attributes.push(OtelAttribute {
-                            key: "attachment.media_type".into(),
-                            value: AdapterValue::String((*media_type).clone()),
-                        });
-                    }
-                    events.push(OtelEvent {
-                        name: "report.attachment.payload".into(),
-                        attributes: event_attributes,
-                    });
-                }
-            }
         }
     }
 

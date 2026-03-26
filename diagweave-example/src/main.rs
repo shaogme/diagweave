@@ -120,8 +120,8 @@ impl TracingExporterTrait for ConsoleExporter {
     fn export_ir(&self, ir: &DiagnosticIr) {
         let display_causes = ir.metadata.display_causes.as_ref();
         let source_errors = ir.metadata.source_errors.as_ref();
-        let display_cause_count = display_causes.map(|c| c.items.len()).unwrap_or(0);
-        let source_errors_count = source_errors.map(|c| c.items.len()).unwrap_or(0);
+        let display_cause_count = display_causes.map(|c| c.count).unwrap_or(0);
+        let source_errors_count = source_errors.map(|c| c.count).unwrap_or(0);
         println!(
             "[Tracing Exporter] error={}, severity={:?}, display_causes={}, source_errors={}, stack_trace={}",
             ir.error.message,
@@ -131,14 +131,16 @@ impl TracingExporterTrait for ConsoleExporter {
             ir.metadata.stack_trace.is_some()
         );
         if let Some(causes) = display_causes {
-            for (idx, cause) in causes.items.iter().enumerate() {
-                println!("  display_cause[{idx}] {}", cause);
-            }
+            println!(
+                "  display_causes: truncated={}, cycle_detected={}",
+                causes.truncated, causes.cycle_detected
+            );
         }
         if let Some(sources) = source_errors {
-            for (idx, source) in sources.items.iter().enumerate() {
-                println!("  source_errors[{idx}] {}", source);
-            }
+            println!(
+                "  source_errors: truncated={}, cycle_detected={}",
+                sources.truncated, sources.cycle_detected
+            );
         }
     }
 }
@@ -272,20 +274,38 @@ where
     println!("Severity: {:?}", ir.metadata.severity);
     println!("StackTrace Present: {}", ir.metadata.stack_trace.is_some());
     println!("Display Causes:");
-    if let Some(display_causes) = &ir.metadata.display_causes {
-        for (idx, cause) in display_causes.items.iter().enumerate() {
-            println!("  {}. {}", idx + 1, cause);
-        }
-    } else {
+    if ir.metadata.display_causes.is_none() {
         println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_display_causes(|cause| {
+            idx += 1;
+            println!("  {}. {}", idx, cause);
+            Ok(())
+        });
+        if let Some(summary) = &ir.metadata.display_causes {
+            println!(
+                "  summary: count={}, truncated={}, cycle_detected={}",
+                summary.count, summary.truncated, summary.cycle_detected
+            );
+        }
     }
     println!("Error Causes (Source Errors Chain):");
-    if let Some(source_errors) = &ir.metadata.source_errors {
-        for (idx, source) in source_errors.items.iter().enumerate() {
-            println!("  {}. {}", idx + 1, source);
-        }
-    } else {
+    if ir.metadata.source_errors.is_none() {
         println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_source_errors(|source| {
+            idx += 1;
+            println!("  {}. {}", idx, source);
+            Ok(())
+        });
+        if let Some(summary) = &ir.metadata.source_errors {
+            println!(
+                "  summary: count={}, truncated={}, cycle_detected={}",
+                summary.count, summary.truncated, summary.cycle_detected
+            );
+        }
     }
     println!();
 

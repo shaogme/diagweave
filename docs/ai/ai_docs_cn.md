@@ -365,12 +365,10 @@ fn process() -> Result<(), Report<io::Error>> {
 
 
 ### 诊断中间表示 (`DiagnosticIr`)
-渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。该 IR 会把上下文、附件和原因链保留为延迟借用视图。
+渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。该 IR 保留头部/元数据，并提供附件相关部分的聚合计数。
 ```rust
 use diagweave::render::{
-    DiagnosticIrAttachment, DiagnosticIrAttachments, DiagnosticIrContext,
-    DiagnosticIrContexts, DiagnosticIrDisplayCauseChain, DiagnosticIrError,
-    DiagnosticIrMetadata, DiagnosticIrSourceErrorChain,
+    DiagnosticIrError, DiagnosticIrMetadata,
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
@@ -384,16 +382,16 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
-    pub context: DiagnosticIrContexts<'a>,
-    pub attachments: DiagnosticIrAttachments<'a>,
+    pub context_count: usize,
+    pub attachment_count: usize,
 }
 ```
 
-`DiagnosticIrContexts` 和 `DiagnosticIrAttachments` 是基于借用的可迭代视图，而不是已经分配好的 `Vec`。
+逐项访问上下文/note/payload 由 `Report::visit_attachments(...)` 提供。
 
 这样使用：
 ```rust
-use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+use diagweave::render::ReportRenderOptions;
 
 # use diagweave::prelude::{AttachmentValue, Report};
 # #[derive(Debug)]
@@ -413,23 +411,12 @@ use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
 
 let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 
-let context_count = ir.context.len();
-for ctx in &ir.context {
-    println!("context {} = {}", ctx.key, ctx.value);
-}
-
-let attachment_count = ir.attachments.len();
-for attachment in &ir.attachments {
-    match attachment {
-        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
-        DiagnosticIrAttachment::Payload { name, value, media_type } => {
-            println!("payload {name} ({:?}): {value}", media_type);
-        }
-    }
-}
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIrContext` 是上下文项的借用结构体，`DiagnosticIrAttachment` 是 note/payload 项的借用结构体。`display_causes` / `source_errors` 则通过 `items` 暴露延迟借用链。
+`display_causes` / `source_errors` 以 `DiagnosticIrCauseChainSummary { count, truncated, cycle_detected }` 形式暴露。
 
 ### 用法示例
 ```rust
@@ -529,8 +516,8 @@ report.emit_tracing_with(&MyCustomExporter, options);
 | `ir.to_tracing_fields()` | `Vec<TracingField>`| 转换为 KV 形式的 Tracing/Logging 字段 |
 
 ### OTel 映射逻辑
-1. **Attributes (属性)**: 错误核心字段（消息、代码、类型）、严重程度、重试标记、上下文 KV 全量映射。
-2. **Events (事件)**: `Report` 中的 `Attachments` (Note/Payload) 和内部 `TraceEvent` 转换为 OTel 事件序列。
+1. **Attributes (属性)**: 错误核心字段（消息、代码、类型）、严重程度/重试标记、原因链摘要与报告计数映射。
+2. **Events (事件)**: `Report` 内部 `TraceEvent` 转换为 OTel 事件序列。
 3. **TraceContext**: TraceID 和 SpanID 自动填充到 Envelope 顶层。
 
 ---

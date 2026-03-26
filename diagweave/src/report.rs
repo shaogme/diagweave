@@ -43,6 +43,22 @@ enum SourceErrorIterStage {
     Done,
 }
 
+/// A streamed attachment item for visitor-based traversal.
+pub enum AttachmentVisit<'a> {
+    Context {
+        key: &'a Cow<'static, str>,
+        value: &'a AttachmentValue,
+    },
+    Note {
+        message: &'a Cow<'static, str>,
+    },
+    Payload {
+        name: &'a Cow<'static, str>,
+        value: &'a AttachmentValue,
+        media_type: Option<&'a Cow<'static, str>>,
+    },
+}
+
 /// Iterator over source errors with depth/cycle control.
 pub struct ReportSourceErrorIter<'a> {
     source_errors: core::slice::Iter<'a, Box<dyn Error + 'static>>,
@@ -209,6 +225,38 @@ impl<E> Report<E> {
             Some(diag) => &diag.attachments,
             None => &[],
         }
+    }
+
+    /// Visits attachments in insertion order without building intermediate allocations.
+    pub fn visit_attachments<F>(&self, mut visit: F) -> Result<(), fmt::Error>
+    where
+        F: FnMut(AttachmentVisit<'_>) -> fmt::Result,
+    {
+        let Some(diag) = self.diagnostics() else {
+            return Ok(());
+        };
+        for attachment in &diag.attachments {
+            match attachment {
+                Attachment::Context { key, value } => {
+                    visit(AttachmentVisit::Context { key, value })?;
+                }
+                Attachment::Note { message } => {
+                    visit(AttachmentVisit::Note { message })?;
+                }
+                Attachment::Payload {
+                    name,
+                    value,
+                    media_type,
+                } => {
+                    visit(AttachmentVisit::Payload {
+                        name,
+                        value,
+                        media_type: media_type.as_ref(),
+                    })?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Returns the display causes associated with the report.
@@ -648,18 +696,15 @@ where
         F: FnMut(&dyn Display) -> fmt::Result,
     {
         let mut state = CauseTraversalState::default();
-        let mut depth = 0usize;
         let Some(diag) = self.diagnostics() else {
             return Ok(state);
         };
-
-        for cause in &diag.display_causes {
+        for (depth, cause) in diag.display_causes.iter().enumerate() {
             if depth >= options.max_depth {
                 state.truncated = true;
                 break;
             }
             visit(cause.as_ref())?;
-            depth += 1;
         }
 
         Ok(state)

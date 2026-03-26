@@ -365,12 +365,10 @@ Converts `Report` with rich metadata into displayable strings or structured data
 
 
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
-Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure. The IR keeps context, attachments, and cause chains as lazy borrowed views.
+Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure. The IR keeps header/metadata plus aggregate counters for attachment-related sections.
 ```rust
 use diagweave::render::{
-    DiagnosticIrAttachment, DiagnosticIrAttachments, DiagnosticIrContext,
-    DiagnosticIrContexts, DiagnosticIrDisplayCauseChain, DiagnosticIrError,
-    DiagnosticIrMetadata, DiagnosticIrSourceErrorChain,
+    DiagnosticIrError, DiagnosticIrMetadata,
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
@@ -384,16 +382,16 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
-    pub context: DiagnosticIrContexts<'a>,
-    pub attachments: DiagnosticIrAttachments<'a>,
+    pub context_count: usize,
+    pub attachment_count: usize,
 }
 ```
 
-`DiagnosticIrContexts` and `DiagnosticIrAttachments` are borrowed iterable views over the report attachments, not materialized `Vec`s.
+Per-item context/note/payload traversal is exposed via `Report::visit_attachments(...)`.
 
 Use them like this:
 ```rust
-use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+use diagweave::render::ReportRenderOptions;
 
 # use diagweave::prelude::{AttachmentValue, Report};
 # #[derive(Debug)]
@@ -413,23 +411,12 @@ use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
 
 let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 
-let context_count = ir.context.len();
-for ctx in &ir.context {
-    println!("context {} = {}", ctx.key, ctx.value);
-}
-
-let attachment_count = ir.attachments.len();
-for attachment in &ir.attachments {
-    match attachment {
-        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
-        DiagnosticIrAttachment::Payload { name, value, media_type } => {
-            println!("payload {name} ({:?}): {value}", media_type);
-        }
-    }
-}
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIrContext` is the borrowed key/value shape for a context item, and `DiagnosticIrAttachment` is the borrowed shape for note/payload items. `display_causes` / `source_errors` expose lazy borrowed chains through `items`.
+`display_causes` / `source_errors` are exported as `DiagnosticIrCauseChainSummary { count, truncated, cycle_detected }`.
 
 ### Usage Example
 ```rust
@@ -529,8 +516,8 @@ report.emit_tracing_with(&MyCustomExporter, options);
 | `ir.to_tracing_fields()` | `Vec<TracingField>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
-1. **Attributes**: Core error fields (message, code, type), severity, retry flags, and all Context KV pairs are mapped.
-2. **Events**: `Attachments` (Note/Payload) and internal `TraceEvent` from `Report` are converted into OTel event sequences.
+1. **Attributes**: Core error fields (message, code, type), severity/retry flags, cause-chain summaries, and report-level counters are mapped.
+2. **Events**: Internal `TraceEvent` from `Report` is converted into OTel event sequences.
 3. **TraceContext**: TraceID and SpanID are automatically filled into the top level of the Envelope.
 
 ---

@@ -2,13 +2,13 @@ use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
 use crate::report::{
-    AttachmentValue, CauseCollectOptions, ErrorCode, Report, StackTrace,
+    AttachmentValue, AttachmentVisit, CauseCollectOptions, ErrorCode, Report, StackTrace,
 };
 
 #[cfg(feature = "trace")]
 use crate::report::{TraceContext, TraceEvent, TraceEventAttribute};
 
-use super::{AttachmentPayloadRef, ReportRenderOptions, ReportRenderer, dispatch_attachments};
+use super::{ReportRenderOptions, ReportRenderer};
 
 /// A renderer that outputs the diagnostic report in JSON format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,7 +51,6 @@ where
 {
     let pretty = options.json_pretty;
     let mut first = true;
-    let dispatched = dispatch_attachments(report.attachments());
 
     f.write_char('{')?;
     write_object_field(f, pretty, 0, &mut first, "schema_version", |f| {
@@ -70,10 +69,10 @@ where
         })?;
     }
     write_object_field(f, pretty, 0, &mut first, "context", |f| {
-        write_context_array(f, pretty, 1, &dispatched.contexts)
+        write_context_array(f, pretty, 1, report)
     })?;
     write_object_field(f, pretty, 0, &mut first, "attachments", |f| {
-        write_attachments_array(f, pretty, 1, &dispatched.notes, &dispatched.payloads)
+        write_attachments_array(f, pretty, 1, report)
     })?;
 
     if pretty && !first {
@@ -304,45 +303,63 @@ fn write_trace_attributes_array(
     close_array(f, pretty, depth, first)
 }
 
-fn write_context_array(
+fn write_context_array<E>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    contexts: &[(&alloc::borrow::Cow<'static, str>, &AttachmentValue)],
-) -> fmt::Result {
+    report: &Report<E>,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
     let mut first = true;
     f.write_char('[')?;
-    for (key, value) in contexts {
+    report.visit_attachments(|item| {
+        let AttachmentVisit::Context { key, value } = item else {
+            return Ok(());
+        };
         write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_object_with_key_value(f, pretty, depth + 1, key.as_ref(), value)?;
-    }
+        write_object_with_key_value(f, pretty, depth + 1, key.as_ref(), value)
+    })?;
     close_array(f, pretty, depth, first)
 }
 
-fn write_attachments_array(
+fn write_attachments_array<E>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    notes: &[&alloc::borrow::Cow<'static, str>],
-    payloads: &[AttachmentPayloadRef<'_>],
-) -> fmt::Result {
+    report: &Report<E>,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
     let mut first = true;
     f.write_char('[')?;
-    for message in notes {
-        write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_note_attachment_object(f, pretty, depth + 1, message.as_ref())?;
-    }
-    for payload in payloads {
-        write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_payload_attachment_object(
-            f,
-            pretty,
-            depth + 1,
-            payload.name.as_ref(),
-            payload.value,
-            payload.media_type.map(|m| m.as_ref()),
-        )?;
-    }
+    report.visit_attachments(|item| {
+        match item {
+            AttachmentVisit::Context { .. } => {}
+            AttachmentVisit::Note { message } => {
+                write_array_item_prefix(f, pretty, depth, &mut first)?;
+                write_note_attachment_object(f, pretty, depth + 1, message.as_ref())?;
+            }
+            AttachmentVisit::Payload {
+                name,
+                value,
+                media_type,
+            } => {
+                write_array_item_prefix(f, pretty, depth, &mut first)?;
+                write_payload_attachment_object(
+                    f,
+                    pretty,
+                    depth + 1,
+                    name.as_ref(),
+                    value,
+                    media_type.map(|m| m.as_ref()),
+                )?;
+            }
+        }
+        Ok(())
+    })?;
     close_array(f, pretty, depth, first)
 }
 
@@ -418,32 +435,35 @@ fn write_display_cause_chain_object(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     let display_causes = report.display_causes();
     if display_causes.is_empty() {
         return f.write_str("null");
     }
-    let item_count = core::cmp::min(display_causes.len(), options.max_source_depth);
-    let truncated = display_causes.len() > options.max_source_depth;
+    let traversal_options = CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let mut traversal_state = crate::report::CauseTraversalState::default();
 
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "items", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        for cause in display_causes.iter().take(item_count) {
+        traversal_state = report.visit_display_causes_with(traversal_options, |cause| {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            write_json_string_from_display(f, cause.as_ref())?;
-        }
+            write_json_string_from_display(f, cause)
+        })?;
         close_array(f, pretty, depth + 1, array_first)
     })?;
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
-        write!(f, "{truncated}")
+        write!(f, "{}", traversal_state.truncated)
     })?;
     write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
-        f.write_str("false")
+        write!(f, "{}", traversal_state.cycle_detected)
     })?;
     close_object(f, pretty, depth, first)
 }
@@ -452,7 +472,7 @@ fn write_source_error_chain_object(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     if report.source_errors().is_empty() && report.inner().source().is_none() {
@@ -463,20 +483,19 @@ fn write_source_error_chain_object(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let mut traversal = report.iter_source_errors_with(traversal_options);
+    let mut traversal_state = crate::report::CauseTraversalState::default();
 
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "items", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        for err in traversal.by_ref() {
+        traversal_state = report.visit_source_errors_with(traversal_options, |err| {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            write_source_error_object(f, pretty, depth + 2, err)?;
-        }
+            write_source_error_object(f, pretty, depth + 2, err)
+        })?;
         close_array(f, pretty, depth + 1, array_first)
     })?;
-    let traversal_state = traversal.state();
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
         write!(f, "{}", traversal_state.truncated)
     })?;
@@ -542,13 +561,13 @@ fn write_stack_frame_object(
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "symbol", |f| {
-        write_option_string(f, frame.symbol.as_ref().map(|s| s.as_str()))
+        write_option_string(f, frame.symbol.as_deref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "module_path", |f| {
-        write_option_string(f, frame.module_path.as_ref().map(|s| s.as_str()))
+        write_option_string(f, frame.module_path.as_deref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "file", |f| {
-        write_option_string(f, frame.file.as_ref().map(|s| s.as_str()))
+        write_option_string(f, frame.file.as_deref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "line", |f| match frame.line {
         Some(v) => write!(f, "{v}"),
@@ -641,17 +660,23 @@ fn write_scalar_attachment_value(
         AttachmentValue::String(v) => Some(write_kind_and_value(f, pretty, depth, "string", |f| {
             write_json_string(f, v.as_ref())
         })),
-        AttachmentValue::Integer(v) => Some(write_kind_and_value(f, pretty, depth, "integer", |f| {
-            write!(f, "{v}")
-        })),
-        AttachmentValue::Unsigned(v) => Some(write_kind_and_value(f, pretty, depth, "unsigned", |f| {
-            write!(f, "{v}")
-        })),
+        AttachmentValue::Integer(v) => {
+            Some(write_kind_and_value(f, pretty, depth, "integer", |f| {
+                write!(f, "{v}")
+            }))
+        }
+        AttachmentValue::Unsigned(v) => {
+            Some(write_kind_and_value(f, pretty, depth, "unsigned", |f| {
+                write!(f, "{v}")
+            }))
+        }
         AttachmentValue::Float(v) => {
             if !v.is_finite() {
                 Some(Err(fmt::Error))
             } else {
-                Some(write_kind_and_value(f, pretty, depth, "float", |f| write!(f, "{v}")))
+                Some(write_kind_and_value(f, pretty, depth, "float", |f| {
+                    write!(f, "{v}")
+                }))
             }
         }
         AttachmentValue::Bool(v) => Some(write_kind_and_value(f, pretty, depth, "bool", |f| {

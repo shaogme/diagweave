@@ -57,14 +57,14 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
         ir.metadata.error_code.as_ref().map(|c| c.to_string()),
         Some("API.UNAUTHORIZED".to_owned())
     );
-    assert_eq!(ir.context.len(), 1);
-    assert_eq!(ir.attachments.len(), 2);
+    assert_eq!(ir.context_count, 1);
+    assert_eq!(ir.attachment_count, 2);
     let display_causes = ir
         .metadata
         .display_causes
         .as_ref()
         .expect("display causes should exist");
-    assert_eq!(display_causes.items.len(), 2);
+    assert_eq!(display_causes.count, 2);
     assert!(!display_causes.truncated);
     assert!(!display_causes.cycle_detected);
 }
@@ -120,11 +120,15 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     assert!(tracing_fields.iter().any(|f| f.key == "error.code"));
     assert!(tracing_fields.iter().any(|f| f.key == "trace.trace_id"));
     assert!(tracing_fields.iter().any(|f| f.key == "trace.event.0.name"));
-    assert!(tracing_fields.iter().any(|f| f.key == "context.request_id"));
     assert!(
         tracing_fields
             .iter()
-            .any(|f| f.key.starts_with("attachment.payload."))
+            .any(|f| f.key == "report.context_count")
+    );
+    assert!(
+        tracing_fields
+            .iter()
+            .any(|f| f.key == "report.attachment_count")
     );
     assert!(
         tracing_fields
@@ -145,11 +149,6 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     );
     assert!(otel.attributes.iter().any(|a| a.key == "trace.event_count"));
     assert!(otel.events.iter().any(|e| e.name == "trace.event"));
-    assert!(
-        otel.events
-            .iter()
-            .any(|e| e.name == "report.attachment.payload")
-    );
 }
 
 #[cfg(feature = "tracing")]

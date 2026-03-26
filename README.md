@@ -348,10 +348,10 @@ let tracing_fields = ir.to_tracing_fields();
 let otel = ir.to_otel_envelope();
 ```
 
-`DiagnosticIrContexts` and `DiagnosticIrAttachments` are borrowed iterable views, so you can use them directly:
+`DiagnosticIr` keeps render-stable header/metadata plus aggregate counters:
 
 ```rust
-use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+use diagweave::render::ReportRenderOptions;
 
 # use diagweave::prelude::{AttachmentValue, Report};
 # #[derive(Debug)]
@@ -371,23 +371,12 @@ use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
 
 let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 
-let context_count = ir.context.len();
-for ctx in &ir.context {
-    println!("context {} = {}", ctx.key, ctx.value);
-}
-
-let attachment_count = ir.attachments.len();
-for attachment in &ir.attachments {
-    match attachment {
-        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
-        DiagnosticIrAttachment::Payload { name, value, media_type } => {
-            println!("payload {name} ({:?}): {value}", media_type);
-        }
-    }
-}
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIrContext` is the borrowed key/value shape for a context item, and `DiagnosticIrAttachment` is the borrowed shape for note/payload items.
+Use `Report::visit_attachments(...)` if you need streaming access to per-item context/note/payload entries.
 
 JSON renderer (`json` feature):
 

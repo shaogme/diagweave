@@ -348,10 +348,10 @@ let tracing_fields = ir.to_tracing_fields();
 let otel = ir.to_otel_envelope();
 ```
 
-`DiagnosticIrContexts` 和 `DiagnosticIrAttachments` 是基于借用的可迭代视图，可以直接这样用：
+`DiagnosticIr` 主要包含稳定的头部/元数据和聚合计数：
 
 ```rust
-use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
+use diagweave::render::ReportRenderOptions;
 
 # use diagweave::prelude::{AttachmentValue, Report};
 # #[derive(Debug)]
@@ -371,23 +371,12 @@ use diagweave::render::{DiagnosticIrAttachment, ReportRenderOptions};
 
 let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
 
-let context_count = ir.context.len();
-for ctx in &ir.context {
-    println!("context {} = {}", ctx.key, ctx.value);
-}
-
-let attachment_count = ir.attachments.len();
-for attachment in &ir.attachments {
-    match attachment {
-        DiagnosticIrAttachment::Note { message } => println!("note: {message}"),
-        DiagnosticIrAttachment::Payload { name, value, media_type } => {
-            println!("payload {name} ({:?}): {value}", media_type);
-        }
-    }
-}
+let context_count = ir.context_count;
+let attachment_count = ir.attachment_count;
+println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIrContext` 是上下文项的借用结构体，`DiagnosticIrAttachment` 是 note/payload 项的借用结构体。
+如果需要逐项流式读取上下文/note/payload，可使用 `Report::visit_attachments(...)`。
 
 JSON 渲染（`json` feature）：
 

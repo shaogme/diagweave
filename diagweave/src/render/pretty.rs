@@ -1,9 +1,9 @@
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::Report;
+use crate::report::{AttachmentVisit, Report};
 
-use super::{PrettyIndent, ReportRenderOptions, ReportRenderer, dispatch_attachments};
+use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
 
 /// A renderer that outputs the diagnostic report in a human-readable pretty format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -76,7 +76,7 @@ fn render_error_section(
 
 fn render_governance_section(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     let metadata = report.metadata();
@@ -188,7 +188,7 @@ fn render_gov_errors(
 #[cfg(feature = "trace")]
 fn render_trace_section(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     let Some(trace) = report.trace() else {
@@ -241,7 +241,7 @@ fn render_trace_section(
 
 fn render_stack_trace(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     let stack_trace = report.metadata().stack_trace.as_ref();
@@ -305,57 +305,74 @@ fn render_raw_stack_trace(
 
 fn render_attachment_sections(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    let dispatched = dispatch_attachments(report.attachments());
-
     if options.show_context_section {
-        if dispatched.contexts.is_empty() {
-            if options.show_empty_sections {
+        let mut wrote_header = false;
+        report.visit_attachments(|item| {
+            let AttachmentVisit::Context { key, value } = item else {
+                return Ok(());
+            };
+            if !wrote_header {
+                wrote_header = true;
                 writeln!(f, "Context:")?;
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- (none)")?;
             }
-        } else {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- {}: {}", key.as_ref(), value)
+        })?;
+        if !wrote_header && options.show_empty_sections {
             writeln!(f, "Context:")?;
-            for (key, value) in &dispatched.contexts {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- {}: {}", key.as_ref(), value)?;
-            }
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         }
     }
 
     if options.show_attachments_section {
-        if dispatched.notes.is_empty() && dispatched.payloads.is_empty() {
-            if options.show_empty_sections {
-                writeln!(f, "Attachments:")?;
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- (none)")?;
-            }
-        } else {
-            writeln!(f, "Attachments:")?;
-            for message in &dispatched.notes {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- note: {}", message.as_ref())?;
-            }
-            for payload in &dispatched.payloads {
-                write_indent(f, options.pretty_indent)?;
-                match payload.media_type {
-                    Some(media_type) => {
-                        writeln!(
-                            f,
-                            "- payload {} ({}): {}",
-                            payload.name.as_ref(),
-                            media_type.as_ref(),
-                            payload.value
-                        )?;
+        let mut wrote_header = false;
+        report.visit_attachments(|item| {
+            match item {
+                AttachmentVisit::Context { .. } => {}
+                AttachmentVisit::Note { message } => {
+                    if !wrote_header {
+                        wrote_header = true;
+                        writeln!(f, "Attachments:")?;
                     }
-                    None => {
-                        writeln!(f, "- payload {}: {}", payload.name.as_ref(), payload.value)?;
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- note: {}", message.as_ref())?;
+                }
+                AttachmentVisit::Payload {
+                    name,
+                    value,
+                    media_type,
+                } => {
+                    if !wrote_header {
+                        wrote_header = true;
+                        writeln!(f, "Attachments:")?;
+                    }
+                    write_indent(f, options.pretty_indent)?;
+                    match media_type {
+                        Some(media_type) => {
+                            writeln!(
+                                f,
+                                "- payload {} ({}): {}",
+                                name.as_ref(),
+                                media_type.as_ref(),
+                                value
+                            )?;
+                        }
+                        None => {
+                            writeln!(f, "- payload {}: {}", name.as_ref(), value)?;
+                        }
                     }
                 }
             }
+            Ok(())
+        })?;
+        if !wrote_header && options.show_empty_sections {
+            writeln!(f, "Attachments:")?;
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         }
     }
 
@@ -364,7 +381,7 @@ fn render_attachment_sections(
 
 fn render_display_causes(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     let traversal_options = crate::report::CauseCollectOptions {
@@ -372,7 +389,7 @@ fn render_display_causes(
         detect_cycle: options.detect_source_cycle,
     };
     let mut count = 0usize;
-    let traversal = report.for_each_display_cause_with(traversal_options, |cause| {
+    let traversal = report.visit_display_causes_with(traversal_options, |cause| {
         count += 1;
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "{}. {}", count, cause)
@@ -403,21 +420,19 @@ fn render_display_causes(
 
 fn render_source_errors(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
+    report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
     let traversal_options = crate::report::CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let mut iter = report.iter_source_errors_with(traversal_options);
     let mut count = 0usize;
-    for err in iter.by_ref() {
+    let traversal = report.visit_source_errors_with(traversal_options, |err| {
         count += 1;
         write_indent(f, options.pretty_indent)?;
-        writeln!(f, "{}. {}", count, err)?;
-    }
-    let traversal = iter.state();
+        writeln!(f, "{}. {}", count, err)
+    })?;
 
     if options.show_cause_chains_section
         && (options.show_empty_sections

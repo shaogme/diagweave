@@ -4,12 +4,10 @@ use core::fmt::{self, Debug, Display, Formatter};
 use crate::report::Attachment;
 
 use super::Report;
-use super::store::CauseStore;
 
-impl<E, C> Debug for Report<E, C>
+impl<E> Debug for Report<E>
 where
     E: Debug,
-    C: Debug + CauseStore,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         #[cfg(debug_assertions)]
@@ -28,12 +26,12 @@ where
                 }
                 #[cfg(feature = "trace")]
                 writeln!(f, "  - trace: {:?}", diag.trace)?;
-                writeln!(f, "  - cause_store: {:?}", diag.causes)?;
+                writeln!(f, "  - display_causes: {:?}", diag.display_causes)?;
             } else {
                 writeln!(f, "  - attachments: (none)")?;
                 #[cfg(feature = "trace")]
                 writeln!(f, "  - trace: (none)")?;
-                writeln!(f, "  - cause_store: (none)")?;
+                writeln!(f, "  - display_causes: (none)")?;
             }
             Ok(())
         }
@@ -47,10 +45,9 @@ where
     }
 }
 
-impl<E, C> Display for Report<E, C>
+impl<E> Display for Report<E>
 where
     E: Display,
-    C: CauseStore,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.inner())?;
@@ -85,10 +82,9 @@ where
     }
 }
 
-impl<E, C> Report<E, C>
+impl<E> Report<E>
 where
     E: Display,
-    C: CauseStore,
 {
     fn fmt_metadata_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
         let metadata = self.metadata();
@@ -168,10 +164,9 @@ where
     }
 }
 
-impl<E, C> Error for Report<E, C>
+impl<E> Error for Report<E>
 where
     E: Error + 'static,
-    C: CauseStore + core::fmt::Debug,
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()

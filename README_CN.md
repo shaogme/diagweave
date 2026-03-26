@@ -249,18 +249,17 @@ pub enum MyError {
 }
 ```
 
-支持 `#[display("...")]`、`#[display(transparent)]`、`#[from]`、`#[source]`，并可直接接入 `diag()` / `diag_with::<C>()`。
+支持 `#[display("...")]`、`#[display(transparent)]`、`#[from]`、`#[source]`，并可直接接入 `diag()`。
 
 ## `Report` 与链式 API
 
 从 `Result<T, E>` 转换：
 
 - `diag()`
-- `diag_with::<Store>()`
 - `diag_context(key, value)`
 - `diag_note(message)`
 
-常用链式增强（`Result<T, Report<E, C>>`）：
+常用链式增强（`Result<T, Report<E>>`）：
 
 - `with_context`、`with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
@@ -378,7 +377,7 @@ tracing 导出：
 - 自定义构造器前缀
 - 自定义 `ReportRenderer`
 - 自定义 `TracingExporterTrait`
-- `EventOnlyStore` / `LocalCauseStore`
+- 统一的展示原因列表
 - 手动与自动堆栈追踪
 - 全局注入器实现上下文/trace 注入
 

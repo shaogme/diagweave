@@ -51,7 +51,6 @@ set! {
 | `AuthError::user_not_found(id: u64)` | `AuthError` | Snake_case constructor |
 | `AuthError::user_not_found_report(id: u64)` | `Report<AuthError>` | Returns a report object containing the current error |
 | `AuthError::diag(self)` | `Report<AuthError>` | Convers error instance into a report |
-| `AuthError::diag_with<C>(self)` | `Report<AuthError, C>` | Create report using specified CauseStore |
 | `From<AuthError> for ServiceError` | `ServiceError` | Automatic mapping from subset to superset |
 
 ---
@@ -114,7 +113,6 @@ Any type deriving `Error` automatically gains the following helper methods:
 | Method Declaration | Return Type | Description |
 | :--- | :--- | :--- |
 | `pub fn diag(self)` | `Report<Self>` | Converts to a basic report object |
-| `pub fn diag_with<C>(self)` | `Report<Self, C>` | Converts to a report object with a specified Store |
 | `pub fn source(&self)` | `Option<&dyn Error>` | Convenient access to the underlying error source |
 
 ### Usage Example
@@ -137,24 +135,23 @@ enum FileError {
 
 ---
 
-## 4. `Report<E, C>` Diagnostic Report
+## 4. `Report<E>` Diagnostic Report
 
 ### Overview
 The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, display-cause chain, trace info). Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
 
 ### Declaration and Definition
 ```rust
-pub struct Report<E, C = DefaultCauseStore> {
+pub struct Report<E> {
     inner: E,
-    cold: Option<Box<ColdData<C>>>,
+    cold: Option<Box<ColdData>>,
 }
 ```
 
 ### Core Construction and Conversion
 | Method Declaration | Description |
 | :--- | :--- |
-| `Report::new(err: E)` | Creates a report using `DefaultCauseStore` |
-| `Report::new_with_store(err: E)` | Creates a report using a custom Store type |
+| `Report::new(err: E)` | Creates a report |
 | `report.inner()` | Gets a reference to the inner error |
 | `report.into_inner()` | Consumes the report and returns the original error |
 | `report.attachments()` | Returns a list of all associated attachments (`&[Attachment]`) |
@@ -217,16 +214,15 @@ let report = Report::new(MyError::Timeout)
 ## 5. `Result` Extension Traits (`Diagnostic` & `ReportResultExt`)
 
 ### Overview
-Provides pipelines for seamless diagnostic info injection on error paths by implementing extension traits for `Result<T, E>` and `Result<T, Report<E, C>>`.
+Provides pipelines for seamless diagnostic info injection on error paths by implementing extension traits for `Result<T, E>` and `Result<T, Report<E>>`.
 
 ### Core Traits
 #### 1. `Diagnostic` (on `Result<T, E>`)
 - `diag()`: Lifts `Err(E)` to `Err(Report<E>)`.
-- `diag_with<C>()`: Lifts using specific Store.
 - `diag_context(k, v)`: Lifts and injects context.
 - `diag_note(msg)`: Lifts and injects note.
 
-#### 2. `ReportResultExt` (on `Result<T, Report<E, C>>`)
+#### 2. `ReportResultExt` (on `Result<T, Report<E>>`)
 Proxy versions of all `Report` chained configuration methods:
 - **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
 - **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
@@ -254,17 +250,15 @@ fn process() -> Result<(), Report<io::Error>> {
 
 ---
 
-## 6. Cause Storage and Collection (`CauseStore`)
+## 6. Display Cause Collection
 
 ### Overview
 Manages the chain of triggers for a diagnostic. `diagweave` supports not only `std::error::Error` chains but also cross-thread/cross-process event messages.
 
-### Store Implementations
-| Type Name | Supported Cause Type | Description |
-| :--- | :--- | :--- |
-| `StdCauseStore` | `StdCause` | Default. Supports `Error(Box<dyn Error + Send + Sync>)`, `Event(String)`, `Group(Vec<StdCause>)` |
-| `LocalCauseStore` | `LocalCause` | Supports local error objects not meeting `Send/Sync` |
-| `EventOnlyStore` | `String` | Only stores string messages, completely discarding error type info |
+### Display Cause Data
+| Type Name | Description |
+| :--- | :--- |
+| `Vec<String>` | Stores display-cause messages directly; converted into display-cause chain metadata during rendering. |
 
 ### Core Data Conversion: `AttachmentValue`
 Strongly typed values supported by `Report` attachments, converted automatically from base types:

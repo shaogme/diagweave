@@ -38,9 +38,6 @@ pub(crate) fn generate_enum_impl(set: &ResolvedSet, options: &SetOptions) -> Res
             pub fn source(&self) -> ::core::option::Option<&(dyn ::core::error::Error + 'static)> {
                 <Self as ::core::error::Error>::source(self)
             }
-            pub fn diag_with<C>(self) -> ::diagweave::report::Report<Self, C> where C: ::diagweave::report::CauseStore {
-                ::diagweave::report::Report::<Self, C>::new_with_store(self)
-            }
         }
         impl ::core::fmt::Display for #enum_ident {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {

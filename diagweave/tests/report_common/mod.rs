@@ -22,7 +22,7 @@ pub use diagweave::report::GlobalContext;
 #[cfg(feature = "std")]
 pub use diagweave::report::register_global_injector;
 pub use diagweave::report::{
-    Attachment, AttachmentValue, CauseNode, ReportMetadata, StackTrace, StackTraceFormat,
+    Attachment, AttachmentValue, ReportMetadata, StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "tracing")]
 pub use diagweave::trace::TracingExporterTrait;

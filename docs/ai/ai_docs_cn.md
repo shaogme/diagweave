@@ -51,7 +51,6 @@ set! {
 | `AuthError::user_not_found(id: u64)` | `AuthError` | 蛇形命名构造器 |
 | `AuthError::user_not_found_report(id: u64)` | `Report<AuthError>` | 返回包含当前错误的报告对象 |
 | `AuthError::diag(self)` | `Report<AuthError>` | 将错误实例转换为报告 |
-| `AuthError::diag_with<C>(self)` | `Report<AuthError, C>` | 使用指定的 CauseStore 创建报告 |
 | `From<AuthError> for ServiceError` | `ServiceError` | 自动实现子集到超集的映射 |
 
 ---
@@ -114,7 +113,6 @@ union! {
 | 方法声明 | 返回类型 | 说明 |
 | :--- | :--- | :--- |
 | `pub fn diag(self)` | `Report<Self>` | 转换为基础报告对象 |
-| `pub fn diag_with<C>(self)` | `Report<Self, C>` | 指定 Store 转换为报告对象 |
 | `pub fn source(&self)` | `Option<&dyn Error>` | 便捷访问底层 Error 源 |
 
 ### 示例用法
@@ -137,24 +135,23 @@ enum FileError {
 
 ---
 
-## 4. `Report<E, C>` 诊断报告
+## 4. `Report<E>` 诊断报告
 
 ### 概览
 核心诊断容器，封装原始错误 `E` 并持有可选的“冷数据”（元数据、附件、展示原因链、追踪信息）。采用延迟分配策略，仅在添加辅助信息时才分配堆内存。
 
 ### 声明定义
 ```rust
-pub struct Report<E, C = DefaultCauseStore> {
+pub struct Report<E> {
     inner: E,
-    cold: Option<Box<ColdData<C>>>,
+    cold: Option<Box<ColdData>>,
 }
 ```
 
 ### 核心构造与转换
 | 方法声明 | 说明 |
 | :--- | :--- |
-| `Report::new(err: E)` | 使用默认 `DefaultCauseStore` 创建报告 |
-| `Report::new_with_store(err: E)` | 使用自定义类型的 Store 创建报告 |
+| `Report::new(err: E)` | 创建报告 |
 | `report.inner()` | 获取内部错误引用 |
 | `report.into_inner()` | 消费报告并返回原始错误 |
 | `report.attachments()` | 返回关联的所有附件列表 (`&[Attachment]`) |
@@ -217,16 +214,15 @@ let report = Report::new(MyError::Timeout)
 ## 5. `Result` 扩展特质 (`Diagnostic` & `ReportResultExt`)
 
 ### 概览
-通过为 `Result<T, E>` 和 `Result<T, Report<E, C>>` 实现扩展特质，提供在错误路径上无缝注入诊断信息的管道。
+通过为 `Result<T, E>` 和 `Result<T, Report<E>>` 实现扩展特质，提供在错误路径上无缝注入诊断信息的管道。
 
 ### 核心特质
 #### 1. `Diagnostic` (作用于 `Result<T, E>`)
 - `diag()`: 提升 `Err(E)` 为 `Err(Report<E>)`。
-- `diag_with<C>()`: 使用指定 Store 提升。
 - `diag_context(k, v)`: 提升并注入上下文。
 - `diag_note(msg)`: 提升并注入备注。
 
-#### 2. `ReportResultExt` (作用于 `Result<T, Report<E, C>>`)
+#### 2. `ReportResultExt` (作用于 `Result<T, Report<E>>`)
 所有 `Report` 的链式配置方法均有对应的代理版本：
 - **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
 - **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
@@ -254,17 +250,15 @@ fn process() -> Result<(), Report<io::Error>> {
 
 ---
 
-## 6. 原因存储与收集 (`CauseStore`)
+## 6. 展示原因收集
 
 ### 概览
 负责管理诊断发生的诱因链。`diagweave` 的优势在于它不仅支持 `std::error::Error` 链，还支持跨线程/跨进程的事件消息。
 
-### 存储器实现
-| 类型名 | 支持的 Cause 类型 | 说明 |
-| :--- | :--- | :--- |
-| `StdCauseStore` | `StdCause` | 默认。支持 `Error(Box<dyn Error + Send + Sync>)`, `Event(String)`, `Group(Vec<StdCause>)` |
-| `LocalCauseStore` | `LocalCause` | 支持不满足 `Send/Sync` 的本地错误对象 |
-| `EventOnlyStore` | `String` | 仅存储字符串消息，完全抛弃错误对象类型信息 |
+### 展示原因数据
+| 类型名 | 说明 |
+| :--- | :--- |
+| `Vec<String>` | 直接存储展示原因字符串，在渲染阶段转换为展示原因链元数据。 |
 
 ### 核心数据转换：`AttachmentValue`
 `Report` 附件支持的强类型值，支持自动从基础类型转换：

@@ -2,8 +2,6 @@
 mod ext;
 #[path = "report/impls.rs"]
 mod impls;
-#[path = "report/store.rs"]
-mod store;
 #[path = "report/types.rs"]
 mod types;
 
@@ -13,17 +11,13 @@ use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
-use core::fmt::{Debug, Display};
+use core::fmt::Display;
 #[cfg(feature = "std")]
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
 pub use ext::{Diagnostic, ReportResultExt};
-pub use store::{
-    CauseNode, CauseStore, DefaultCauseStore, DisplayCauseStore, EventCauseStore, EventOnlyStore,
-    LocalCause, LocalCauseStore, LocalErrorCauseStore, StdCause, StdCauseStore, StdErrorCauseStore,
-};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind,
     DisplayCauseChain, ReportMetadata, Severity, SourceError, SourceErrorChain, StackFrame,
@@ -33,39 +27,24 @@ pub use types::{
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
-pub struct Report<E, C = DefaultCauseStore> {
+pub struct Report<E> {
     inner: E,
-    cold: Option<Box<ColdData<C>>>,
+    cold: Option<Box<ColdData>>,
 }
 
 #[derive(Debug, Default)]
-struct ColdData<C> {
+struct ColdData {
     metadata: ReportMetadata,
-    diagnostics: DiagnosticBag<C>,
+    diagnostics: DiagnosticBag,
 }
 
-#[derive(Debug)]
-struct DiagnosticBag<C> {
+#[derive(Debug, Default)]
+struct DiagnosticBag {
     #[cfg(feature = "trace")]
     trace: ReportTrace,
     attachments: Vec<Attachment>,
-    causes: C,
+    display_causes: Vec<String>,
     source_errors: Vec<Box<dyn Error + 'static>>,
-}
-
-impl<C> Default for DiagnosticBag<C>
-where
-    C: Default,
-{
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "trace")]
-            trace: ReportTrace::default(),
-            attachments: Vec::new(),
-            causes: C::default(),
-            source_errors: Vec::new(),
-        }
-    }
 }
 
 const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
@@ -119,12 +98,9 @@ pub fn register_global_injector(
         .map_err(|_| RegisterGlobalContextError)
 }
 
-impl<E, C> Report<E, C>
-where
-    C: CauseStore,
-{
-    /// Creates a new report with the specified error and cause store.
-    pub fn new_with_store(inner: E) -> Self {
+impl<E> Report<E> {
+    /// Creates a new report.
+    pub fn new(inner: E) -> Self {
         #[cfg(feature = "std")]
         let mut report = Self { inner, cold: None };
         #[cfg(not(feature = "std"))]
@@ -171,22 +147,17 @@ where
         self.diagnostics().map(|diag| &diag.trace)
     }
 
-    /// Returns the cause store associated with the report, if any.
-    pub fn cause_store(&self) -> Option<&C> {
-        self.diagnostics().map(|diag| &diag.causes)
-    }
-
-    fn diagnostics(&self) -> Option<&DiagnosticBag<C>> {
+    fn diagnostics(&self) -> Option<&DiagnosticBag> {
         self.cold.as_ref().map(|cold| &cold.diagnostics)
     }
 
-    fn ensure_cold(&mut self) -> &mut ColdData<C> {
+    fn ensure_cold(&mut self) -> &mut ColdData {
         self.cold
             .get_or_insert_with(|| Box::new(ColdData::default()))
             .as_mut()
     }
 
-    fn diagnostics_mut(&mut self) -> &mut DiagnosticBag<C> {
+    fn diagnostics_mut(&mut self) -> &mut DiagnosticBag {
         &mut self.ensure_cold().diagnostics
     }
 
@@ -418,16 +389,10 @@ where
     }
 
     /// Adds a display cause to the report.
-    ///
-    /// Display causes are intended for diagnostic rendering, not for
-    /// error source propagation.
-    pub fn with_display_cause(mut self, cause: impl Display) -> Self
-    where
-        C: DisplayCauseStore,
-    {
+    pub fn with_display_cause(mut self, cause: impl Display) -> Self {
         self.diagnostics_mut()
-            .causes
-            .push(C::display_cause(cause.to_string()));
+            .display_causes
+            .push(cause.to_string());
         self
     }
 
@@ -436,13 +401,10 @@ where
     where
         I: IntoIterator<Item = T>,
         T: Display,
-        C: DisplayCauseStore,
     {
-        self.diagnostics_mut().causes.extend(
-            causes
-                .into_iter()
-                .map(|cause| C::display_cause(cause.to_string())),
-        );
+        self.diagnostics_mut()
+            .display_causes
+            .extend(causes.into_iter().map(|cause| cause.to_string()));
         self
     }
 
@@ -453,7 +415,7 @@ where
     }
 
     /// Wraps the report into another error type.
-    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, C>
+    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer>
     where
         Self: Error + 'static,
     {
@@ -466,7 +428,7 @@ where
                     #[cfg(feature = "trace")]
                     trace: ReportTrace::default(),
                     attachments: Vec::new(),
-                    causes: C::default(),
+                    display_causes: Vec::new(),
                     source_errors,
                 },
             })),
@@ -474,7 +436,7 @@ where
     }
 
     /// Wraps the report using a mapping function for the inner error.
-    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, C> {
+    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer> {
         let Self { inner, cold } = self;
         let outer = map(inner);
         Report { inner: outer, cold }
@@ -484,10 +446,19 @@ where
     where
         E: Error + 'static,
     {
-        match self.diagnostics() {
-            Some(diag) => diag.causes.collect(options),
-            None => CauseCollection::default(),
+        let mut state = CauseCollection::default();
+        let Some(diag) = self.diagnostics() else {
+            return state;
+        };
+
+        for cause in &diag.display_causes {
+            if state.messages.len() >= options.max_depth {
+                state.truncated = true;
+                break;
+            }
+            state.messages.push(alloc::format!("event: {cause}"));
         }
+        state
     }
 
     pub(crate) fn source_errors(&self, options: CauseCollectOptions) -> CauseCollection
@@ -499,7 +470,7 @@ where
         let mut seen = BTreeSet::<usize>::new();
         if let Some(diag) = self.diagnostics() {
             for err in &diag.source_errors {
-                store::collect_error_chain(
+                collect_error_chain(
                     Some(err.as_ref()),
                     options,
                     &mut state,
@@ -511,7 +482,7 @@ where
                 }
             }
         }
-        store::collect_error_chain(
+        collect_error_chain(
             self.inner.source(),
             options,
             &mut state,
@@ -522,9 +493,29 @@ where
     }
 }
 
-impl<E> Report<E, DefaultCauseStore> {
-    /// Creates a new report with the default cause store.
-    pub fn new(inner: E) -> Self {
-        Self::new_with_store(inner)
+fn collect_error_chain(
+    start: Option<&(dyn Error + 'static)>,
+    options: CauseCollectOptions,
+    state: &mut CauseCollection,
+    depth: &mut usize,
+    seen: &mut BTreeSet<usize>,
+) {
+    let mut current = start;
+    while let Some(err) = current {
+        if *depth >= options.max_depth {
+            state.truncated = true;
+            break;
+        }
+        if options.detect_cycle {
+            let ptr = (err as *const dyn Error) as *const ();
+            let addr = ptr as usize;
+            if !seen.insert(addr) {
+                state.cycle_detected = true;
+                break;
+            }
+        }
+        state.messages.push(err.to_string());
+        *depth += 1;
+        current = err.source();
     }
 }

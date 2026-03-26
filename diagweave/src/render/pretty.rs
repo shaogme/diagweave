@@ -6,7 +6,7 @@ use core::fmt::{self, Display, Formatter};
 use super::{
     DiagnosticIr, DiagnosticIrAttachment, PrettyIndent, ReportRenderOptions, ReportRenderer,
 };
-use crate::report::{CauseStore, Report};
+use crate::report::Report;
 
 /// A renderer that outputs the diagnostic report in a human-readable pretty format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -22,12 +22,11 @@ impl Pretty {
     }
 }
 
-impl<E, C> ReportRenderer<E, C> for Pretty
+impl<E> ReportRenderer<E> for Pretty
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
-    fn render(&self, report: &Report<E, C>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
         let ir = report.to_diagnostic_ir(self.options);
         let indent = pretty_indent(self.options.pretty_indent);
 

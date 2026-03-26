@@ -113,7 +113,7 @@ fn report_debug_is_pretty_like_in_debug_profile() {
     );
     assert!(debug_text.contains("Report:"));
     assert!(debug_text.contains("attachments:"));
-    assert!(debug_text.contains("cause_store:"));
+    assert!(debug_text.contains("display_causes:"));
 }
 
 #[test]

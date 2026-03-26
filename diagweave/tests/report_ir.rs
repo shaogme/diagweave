@@ -13,10 +13,8 @@ fn cause_tree_supports_multiple_sources_and_events() {
     let report = Report::new(ApiError::Unauthorized)
         .with_display_cause(AuthError::InvalidToken)
         .with_display_cause("request was retried")
-        .with_display_cause(CauseNode::group([
-            CauseNode::event("fallback cache missed"),
-            CauseNode::error(ApiError::Wrapped { code: 502 }),
-        ]));
+        .with_display_cause("fallback cache missed")
+        .with_display_cause(ApiError::Wrapped { code: 502 });
 
     let pretty = report.pretty().to_string();
     assert!(pretty.contains("auth invalid token"));

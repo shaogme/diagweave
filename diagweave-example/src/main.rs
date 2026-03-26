@@ -9,7 +9,7 @@ use diagweave::prelude::{
 use diagweave::render::{
     DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION, ReportJsonDocument,
 };
-use diagweave::report::{EventOnlyStore, LocalCauseStore, StackTrace, StackTraceFormat};
+use diagweave::report::{StackTrace, StackTraceFormat};
 use diagweave::trace::TracingExporterTrait;
 
 // =============================================================================
@@ -215,10 +215,9 @@ fn api_handler(request_id: &str) -> Result<String, Report<ApiError>> {
     Ok("Success".into())
 }
 
-fn print_render_outputs<E, C>(report: &Report<E, C>)
+fn print_render_outputs<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
-    C: diagweave::report::CauseStore,
 {
     println!("--- Compact Rendering ---");
     println!("{}\n", report.render(Compact));
@@ -264,10 +263,9 @@ where
     println!("{}\n", report.render(Pretty::new(lean_pretty_opts)));
 }
 
-fn print_ir_and_adapters<E, C>(report: &Report<E, C>)
+fn print_ir_and_adapters<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
-    C: diagweave::report::CauseStore,
 {
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     println!("--- Diagnostic IR (Metadata) ---");
@@ -306,22 +304,15 @@ where
 }
 
 fn demo_specialized_stores() {
-    println!("--- Specialized Cause Stores ---");
+    println!("--- Unified Display Causes ---");
 
-    let event_report: Report<BaseError, EventOnlyStore> =
-        Result::<(), _>::Err(BaseError::not_found("item_1".into()))
-            .diag_with::<EventOnlyStore>()
-            .with_display_cause("cache invalidated")
-            .with_display_cause(io::Error::other("hardware failure"))
-            .expect_err("demo");
-    println!("EventOnlyStore Report:\n{}\n", event_report.pretty());
-
-    let local_report: Report<BaseError, LocalCauseStore> =
-        Result::<(), _>::Err(BaseError::Timeout(3000))
-            .diag_with::<LocalCauseStore>()
-            .with_note("local processing delayed")
-            .expect_err("demo");
-    println!("LocalCauseStore Report:\n{}\n", local_report.pretty());
+    let report = Result::<(), _>::Err(BaseError::not_found("item_1".into()))
+        .diag()
+        .with_display_cause("cache invalidated")
+        .with_display_cause(io::Error::other("hardware failure"))
+        .with_note("local processing delayed")
+        .expect_err("demo");
+    println!("Report:\n{}\n", report.pretty());
 }
 
 fn demo_manual_stack_trace() {

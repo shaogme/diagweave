@@ -7,8 +7,8 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    AttachmentValue, CauseStore, DisplayCauseChain, Report, Severity, SourceError,
-    SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
+    AttachmentValue, DisplayCauseChain, Report, Severity, SourceError, SourceErrorChain,
+    StackFrame, StackTrace, StackTraceFormat,
 };
 
 use super::{DiagnosticIr, DiagnosticIrAttachment, ReportRenderOptions, ReportRenderer};
@@ -302,24 +302,22 @@ impl From<DiagnosticIr> for ReportJsonDocument {
     }
 }
 
-impl<E, C> ReportRenderer<E, C> for Json
+impl<E> ReportRenderer<E> for Json
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
-    fn render(&self, report: &Report<E, C>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
         render_json(report, self.options, f)
     }
 }
 
-fn render_json<E, C>(
-    report: &Report<E, C>,
+fn render_json<E>(
+    report: &Report<E>,
     options: ReportRenderOptions,
     f: &mut Formatter<'_>,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
     let node: ReportJsonDocument = report.to_diagnostic_ir(options).into();
     let encoded = if options.json_pretty {

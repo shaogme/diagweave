@@ -249,18 +249,17 @@ pub enum MyError {
 }
 ```
 
-Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `diag()` / `diag_with::<C>()` integration.
+Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `diag()` integration.
 
 ## `Report` and chain APIs
 
 From `Result<T, E>`:
 
 - `diag()`
-- `diag_with::<Store>()`
 - `diag_context(key, value)`
 - `diag_note(message)`
 
-Common enrichers on `Result<T, Report<E, C>>`:
+Common enrichers on `Result<T, Report<E>>`:
 
 - `with_context`, `with_note`, `with_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
@@ -378,7 +377,7 @@ See [`diagweave-example/src/main.rs`](diagweave-example/src/main.rs) for a runna
 - custom constructor prefixes
 - custom `ReportRenderer`
 - custom `TracingExporterTrait`
-- `EventOnlyStore` / `LocalCauseStore`
+- unified display causes list
 - manual and captured stack trace
 - global injector for context/trace propagation
 

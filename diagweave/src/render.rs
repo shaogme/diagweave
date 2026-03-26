@@ -15,9 +15,8 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseStore,
-    DefaultCauseStore, DisplayCauseChain, Report, ReportMetadata, Severity, SourceError,
-    SourceErrorChain, StackTrace,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, DisplayCauseChain, Report,
+    ReportMetadata, Severity, SourceError, SourceErrorChain, StackTrace,
 };
 
 pub use pretty::Pretty;
@@ -33,44 +32,27 @@ pub use json::{
 /// Options for rendering a diagnostic report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReportRenderOptions {
-    /// Maximum depth for traversing cause chains.
     pub max_source_depth: usize,
-    /// Whether to detect and stop on cycles in cause chains.
     pub detect_source_cycle: bool,
-    /// Indentation style for pretty rendering.
     pub pretty_indent: PrettyIndent,
-    /// Whether to show the type name of the error.
     pub show_type_name: bool,
-    /// Whether to show sections that are empty.
     pub show_empty_sections: bool,
-    /// Whether to show the governance section.
     pub show_governance_section: bool,
-    /// Whether to show the trace section.
     pub show_trace_section: bool,
-    /// Whether to show the stack trace section.
     pub show_stack_trace_section: bool,
-    /// Whether to show the context section.
     pub show_context_section: bool,
-    /// Whether to show the attachments section.
     pub show_attachments_section: bool,
-    /// Whether to show the causes section.
     pub show_cause_chains_section: bool,
-    /// Maximum number of lines to show for a raw stack trace.
     pub stack_trace_max_lines: usize,
-    /// Whether to include the raw stack trace if frames are missing.
     pub stack_trace_include_raw: bool,
-    /// Whether to include individual stack frames.
     pub stack_trace_include_frames: bool,
-    /// Whether to use pretty-printing for JSON output.
     pub json_pretty: bool,
 }
 
 /// Indentation style for pretty rendering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrettyIndent {
-    /// Use a fixed number of spaces.
     Spaces(u8),
-    /// Use a tab character.
     Tab,
 }
 
@@ -97,112 +79,83 @@ impl Default for ReportRenderOptions {
 }
 
 /// A trait for rendering a diagnostic report using a specific format.
-pub trait ReportRenderer<E, C = DefaultCauseStore>
-where
-    C: CauseStore,
-{
-    /// Renders the report to the given formatter.
-    fn render(&self, report: &Report<E, C>, f: &mut Formatter<'_>) -> fmt::Result;
+pub trait ReportRenderer<E> {
+    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result;
 }
 
-/// Error information for building diagnostic IR.
+/// Error information in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticIrError {
-    /// The formatted error message.
     pub message: String,
-    /// The type name of the error.
     pub r#type: String,
 }
 
-/// Metadata for building diagnostic IR.
+/// Metadata information in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticIrMetadata {
-    /// An optional error code.
     pub error_code: Option<String>,
-    /// The severity of the error.
     pub severity: Option<Severity>,
-    /// The category of the error.
     pub category: Option<String>,
-    /// Whether the error is retryable.
     pub retryable: Option<bool>,
-    /// The stack trace if available.
     pub stack_trace: Option<StackTrace>,
-    /// The display cause chain if available.
     pub display_causes: Option<DisplayCauseChain>,
-    /// The error source chain if available.
     pub source_errors: Option<SourceErrorChain>,
 }
 
-/// A context item in the diagnostic IR.
+/// Context item in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosticIrContext {
-    /// The key of the context item.
     pub key: String,
-    /// The value of the context item.
     pub value: AttachmentValue,
 }
 
-/// An attachment in the diagnostic IR.
+/// Attachment in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosticIrAttachment {
-    /// A simple text note.
     Note {
-        /// The message of the note.
         message: String,
     },
-    /// A named payload with an optional media type.
     Payload {
-        /// The name of the payload.
         name: String,
-        /// The value of the payload.
         value: AttachmentValue,
-        /// The optional media type of the payload.
         media_type: Option<String>,
     },
 }
 
-/// An intermediate representation of a diagnostic report, suitable for rendering.
+/// A platform-agnostic intermediate representation of a diagnostic report.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosticIr {
-    /// Basic error information.
     pub error: DiagnosticIrError,
-    /// Metadata about the error.
     pub metadata: DiagnosticIrMetadata,
-    /// Trace information if enabled.
     #[cfg(feature = "trace")]
     pub trace: ReportTrace,
-    /// Context key-value pairs.
     pub context: Vec<DiagnosticIrContext>,
-    /// Attachments associated with the report.
     pub attachments: Vec<DiagnosticIrAttachment>,
 }
 
-/// A compact renderer that uses the default `Display` implementation of the error.
+/// A renderer that produces a compact display of the report.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Compact;
 
-impl<E, C> Report<E, C>
-where
-    C: CauseStore,
-{
-    /// Wraps the report for compact rendering.
-    pub fn compact(&self) -> RenderedReport<'_, E, C, Compact> {
+impl<E> Report<E> {
+    /// Returns a renderer for compact output.
+    pub fn compact(&self) -> RenderedReport<'_, E, Compact> {
         self.render(Compact)
     }
 
-    /// Wraps the report for pretty rendering.
-    pub fn pretty(&self) -> RenderedReport<'_, E, C, Pretty> {
+    /// Returns a renderer for pretty-printed output.
+    pub fn pretty(&self) -> RenderedReport<'_, E, Pretty> {
         self.render(Pretty::default())
     }
 
-    /// Wraps the report for JSON rendering.
+    /// Returns a renderer for JSON output.
     #[cfg(feature = "json")]
-    pub fn json(&self) -> RenderedReport<'_, E, C, Json> {
+    pub fn json(&self) -> RenderedReport<'_, E, Json> {
         self.render(Json::default())
     }
 
-    /// Wraps the report with a specific renderer.
-    pub fn render<R>(&self, renderer: R) -> RenderedReport<'_, E, C, R> {
+    /// Returns a renderer for the given renderer implementation.
+    pub fn render<R>(&self, renderer: R) -> RenderedReport<'_, E, R> {
         RenderedReport {
             report: self,
             renderer,
@@ -224,12 +177,11 @@ impl From<&ReportMetadata> for DiagnosticIrMetadata {
     }
 }
 
-impl<E, C> Report<E, C>
+impl<E> Report<E>
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
-    /// Converts the report to a diagnostic intermediate representation.
+    /// Converts the report to a platform-agnostic intermediate representation.
     pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr {
         let display_cause_collection = self.display_causes(CauseCollectOptions {
             max_depth: options.max_source_depth,
@@ -327,28 +279,23 @@ fn to_source_errors(collection: &CauseCollection) -> Option<SourceErrorChain> {
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.
-pub struct RenderedReport<'a, E, C, R>
-where
-    C: CauseStore,
-{
-    report: &'a Report<E, C>,
+pub struct RenderedReport<'a, E, R> {
+    report: &'a Report<E>,
     renderer: R,
 }
 
-impl<E, C> ReportRenderer<E, C> for Compact
+impl<E> ReportRenderer<E> for Compact
 where
     E: Display,
-    C: CauseStore,
 {
-    fn render(&self, report: &Report<E, C>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{report}")
     }
 }
 
-impl<E, C, R> Display for RenderedReport<'_, E, C, R>
+impl<E, R> Display for RenderedReport<'_, E, R>
 where
-    C: CauseStore,
-    R: ReportRenderer<E, C>,
+    R: ReportRenderer<E>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.renderer.render(self.report, f)

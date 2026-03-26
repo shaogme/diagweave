@@ -43,8 +43,8 @@ pub mod render {
 pub mod report {
     pub use crate::report_impl::{
         Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind, Diagnostic,
-        DisplayCauseChain, GlobalContext, Report, ReportMetadata, ReportResultExt, Severity,
-        SourceError, SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
+        DisplayCauseChain, ErrorCode, GlobalContext, Report, ReportMetadata, ReportResultExt,
+        Severity, SourceError, SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};

@@ -7,7 +7,7 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    AttachmentValue, DisplayCauseChain, Report, Severity, SourceError, SourceErrorChain,
+    AttachmentValue, DisplayCauseChain, ErrorCode, Report, Severity, SourceError, SourceErrorChain,
     StackFrame, StackTrace, StackTraceFormat,
 };
 
@@ -41,7 +41,7 @@ pub struct ReportJsonError {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonMetadata {
     /// An optional error code.
-    pub error_code: Option<String>,
+    pub error_code: Option<ErrorCode>,
     /// The severity of the error.
     pub severity: Option<Severity>,
     /// The category of the error.

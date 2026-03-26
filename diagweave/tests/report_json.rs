@@ -50,7 +50,7 @@ fn render_format_supports_compact_pretty_and_json() {
         let parsed: ReportJsonDocument = serde_json::from_str(&json).expect("json schema shape");
         assert_eq!(parsed.schema_version, REPORT_JSON_SCHEMA_VERSION);
         assert_eq!(parsed.error.message, "api unauthorized");
-        assert_eq!(parsed.metadata.error_code.as_deref(), None);
+        assert_eq!(parsed.metadata.error_code, None);
         assert!(parsed.metadata.retryable.is_none());
         assert!(parsed.metadata.stack_trace.is_none());
         assert!(parsed.metadata.display_causes.is_none());
@@ -90,8 +90,8 @@ fn json_document_carries_metadata_and_structured_attachments() {
     let parsed: ReportJsonDocument = serde_json::from_str(&json).expect("json schema shape");
 
     assert_eq!(
-        parsed.metadata.error_code.as_deref(),
-        Some("API.UNAUTHORIZED")
+        parsed.metadata.error_code.as_ref().map(|c| c.to_string()),
+        Some("API.UNAUTHORIZED".to_owned())
     );
     assert_eq!(parsed.metadata.severity, Some(Severity::Error));
     assert_eq!(parsed.metadata.category.as_deref(), Some("auth"));

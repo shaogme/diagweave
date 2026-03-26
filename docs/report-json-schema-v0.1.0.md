@@ -10,7 +10,7 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 
 - `schema_version: string` (const: `v0.1.0`)
 - `error: { message: string, type: string }`
-- `metadata: { error_code: string|null, severity: "debug"|"info"|"warn"|"error"|"fatal"|null, category: string|null, retryable: boolean|null, stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, source_errors: SourceErrorChain|null }`
+- `metadata: { error_code: string|integer|null, severity: "debug"|"info"|"warn"|"error"|"fatal"|null, category: string|null, retryable: boolean|null, stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, source_errors: SourceErrorChain|null }`
 - `trace: { context: TraceContext, events: TraceEvent[] }`
 - `context: Array<{ key: string, value: AttachmentValue }>`
 - `attachments: Array<Note|Payload>`

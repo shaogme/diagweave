@@ -29,7 +29,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_metadata(ReportMetadata {
-            error_code: Some("API.UNAUTHORIZED".to_owned()),
+            error_code: Some("API.UNAUTHORIZED".into()),
             severity: Some(Severity::Error),
             category: Some("auth".to_owned()),
             retryable: Some(false),
@@ -53,7 +53,10 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     assert_eq!(ir.error.message, "api unauthorized");
     assert!(!ir.error.r#type.is_empty());
-    assert_eq!(ir.metadata.error_code.as_deref(), Some("API.UNAUTHORIZED"));
+    assert_eq!(
+        ir.metadata.error_code.as_ref().map(|c| c.to_string()),
+        Some("API.UNAUTHORIZED".to_owned())
+    );
     assert_eq!(ir.context.len(), 1);
     assert_eq!(ir.attachments.len(), 2);
     let display_causes = ir

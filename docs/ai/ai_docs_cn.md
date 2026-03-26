@@ -179,8 +179,8 @@ pub struct Report<E> {
 | `with_note` / `attach_printable` | `impl Display` | 添加备注或解决建议 |
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<String>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
-| `with_error_code` | `impl Into<String>` | 设置稳定的错误代码 (如 "E001") |
-| `with_category` | `impl Into<String>` | 设置错误分类 (用于监控指标) |
+| `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
+| `with_category` | `impl Into<ErrorCode>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
 | `with_display_cause` | `impl Display` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因字符串 |

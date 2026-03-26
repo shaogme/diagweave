@@ -1,7 +1,7 @@
 use alloc::string::String;
 use core::fmt::Display;
 
-use super::{AttachmentValue, Report, ReportMetadata, Severity, StackTrace};
+use super::{AttachmentValue, ErrorCode, Report, ReportMetadata, Severity, StackTrace};
 #[cfg(feature = "trace")]
 use super::{ReportTrace, TraceEvent, TraceEventAttribute, TraceEventLevel};
 use core::error::Error;
@@ -114,7 +114,7 @@ pub trait ReportResultExt<T, E> {
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
     ) -> Result<T, Report<E>>;
 
-    fn with_error_code(self, error_code: impl Into<String>) -> Result<T, Report<E>>;
+    fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E>>;
 
     fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E>>;
 
@@ -265,7 +265,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         })
     }
 
-    fn with_error_code(self, error_code: impl Into<String>) -> Result<T, Report<E>> {
+    fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E>> {
         let error_code = error_code.into();
         self.map_err(|report| report.with_error_code(error_code))
     }

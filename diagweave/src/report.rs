@@ -20,8 +20,8 @@ use std::sync::OnceLock;
 pub use ext::{Diagnostic, ReportResultExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind,
-    DisplayCauseChain, ReportMetadata, Severity, SourceError, SourceErrorChain, StackFrame,
-    StackTrace, StackTraceFormat,
+    DisplayCauseChain, ErrorCode, ReportMetadata, Severity, SourceError, SourceErrorChain,
+    StackFrame, StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
@@ -337,7 +337,7 @@ impl<E> Report<E> {
     }
 
     /// Sets the error code for the report.
-    pub fn with_error_code(mut self, error_code: impl Into<alloc::string::String>) -> Self {
+    pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
         self.ensure_cold().metadata.error_code = Some(error_code.into());
         self
     }

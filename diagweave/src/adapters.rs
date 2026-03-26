@@ -5,7 +5,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::render::{DiagnosticIr, DiagnosticIrAttachment};
-use crate::report::AttachmentValue;
+use crate::report::{AttachmentValue, ErrorCode};
 
 /// A generic value type used for Adapters (e.g., Tracing, OpenTelemetry).
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +43,15 @@ impl From<&AttachmentValue> for AdapterValue {
             | AttachmentValue::Object(_)
             | AttachmentValue::Bytes(_)
             | AttachmentValue::Redacted { .. } => Self::String(value.to_string()),
+        }
+    }
+}
+
+impl From<&ErrorCode> for AdapterValue {
+    fn from(value: &ErrorCode) -> Self {
+        match value {
+            ErrorCode::Integer(v) => Self::I64(*v),
+            ErrorCode::String(v) => Self::String(v.clone()),
         }
     }
 }
@@ -106,7 +115,7 @@ impl DiagnosticIr {
         if let Some(error_code) = &self.metadata.error_code {
             fields.push(TracingField {
                 key: "error.code".to_owned(),
-                value: AdapterValue::String(error_code.clone()),
+                value: AdapterValue::from(error_code),
             });
         }
         if let Some(severity) = self.metadata.severity {
@@ -345,7 +354,7 @@ impl DiagnosticIr {
         if let Some(error_code) = &self.metadata.error_code {
             attributes.push(OtelAttribute {
                 key: "error.code".to_owned(),
-                value: AdapterValue::String(error_code.clone()),
+                value: AdapterValue::from(error_code),
             });
         }
         if let Some(severity) = self.metadata.severity {

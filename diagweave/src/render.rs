@@ -15,8 +15,8 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, DisplayCauseChain, Report,
-    ReportMetadata, Severity, SourceError, SourceErrorChain, StackTrace,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, DisplayCauseChain,
+    ErrorCode, Report, ReportMetadata, Severity, SourceError, SourceErrorChain, StackTrace,
 };
 
 pub use pretty::Pretty;
@@ -93,7 +93,7 @@ pub struct DiagnosticIrError {
 /// Metadata information in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticIrMetadata {
-    pub error_code: Option<String>,
+    pub error_code: Option<ErrorCode>,
     pub severity: Option<Severity>,
     pub category: Option<String>,
     pub retryable: Option<bool>,

@@ -260,7 +260,13 @@
       "additionalProperties": false,
       "required": ["error_code", "severity", "category", "retryable", "stack_trace", "display_causes", "source_errors"],
       "properties": {
-        "error_code": { "type": ["string", "null"] },
+        "error_code": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "integer" },
+            { "type": "null" }
+          ]
+        },
         "severity": {
           "oneOf": [
             { "$ref": "#/$defs/severity" },

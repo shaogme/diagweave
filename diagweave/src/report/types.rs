@@ -28,10 +28,84 @@ impl Display for Severity {
     }
 }
 
+/// An error code that can be either an integer or a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(untagged))]
+pub enum ErrorCode {
+    /// An integer error code.
+    Integer(i64),
+    /// A string error code.
+    String(String),
+}
+
+impl Display for ErrorCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Integer(v) => write!(f, "{v}"),
+            Self::String(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+impl From<i8> for ErrorCode {
+    fn from(v: i8) -> Self {
+        Self::Integer(v as i64)
+    }
+}
+
+impl From<i16> for ErrorCode {
+    fn from(v: i16) -> Self {
+        Self::Integer(v as i64)
+    }
+}
+
+impl From<i32> for ErrorCode {
+    fn from(v: i32) -> Self {
+        Self::Integer(v as i64)
+    }
+}
+
+impl From<i64> for ErrorCode {
+    fn from(v: i64) -> Self {
+        Self::Integer(v)
+    }
+}
+
+impl From<u8> for ErrorCode {
+    fn from(v: u8) -> Self {
+        Self::Integer(v as i64)
+    }
+}
+
+impl From<u16> for ErrorCode {
+    fn from(v: u16) -> Self {
+        Self::Integer(v as i64)
+    }
+}
+
+impl From<u32> for ErrorCode {
+    fn from(v: u32) -> Self {
+        Self::Integer(v as i64)
+    }
+}
+
+impl From<String> for ErrorCode {
+    fn from(v: String) -> Self {
+        Self::String(v)
+    }
+}
+
+impl From<&str> for ErrorCode {
+    fn from(v: &str) -> Self {
+        Self::String(v.to_owned())
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReportMetadata {
-    pub error_code: Option<String>,
+    pub error_code: Option<ErrorCode>,
     pub severity: Option<Severity>,
     pub category: Option<String>,
     pub retryable: Option<bool>,

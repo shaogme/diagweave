@@ -43,8 +43,8 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     );
     assert!(report.attachments()[2].as_payload().is_some());
     assert_eq!(
-        report.metadata().error_code.as_deref(),
-        Some("AUTH.INVALID_TOKEN")
+        report.metadata().error_code.as_ref().map(|c| c.to_string()),
+        Some("AUTH.INVALID_TOKEN".to_owned())
     );
     assert_eq!(
         report.to_string(),

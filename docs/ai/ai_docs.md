@@ -179,8 +179,8 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_note` / `attach_printable` | `impl Display` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<String>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
-| `with_error_code` | `impl Into<String>` | Set stable error code (e.g., "E001") |
-| `with_category` | `impl Into<String>` | Set error category (for monitoring metrics) |
+| `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
+| `with_category` | `impl Into<ErrorCode>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |

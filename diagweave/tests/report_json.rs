@@ -39,6 +39,7 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(json.contains("\"v0.1.0\""));
         assert!(json.contains("\"error\""));
         assert!(json.contains("\"metadata\""));
+        assert!(json.contains("\"diagnostic_bag\""));
         #[cfg(feature = "trace")]
         assert!(json.contains("\"trace\""));
         assert!(json.contains("\"context\""));
@@ -52,9 +53,9 @@ fn render_format_supports_compact_pretty_and_json() {
         assert_eq!(parsed["error"]["message"], "api unauthorized");
         assert!(parsed["metadata"]["error_code"].is_null());
         assert!(parsed["metadata"]["retryable"].is_null());
-        assert!(parsed["metadata"]["stack_trace"].is_null());
-        assert!(parsed["metadata"]["display_causes"].is_null());
-        assert!(parsed["metadata"]["source_errors"].is_object());
+        assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
+        assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
+        assert!(parsed["diagnostic_bag"]["source_errors"].is_object());
         assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(0));
     }
 }
@@ -96,8 +97,9 @@ fn json_document_carries_metadata_and_structured_attachments() {
     assert_eq!(parsed["metadata"]["severity"].as_str(), Some("error"));
     assert_eq!(parsed["metadata"]["category"].as_str(), Some("auth"));
     assert_eq!(parsed["metadata"]["retryable"].as_bool(), Some(false));
-    assert!(parsed["metadata"]["display_causes"].is_null());
-    assert!(parsed["metadata"]["source_errors"].is_null());
+    assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
+    assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
+    assert!(parsed["diagnostic_bag"]["source_errors"].is_null());
     #[cfg(feature = "trace")]
     assert_eq!(
         parsed["trace"]["events"].as_array().map(|a| a.len()),

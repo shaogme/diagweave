@@ -2,8 +2,6 @@
 mod ext;
 #[path = "report/impls.rs"]
 mod impls;
-#[path = "report/internal.rs"]
-mod internal;
 #[path = "report/types.rs"]
 mod types;
 
@@ -12,23 +10,23 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
+#[cfg(feature = "std")]
+use std::panic::{AssertUnwindSafe, catch_unwind};
+#[cfg(feature = "std")]
+use std::sync::OnceLock;
 
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
-pub use internal::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
-#[cfg(feature = "std")]
-pub use internal::{RegisterGlobalContextError, register_global_injector};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
-    ErrorCodeIntError, ReportMetadata, Severity, SourceError, SourceErrorChain, StackFrame,
-    StackTrace, StackTraceFormat,
+    ErrorCodeIntError, ReportMetadata, Severity, SourceErrorChain, StackFrame, StackTrace,
+    StackTraceFormat,
 };
+pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
 
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
 
-use internal::{
-    ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorIterStage,
-};
+use types::{ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorIterStage};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 pub struct Report<E> {
@@ -103,7 +101,11 @@ impl<E> Report<E> {
     /// Returns the display causes associated with the report.
     pub fn display_causes(&self) -> &[Box<dyn Display + 'static>] {
         match self.diagnostics() {
-            Some(diag) => &diag.display_causes,
+            Some(diag) => diag
+                .display_causes
+                .as_ref()
+                .map(|v| v.items.as_slice())
+                .unwrap_or(&[]),
             None => &[],
         }
     }
@@ -111,7 +113,11 @@ impl<E> Report<E> {
     /// Returns the source errors associated with the report.
     pub fn source_errors(&self) -> &[Box<dyn Error + 'static>] {
         match self.diagnostics() {
-            Some(diag) => &diag.source_errors,
+            Some(diag) => diag
+                .source_errors
+                .as_ref()
+                .map(|v| v.items.as_slice())
+                .unwrap_or(&[]),
             None => &[],
         }
     }
@@ -146,7 +152,8 @@ impl<E> Report<E> {
 
     /// Returns the stack trace associated with the report, if any.
     pub fn stack_trace(&self) -> Option<&StackTrace> {
-        self.metadata().stack_trace.as_ref()
+        self.diagnostics()
+            .and_then(|diag| diag.stack_trace.as_ref())
     }
 
     /// Returns the trace information associated with the report, if any.
@@ -173,9 +180,9 @@ impl<E> Report<E> {
     fn apply_global_context(&mut self) {
         let diag = self.diagnostics_mut();
         #[cfg(feature = "trace")]
-        internal::apply_global_context(&mut diag.attachments, &mut diag.trace.context);
+        apply_global_context(&mut diag.attachments, &mut diag.trace.context);
         #[cfg(not(feature = "trace"))]
-        internal::apply_global_context(&mut diag.attachments);
+        apply_global_context(&mut diag.attachments);
     }
 
     /// Attaches a context key-value pair to the report.
@@ -352,21 +359,21 @@ impl<E> Report<E> {
 
     /// Sets the stack trace for the report.
     pub fn with_stack_trace(mut self, stack_trace: StackTrace) -> Self {
-        self.ensure_cold().metadata.stack_trace = Some(stack_trace);
+        self.diagnostics_mut().stack_trace = Some(stack_trace);
         self
     }
 
     /// Clears the stack trace from the report.
     pub fn clear_stack_trace(mut self) -> Self {
-        self.ensure_cold().metadata.stack_trace = None;
+        self.diagnostics_mut().stack_trace = None;
         self
     }
 
     /// Captures the stack trace for the report if not already present.
     #[cfg(feature = "std")]
     pub fn capture_stack_trace(mut self) -> Self {
-        if self.metadata().stack_trace.is_none() {
-            self.ensure_cold().metadata.stack_trace = Some(StackTrace::capture_raw());
+        if self.stack_trace().is_none() {
+            self.diagnostics_mut().stack_trace = Some(StackTrace::capture_raw());
         }
         self
     }
@@ -374,13 +381,17 @@ impl<E> Report<E> {
     /// Forcefully captures the stack trace for the report.
     #[cfg(feature = "std")]
     pub fn force_capture_stack(mut self) -> Self {
-        self.ensure_cold().metadata.stack_trace = Some(StackTrace::capture_raw());
+        self.diagnostics_mut().stack_trace = Some(StackTrace::capture_raw());
         self
     }
 
     /// Adds a display cause to the report.
     pub fn with_display_cause(mut self, cause: impl Display + 'static) -> Self {
-        self.diagnostics_mut().display_causes.push(Box::new(cause));
+        self.diagnostics_mut()
+            .display_causes
+            .get_or_insert_with(DisplayCauseChain::default)
+            .items
+            .push(Box::new(cause));
         self
     }
 
@@ -390,17 +401,25 @@ impl<E> Report<E> {
         I: IntoIterator<Item = T>,
         T: Display + 'static,
     {
-        self.diagnostics_mut().display_causes.extend(
-            causes
-                .into_iter()
-                .map(|cause| Box::new(cause) as Box<dyn Display + 'static>),
-        );
+        self.diagnostics_mut()
+            .display_causes
+            .get_or_insert_with(DisplayCauseChain::default)
+            .items
+            .extend(
+                causes
+                    .into_iter()
+                    .map(|cause| Box::new(cause) as Box<dyn Display + 'static>),
+            );
         self
     }
 
     /// Adds an error source to the report's error chain.
     pub fn with_source_error(mut self, err: impl Error + 'static) -> Self {
-        self.diagnostics_mut().source_errors.push(Box::new(err));
+        self.diagnostics_mut()
+            .source_errors
+            .get_or_insert_with(SourceErrorChain::default)
+            .items
+            .push(Box::new(err));
         self
     }
 
@@ -417,9 +436,13 @@ impl<E> Report<E> {
                 diagnostics: DiagnosticBag {
                     #[cfg(feature = "trace")]
                     trace: ReportTrace::default(),
+                    stack_trace: None,
                     attachments: Vec::new(),
-                    display_causes: Vec::new(),
-                    source_errors,
+                    display_causes: None,
+                    source_errors: Some(SourceErrorChain {
+                        items: source_errors,
+                        ..SourceErrorChain::default()
+                    }),
                 },
             })),
         }
@@ -455,7 +478,12 @@ impl<E> Report<E> {
         let Some(diag) = self.diagnostics() else {
             return Ok(state);
         };
-        for (depth, cause) in diag.display_causes.iter().enumerate() {
+        let Some(display_causes) = diag.display_causes.as_ref() else {
+            return Ok(state);
+        };
+        state.truncated |= display_causes.truncated;
+        state.cycle_detected |= display_causes.cycle_detected;
+        for (depth, cause) in display_causes.items.iter().enumerate() {
             if depth >= options.max_depth {
                 state.truncated = true;
                 break;
@@ -493,6 +521,60 @@ impl<E> Report<E> {
     }
 }
 
+/// Context injector type alias for global context providers.
+#[cfg(feature = "std")]
+pub(crate) type ContextInjector = dyn Fn() -> Option<GlobalContext> + Send + Sync + 'static;
+
+#[cfg(feature = "std")]
+pub(crate) fn global_context_injector() -> &'static OnceLock<Box<ContextInjector>> {
+    static INJECTOR: OnceLock<Box<ContextInjector>> = OnceLock::new();
+    &INJECTOR
+}
+
+/// Error returned when global context registration fails.
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegisterGlobalContextError;
+
+/// Registers a global context injector that will be invoked for every new report.
+#[cfg(feature = "std")]
+pub fn register_global_injector(
+    injector: impl Fn() -> Option<GlobalContext> + Send + Sync + 'static,
+) -> Result<(), RegisterGlobalContextError> {
+    global_context_injector()
+        .set(Box::new(injector))
+        .map_err(|_| RegisterGlobalContextError)
+}
+
+#[cfg(feature = "std")]
+pub(crate) fn apply_global_context(
+    attachments: &mut Vec<Attachment>,
+    #[cfg(feature = "trace")] trace_ctx: &mut TraceContext,
+) {
+    let Some(injector) = global_context_injector().get() else {
+        return;
+    };
+    let injected = catch_unwind(AssertUnwindSafe(injector));
+    let Some(global) = injected.unwrap_or_default() else {
+        return;
+    };
+    for (key, value) in global.context {
+        attachments.push(Attachment::context(key, value));
+    }
+    #[cfg(feature = "trace")]
+    {
+        if trace_ctx.trace_id.is_none() {
+            trace_ctx.trace_id = global.trace_id;
+        }
+        if trace_ctx.span_id.is_none() {
+            trace_ctx.span_id = global.span_id;
+        }
+        if trace_ctx.parent_span_id.is_none() {
+            trace_ctx.parent_span_id = global.parent_span_id;
+        }
+    }
+}
+
 impl<E> Report<E>
 where
     E: Error + 'static,
@@ -506,7 +588,7 @@ where
     pub fn iter_sources_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_> {
         let source_errors = self
             .diagnostics()
-            .map(|diag| diag.source_errors.as_slice())
+            .and_then(|diag| diag.source_errors.as_ref().map(|v| v.items.as_slice()))
             .unwrap_or(&[]);
 
         ReportSourceErrorIter {

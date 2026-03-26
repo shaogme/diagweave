@@ -118,30 +118,14 @@ struct ConsoleExporter;
 
 impl TracingExporterTrait for ConsoleExporter {
     fn export_ir(&self, ir: &DiagnosticIr) {
-        let display_causes = ir.metadata.display_causes.as_ref();
-        let source_errors = ir.metadata.source_errors.as_ref();
-        let display_cause_count = display_causes.map(|c| c.count).unwrap_or(0);
-        let source_errors_count = source_errors.map(|c| c.count).unwrap_or(0);
         println!(
-            "[Tracing Exporter] error={}, severity={:?}, display_causes={}, source_errors={}, stack_trace={}",
+            "[Tracing Exporter] error={}, severity={:?}, context_count={}, attachment_count={}, stack_trace={}",
             ir.error.message,
             ir.metadata.severity,
-            display_cause_count,
-            source_errors_count,
+            ir.context_count,
+            ir.attachment_count,
             ir.metadata.stack_trace.is_some()
         );
-        if let Some(causes) = display_causes {
-            println!(
-                "  display_causes: truncated={}, cycle_detected={}",
-                causes.truncated, causes.cycle_detected
-            );
-        }
-        if let Some(sources) = source_errors {
-            println!(
-                "  source_errors: truncated={}, cycle_detected={}",
-                sources.truncated, sources.cycle_detected
-            );
-        }
     }
 }
 
@@ -249,8 +233,8 @@ where
     println!(
         "JSON check: schema_version={}, causes_present={}\n",
         parsed["schema_version"],
-        parsed["metadata"]["display_causes"].is_object()
-            || parsed["metadata"]["source_errors"].is_object()
+        parsed["diagnostic_bag"]["display_causes"].is_object()
+            || parsed["diagnostic_bag"]["source_errors"].is_object()
     );
 
     let lean_pretty_opts = ReportRenderOptions {
@@ -264,6 +248,60 @@ where
     println!("{}\n", report.render(Pretty::new(lean_pretty_opts)));
 }
 
+fn print_display_causes<E>(report: &Report<E>)
+where
+    E: Display + std::error::Error + 'static,
+{
+    println!("Display Causes:");
+    if report.display_causes().is_empty() {
+        println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_causes(|cause| {
+            idx += 1;
+            println!("  {}. {}", idx, cause);
+            Ok(())
+        });
+        let state = report
+            .visit_causes(|_| Ok(()))
+            .unwrap_or_else(|_| diagweave::report::CauseTraversalState::default());
+        println!(
+            "  summary: count={}, truncated={}, cycle_detected={}",
+            report.display_causes().len(),
+            state.truncated,
+            state.cycle_detected
+        );
+    }
+}
+
+fn print_source_errors<E>(report: &Report<E>)
+where
+    E: std::error::Error + 'static,
+{
+    println!("Error Causes (Source Errors Chain):");
+    if report.iter_sources().next().is_none() {
+        println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_sources(|source| {
+            idx += 1;
+            println!("  {}. {}", idx, source);
+            Ok(())
+        });
+        let mut source_count = 0usize;
+        let state = report
+            .visit_sources(|_| {
+                source_count += 1;
+                Ok(())
+            })
+            .unwrap_or_else(|_| diagweave::report::CauseTraversalState::default());
+        println!(
+            "  summary: count={}, truncated={}, cycle_detected={}",
+            source_count, state.truncated, state.cycle_detected
+        );
+    }
+}
+
 fn print_ir_and_adapters<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
@@ -273,40 +311,9 @@ where
     println!("Error Code: {:?}", ir.metadata.error_code);
     println!("Severity: {:?}", ir.metadata.severity);
     println!("StackTrace Present: {}", ir.metadata.stack_trace.is_some());
-    println!("Display Causes:");
-    if ir.metadata.display_causes.is_none() {
-        println!("  (none)");
-    } else {
-        let mut idx = 0usize;
-        let _ = report.visit_causes(|cause| {
-            idx += 1;
-            println!("  {}. {}", idx, cause);
-            Ok(())
-        });
-        if let Some(summary) = &ir.metadata.display_causes {
-            println!(
-                "  summary: count={}, truncated={}, cycle_detected={}",
-                summary.count, summary.truncated, summary.cycle_detected
-            );
-        }
-    }
-    println!("Error Causes (Source Errors Chain):");
-    if ir.metadata.source_errors.is_none() {
-        println!("  (none)");
-    } else {
-        let mut idx = 0usize;
-        let _ = report.visit_sources(|source| {
-            idx += 1;
-            println!("  {}. {}", idx, source);
-            Ok(())
-        });
-        if let Some(summary) = &ir.metadata.source_errors {
-            println!(
-                "  summary: count={}, truncated={}, cycle_detected={}",
-                summary.count, summary.truncated, summary.cycle_detected
-            );
-        }
-    }
+
+    print_display_causes(report);
+    print_source_errors(report);
     println!();
 
     let tracing_fields = ir.to_tracing_fields();

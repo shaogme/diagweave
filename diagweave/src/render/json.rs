@@ -70,7 +70,10 @@ where
         report::write_error_object(f, pretty, 1, report.inner())
     })?;
     write_object_field(f, pretty, 0, &mut first, "metadata", |f| {
-        report::write_metadata_object(f, pretty, 1, report, options)
+        report::write_metadata_object(f, pretty, 1, report)
+    })?;
+    write_object_field(f, pretty, 0, &mut first, "diagnostic_bag", |f| {
+        report::write_diag_bag(f, pretty, 1, report, options)
     })?;
     #[cfg(feature = "trace")]
     if report.trace().is_some() {

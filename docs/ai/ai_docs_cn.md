@@ -179,10 +179,12 @@ pub struct Report<E> {
 | `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
-| `report.visit_display_causes(visit)` | 使用默认选项流式遍历展示原因 |
-| `report.visit_display_causes_with(options, visit)` | 使用自定义选项流式遍历展示原因 |
-| `report.visit_source_errors(visit)` | 使用默认选项流式遍历错误源链 |
-| `report.visit_source_errors_with(options, visit)` | 使用自定义选项流式遍历错误源链 |
+| `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
+| `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
+| `report.visit_sources(visit)` | 使用默认选项流式遍历错误源链 |
+| `report.visit_sources_ext(options, visit)` | 使用自定义选项流式遍历错误源链 |
+| `report.iter_sources()` | 使用默认选项迭代错误源链 |
+| `report.iter_sources_ext(options)` | 使用自定义选项迭代错误源链 |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
@@ -323,7 +325,7 @@ fn process() -> Result<(), Report<io::Error>> {
 ### 展示原因数据
 | 类型名 | 说明 |
 | :--- | :--- |
-| `Vec<Cow<'static, str>>` | 直接存储展示原因字符串，在渲染阶段转换为展示原因链元数据。 |
+| `DisplayCauseChain` | 运行时展示原因链摘要，包含 `items: Vec<Box<dyn Display>>`、`truncated` 与 `cycle_detected`。 |
 
 ### 核心数据转换：`AttachmentValue`
 `Report` 附件支持的强类型值，支持自动从基础类型转换：
@@ -420,7 +422,7 @@ let attachment_count = ir.attachment_count;
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`display_causes` / `source_errors` 以 `DiagnosticIrCauseChainSummary { count, truncated, cycle_detected }` 形式暴露。
+`DiagnosticIrMetadata` 不直接暴露 `display_causes` / `source_errors`；请通过 `Report` 的 `visit_causes*`、`visit_sources*` 或 `iter_sources*` 读取。
 
 ### 用法示例
 ```rust

@@ -271,8 +271,9 @@ pub enum MyError {
 
 - `attachments()`、`metadata()`、`stack_trace()`
 - `error_code()`、`severity()`、`category()`、`retryable()`
-- `visit_display_causes(visit)` / `visit_display_causes_with(options, visit)`
-- `visit_source_errors(visit)` / `visit_source_errors_with(options, visit)`
+- `visit_causes(visit)` / `visit_causes_ext(options, visit)`
+- `visit_sources(visit)` / `visit_sources_ext(options, visit)`
+- `iter_sources()` / `iter_sources_ext(options)`
 
 Note 附件读取：
 

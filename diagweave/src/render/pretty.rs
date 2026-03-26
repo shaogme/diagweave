@@ -94,10 +94,7 @@ fn render_governance_section(
     let has_metadata = metadata.error_code.is_some()
         || metadata.severity.is_some()
         || metadata.category.is_some()
-        || metadata.retryable.is_some()
-        || metadata.stack_trace.is_some()
-        || metadata.display_causes.is_some()
-        || metadata.source_errors.is_some();
+        || metadata.retryable.is_some();
 
     if options.show_governance_section && (options.show_empty_sections || has_metadata) {
         writeln!(f, "Governance:")?;
@@ -106,9 +103,6 @@ fn render_governance_section(
             writeln!(f, "- (none)")?;
         } else {
             render_gov_meta(f, metadata, options.pretty_indent)?;
-            render_gov_stack(f, metadata, options.pretty_indent)?;
-            render_gov_causes(f, metadata, options.pretty_indent)?;
-            render_gov_errors(f, metadata, options.pretty_indent)?;
         }
     }
     Ok(())
@@ -134,64 +128,6 @@ fn render_gov_meta(
     if let Some(retryable) = metadata.retryable {
         write_indent(f, indent)?;
         writeln!(f, "- retryable: {retryable}")?;
-    }
-    Ok(())
-}
-
-fn render_gov_stack(
-    f: &mut Formatter<'_>,
-    metadata: &crate::report::ReportMetadata,
-    indent: PrettyIndent,
-) -> fmt::Result {
-    if let Some(stack_trace) = metadata.stack_trace.as_ref() {
-        write_indent(f, indent)?;
-        writeln!(f, "- stack_trace.format: {:?}", stack_trace.format)?;
-        write_indent(f, indent)?;
-        writeln!(f, "- stack_trace.frames: {}", stack_trace.frames.len())?;
-    }
-    Ok(())
-}
-
-fn render_gov_causes(
-    f: &mut Formatter<'_>,
-    metadata: &crate::report::ReportMetadata,
-    indent: PrettyIndent,
-) -> fmt::Result {
-    if let Some(display_causes) = metadata.display_causes.as_ref() {
-        write_indent(f, indent)?;
-        writeln!(f, "- display_causes.count: {}", display_causes.items.len())?;
-        write_indent(f, indent)?;
-        writeln!(
-            f,
-            "- display_causes.truncated: {}",
-            display_causes.truncated
-        )?;
-        write_indent(f, indent)?;
-        writeln!(
-            f,
-            "- display_causes.cycle_detected: {}",
-            display_causes.cycle_detected
-        )?;
-    }
-    Ok(())
-}
-
-fn render_gov_errors(
-    f: &mut Formatter<'_>,
-    metadata: &crate::report::ReportMetadata,
-    indent: PrettyIndent,
-) -> fmt::Result {
-    if let Some(source_errors) = metadata.source_errors.as_ref() {
-        write_indent(f, indent)?;
-        writeln!(f, "- source_errors.count: {}", source_errors.items.len())?;
-        write_indent(f, indent)?;
-        writeln!(f, "- source_errors.truncated: {}", source_errors.truncated)?;
-        write_indent(f, indent)?;
-        writeln!(
-            f,
-            "- source_errors.cycle_detected: {}",
-            source_errors.cycle_detected
-        )?;
     }
     Ok(())
 }
@@ -255,7 +191,7 @@ fn render_stack_trace(
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    let stack_trace = report.metadata().stack_trace.as_ref();
+    let stack_trace = report.stack_trace();
     let has_stack = stack_trace.is_some();
     if !options.show_stack_trace_section || (!options.show_empty_sections && !has_stack) {
         return Ok(());

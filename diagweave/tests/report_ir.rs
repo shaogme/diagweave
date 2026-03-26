@@ -33,9 +33,6 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
             severity: Some(Severity::Error),
             category: Some("auth".into()),
             retryable: Some(false),
-            stack_trace: None,
-            display_causes: None,
-            source_errors: None,
         })
         .attach("request_id", "req-ir-1")
         .attach_printable("note")
@@ -59,14 +56,6 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     );
     assert_eq!(ir.context_count, 1);
     assert_eq!(ir.attachment_count, 2);
-    let display_causes = ir
-        .metadata
-        .display_causes
-        .as_ref()
-        .expect("display causes should exist");
-    assert_eq!(display_causes.count, 2);
-    assert!(!display_causes.truncated);
-    assert!(!display_causes.cycle_detected);
 }
 
 #[cfg(feature = "trace")]
@@ -130,22 +119,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|f| f.key == "report.attachment_count")
     );
-    assert!(
-        tracing_fields
-            .iter()
-            .any(|f| f.key == "display_causes.present")
-    );
-
     let otel = ir.to_otel_envelope();
     assert!(
         otel.attributes
             .iter()
             .any(|a| a.key == "stack_trace.present")
-    );
-    assert!(
-        otel.attributes
-            .iter()
-            .any(|a| a.key == "display_causes.present")
     );
     assert!(otel.attributes.iter().any(|a| a.key == "trace.event_count"));
     assert!(otel.events.iter().any(|e| e.name == "trace.event"));

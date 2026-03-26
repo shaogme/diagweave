@@ -179,10 +179,12 @@ pub struct Report<E> {
 | `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
-| `report.visit_display_causes(visit)` | Streams display causes with default options |
-| `report.visit_display_causes_with(options, visit)` | Streams display causes with custom options |
-| `report.visit_source_errors(visit)` | Streams source errors with default options |
-| `report.visit_source_errors_with(options, visit)` | Streams source errors with custom options |
+| `report.visit_causes(visit)` | Streams display causes with default options |
+| `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
+| `report.visit_sources(visit)` | Streams source errors with default options |
+| `report.visit_sources_ext(options, visit)` | Streams source errors with custom options |
+| `report.iter_sources()` | Iterates source errors with default options |
+| `report.iter_sources_ext(options)` | Iterates source errors with custom options |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
@@ -323,7 +325,7 @@ Manages the chain of triggers for a diagnostic. `diagweave` supports not only `s
 ### Display Cause Data
 | Type Name | Description |
 | :--- | :--- |
-| `Vec<Cow<'static, str>>` | Stores display-cause messages directly; converted into display-cause chain metadata during rendering. |
+| `DisplayCauseChain` | Runtime chain summary with `items: Vec<Box<dyn Display>>`, plus `truncated` and `cycle_detected`. |
 
 ### Core Data Conversion: `AttachmentValue`
 Strongly typed values supported by `Report` attachments, converted automatically from base types:
@@ -420,7 +422,7 @@ let attachment_count = ir.attachment_count;
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`display_causes` / `source_errors` are exported as `DiagnosticIrCauseChainSummary { count, truncated, cycle_detected }`.
+`DiagnosticIrMetadata` does not expose `display_causes` / `source_errors`; traverse those from `Report` via `visit_causes*`, `visit_sources*`, or `iter_sources*`.
 
 ### Usage Example
 ```rust

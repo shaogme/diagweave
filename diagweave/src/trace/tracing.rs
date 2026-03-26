@@ -65,14 +65,6 @@ macro_rules! report_event {
             attachment_count = $ir.attachment_count,
             stack_trace_present = $ir.metadata.stack_trace.is_some(),
             stack_trace_frame_count = $ir.metadata.stack_trace.as_ref().map(|x| x.frames.len()).unwrap_or(0),
-            display_causes_present = $ir.metadata.display_causes.is_some(),
-            display_causes_count = $ir.metadata.display_causes.as_ref().map(|x| x.count).unwrap_or(0),
-            display_causes_truncated = $ir.metadata.display_causes.as_ref().map(|x| x.truncated).unwrap_or(false),
-            display_causes_cycle_detected = $ir.metadata.display_causes.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
-            source_errors_present = $ir.metadata.source_errors.is_some(),
-            source_errors_count = $ir.metadata.source_errors.as_ref().map(|x| x.count).unwrap_or(0),
-            source_errors_truncated = $ir.metadata.source_errors.as_ref().map(|x| x.truncated).unwrap_or(false),
-            source_errors_cycle_detected = $ir.metadata.source_errors.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
             trace_event_count = $ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0),
             "diagweave report emitted"
         )

@@ -13,9 +13,7 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
-use crate::report::{
-    AttachmentVisit, CauseCollectOptions, ErrorCode, Report, Severity, StackTrace,
-};
+use crate::report::{AttachmentVisit, ErrorCode, Report, Severity, StackTrace};
 
 pub use pretty::Pretty;
 
@@ -150,15 +148,6 @@ impl serde::Serialize for DiagnosticIrMessage<'_> {
     }
 }
 
-/// Cause chain summary information in the Diagnostic Intermediate Representation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize))]
-pub struct DiagnosticIrCauseChainSummary {
-    pub count: usize,
-    pub truncated: bool,
-    pub cycle_detected: bool,
-}
-
 /// Metadata information in the Diagnostic Intermediate Representation.
 pub struct DiagnosticIrMetadata<'a> {
     pub error_code: Option<&'a ErrorCode>,
@@ -166,8 +155,6 @@ pub struct DiagnosticIrMetadata<'a> {
     pub category: Option<&'a Cow<'static, str>>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<&'a StackTrace>,
-    pub display_causes: Option<DiagnosticIrCauseChainSummary>,
-    pub source_errors: Option<DiagnosticIrCauseChainSummary>,
 }
 
 /// A platform-agnostic intermediate representation of a diagnostic report.
@@ -217,11 +204,7 @@ where
     E: Error + Display + 'static,
 {
     /// Converts the report to a platform-agnostic intermediate representation.
-    pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr<'_> {
-        let collect_opts = CauseCollectOptions {
-            max_depth: options.max_source_depth,
-            detect_cycle: options.detect_source_cycle,
-        };
+    pub fn to_diagnostic_ir(&self, _options: ReportRenderOptions) -> DiagnosticIr<'_> {
         let metadata = self.metadata();
         let (context_count, attachment_count) = count_attachments(self);
 
@@ -237,9 +220,7 @@ where
                 severity: metadata.severity,
                 category: metadata.category.as_ref(),
                 retryable: metadata.retryable,
-                stack_trace: metadata.stack_trace.as_ref(),
-                display_causes: build_display_causes(self, collect_opts),
-                source_errors: build_source_errors(self, collect_opts),
+                stack_trace: self.stack_trace(),
             },
             #[cfg(feature = "trace")]
             trace: self.trace(),
@@ -262,60 +243,6 @@ fn count_attachments(report: &Report<impl Error + 'static>) -> (usize, usize) {
         Ok(()) => (context, attachments),
         Err(_) => (0, 0),
     }
-}
-
-fn build_display_causes<E>(
-    report: &Report<E>,
-    options: CauseCollectOptions,
-) -> Option<DiagnosticIrCauseChainSummary>
-where
-    E: Error + Display + 'static,
-{
-    let mut count = 0usize;
-    let state = match report.visit_causes_ext(options, |_| {
-        count += 1;
-        Ok(())
-    }) {
-        Ok(state) => state,
-        Err(_) => return None,
-    };
-
-    if count == 0 && !state.truncated && !state.cycle_detected {
-        return None;
-    }
-
-    Some(DiagnosticIrCauseChainSummary {
-        count,
-        truncated: state.truncated,
-        cycle_detected: state.cycle_detected,
-    })
-}
-
-fn build_source_errors<E>(
-    report: &Report<E>,
-    options: CauseCollectOptions,
-) -> Option<DiagnosticIrCauseChainSummary>
-where
-    E: Error + Display + 'static,
-{
-    let mut count = 0usize;
-    let state = match report.visit_sources_ext(options, |_| {
-        count += 1;
-        Ok(())
-    }) {
-        Ok(state) => state,
-        Err(_) => return None,
-    };
-
-    if count == 0 && !state.truncated && !state.cycle_detected {
-        return None;
-    }
-
-    Some(DiagnosticIrCauseChainSummary {
-        count,
-        truncated: state.truncated,
-        cycle_detected: state.cycle_detected,
-    })
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.

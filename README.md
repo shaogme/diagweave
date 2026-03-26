@@ -271,8 +271,9 @@ Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
 - `error_code()`, `severity()`, `category()`, `retryable()`
-- `visit_display_causes(visit)` / `visit_display_causes_with(options, visit)`
-- `visit_source_errors(visit)` / `visit_source_errors_with(options, visit)`
+- `visit_causes(visit)` / `visit_causes_ext(options, visit)`
+- `visit_sources(visit)` / `visit_sources_ext(options, visit)`
+- `iter_sources()` / `iter_sources_ext(options)`
 
 Attachment note access:
 
@@ -296,7 +297,7 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display` and append display-cause strings (for rendering/IR).
-- `with_source_error` appends explicit error objects into the source chain metadata.
+- `with_source_error` appends explicit error objects into the report diagnostic bag source chain.
 - Error source propagation is maintained by `with_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
 
 Global context injector (`std`):

@@ -95,7 +95,6 @@ impl DiagnosticIr<'_> {
         self.tracing_meta(&mut fields);
         #[cfg(feature = "trace")]
         self.tracing_trace(&mut fields);
-        self.tracing_causes(&mut fields);
         self.tracing_stats(&mut fields);
 
         fields
@@ -236,56 +235,6 @@ impl DiagnosticIr<'_> {
         }
     }
 
-    fn tracing_causes(&self, fields: &mut Vec<TracingField>) {
-        if let Some(display_causes) = &self.metadata.display_causes {
-            fields.push(TracingField {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            fields.push(TracingField {
-                key: "display_causes.count".into(),
-                value: AdapterValue::U64(display_causes.count as u64),
-            });
-            fields.push(TracingField {
-                key: "display_causes.truncated".into(),
-                value: AdapterValue::Bool(display_causes.truncated),
-            });
-            fields.push(TracingField {
-                key: "display_causes.cycle_detected".into(),
-                value: AdapterValue::Bool(display_causes.cycle_detected),
-            });
-        } else {
-            fields.push(TracingField {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-
-        if let Some(source_errors) = &self.metadata.source_errors {
-            fields.push(TracingField {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            fields.push(TracingField {
-                key: "source_errors.count".into(),
-                value: AdapterValue::U64(source_errors.count as u64),
-            });
-            fields.push(TracingField {
-                key: "source_errors.truncated".into(),
-                value: AdapterValue::Bool(source_errors.truncated),
-            });
-            fields.push(TracingField {
-                key: "source_errors.cycle_detected".into(),
-                value: AdapterValue::Bool(source_errors.cycle_detected),
-            });
-        } else {
-            fields.push(TracingField {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-    }
-
     fn tracing_stats(&self, fields: &mut Vec<TracingField>) {
         fields.push(TracingField {
             key: "report.context_count".into(),
@@ -307,7 +256,6 @@ impl DiagnosticIr<'_> {
 
         self.otel_error(&mut attributes);
         self.otel_meta(&mut attributes);
-        self.otel_causes(&mut attributes);
         self.otel_stats(&mut attributes);
         #[cfg(feature = "trace")]
         self.otel_trace(&mut attributes);
@@ -365,56 +313,6 @@ impl DiagnosticIr<'_> {
         } else {
             attributes.push(OtelAttribute {
                 key: "stack_trace.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-    }
-
-    fn otel_causes(&self, attributes: &mut Vec<OtelAttribute>) {
-        if let Some(display_causes) = &self.metadata.display_causes {
-            attributes.push(OtelAttribute {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            attributes.push(OtelAttribute {
-                key: "display_causes.count".into(),
-                value: AdapterValue::U64(display_causes.count as u64),
-            });
-            attributes.push(OtelAttribute {
-                key: "display_causes.truncated".into(),
-                value: AdapterValue::Bool(display_causes.truncated),
-            });
-            attributes.push(OtelAttribute {
-                key: "display_causes.cycle_detected".into(),
-                value: AdapterValue::Bool(display_causes.cycle_detected),
-            });
-        } else {
-            attributes.push(OtelAttribute {
-                key: "display_causes.present".into(),
-                value: AdapterValue::Bool(false),
-            });
-        }
-
-        if let Some(source_errors) = &self.metadata.source_errors {
-            attributes.push(OtelAttribute {
-                key: "source_errors.present".into(),
-                value: AdapterValue::Bool(true),
-            });
-            attributes.push(OtelAttribute {
-                key: "source_errors.count".into(),
-                value: AdapterValue::U64(source_errors.count as u64),
-            });
-            attributes.push(OtelAttribute {
-                key: "source_errors.truncated".into(),
-                value: AdapterValue::Bool(source_errors.truncated),
-            });
-            attributes.push(OtelAttribute {
-                key: "source_errors.cycle_detected".into(),
-                value: AdapterValue::Bool(source_errors.cycle_detected),
-            });
-        } else {
-            attributes.push(OtelAttribute {
-                key: "source_errors.present".into(),
                 value: AdapterValue::Bool(false),
             });
         }

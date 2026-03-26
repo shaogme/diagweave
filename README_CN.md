@@ -18,7 +18,7 @@
 `diagweave` 把 Rust 错误处理里常被拆开的三层能力整合到同一数据模型中：
 
 - **类型层**：`set!` / `union!` 负责强类型、可组合的错误建模
-- **传播层**：`Report` 负责在传播过程中追加上下文、附件、事件、堆栈与 cause/source 链
+- **传播层**：`Report` 负责在传播过程中追加上下文、附件、事件、堆栈与 source 错误链
 - **呈现层**：统一渲染为 `Compact` / `Pretty` / `Json`，并可导出到 tracing / 观测系统
 
 ## 目录
@@ -264,9 +264,14 @@ pub enum MyError {
 
 - `with_context`、`with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
-- `with_source`、`with_local_source`、`with_event`、`with_causes`
+- `with_cause`、`with_causes`
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
+
+原因语义说明：
+
+- `with_cause` / `with_causes` 接收 `impl Display`，以事件消息形式记录到展示链（用于渲染与 IR）。
+- 真正的错误传播链由 `wrap` / `wrap_with` 与 `Error::source()` 维护。
 
 全局上下文注入（`std`）：
 

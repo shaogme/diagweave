@@ -11,8 +11,8 @@ fn cause_tree_supports_multiple_sources_and_events() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_source(AuthError::InvalidToken)
-        .with_event("request was retried")
+        .with_cause(AuthError::InvalidToken)
+        .with_cause("request was retried")
         .with_cause(CauseNode::group([
             CauseNode::event("fallback cache missed"),
             CauseNode::error(ApiError::Wrapped { code: 502 }),
@@ -36,7 +36,8 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
             category: Some("auth".to_owned()),
             retryable: Some(false),
             stack_trace: None,
-            causes: None,
+            display_causes: None,
+            error_sources: None,
         })
         .attach("request_id", "req-ir-1")
         .attach_printable("note")
@@ -48,8 +49,8 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
             },
             Some("application/json".to_owned()),
         )
-        .with_source(AuthError::InvalidToken)
-        .with_event("retry happened");
+        .with_cause(AuthError::InvalidToken)
+        .with_cause("retry happened");
 
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     assert_eq!(ir.error.message, "api unauthorized");
@@ -57,10 +58,14 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     assert_eq!(ir.metadata.error_code.as_deref(), Some("API.UNAUTHORIZED"));
     assert_eq!(ir.context.len(), 1);
     assert_eq!(ir.attachments.len(), 2);
-    let causes = ir.metadata.causes.as_ref().expect("causes should exist");
-    assert_eq!(causes.items.len(), 2);
-    assert!(!causes.truncated);
-    assert!(!causes.cycle_detected);
+    let display_causes = ir
+        .metadata
+        .display_causes
+        .as_ref()
+        .expect("display causes should exist");
+    assert_eq!(display_causes.items.len(), 2);
+    assert!(!display_causes.truncated);
+    assert!(!display_causes.cycle_detected);
 }
 
 #[cfg(feature = "trace")]
@@ -105,8 +110,8 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             ])),
             Some("application/json".to_owned()),
         )
-        .with_source(AuthError::InvalidToken)
-        .with_event("fallback path");
+        .with_cause(AuthError::InvalidToken)
+        .with_cause("fallback path");
 
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     let tracing_fields = ir.to_tracing_fields();
@@ -120,7 +125,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|f| f.key.starts_with("attachment.payload."))
     );
-    assert!(tracing_fields.iter().any(|f| f.key == "causes.present"));
+    assert!(
+        tracing_fields
+            .iter()
+            .any(|f| f.key == "display_causes.present")
+    );
 
     let otel = ir.to_otel_envelope();
     assert!(
@@ -128,7 +137,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|a| a.key == "stack_trace.present")
     );
-    assert!(otel.attributes.iter().any(|a| a.key == "causes.present"));
+    assert!(
+        otel.attributes
+            .iter()
+            .any(|a| a.key == "display_causes.present")
+    );
     assert!(otel.attributes.iter().any(|a| a.key == "trace.event_count"));
     assert!(otel.events.iter().any(|e| e.name == "trace.event"));
     assert!(
@@ -180,7 +193,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
                 value: AttachmentValue::from("postgres"),
             }],
         })
-        .with_event("fallback path");
+        .with_cause("fallback path");
 
     report.emit_tracing_with(&exporter, ReportRenderOptions::default());
     assert_eq!(calls.get(), 1);

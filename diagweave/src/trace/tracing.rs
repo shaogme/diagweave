@@ -63,10 +63,14 @@ macro_rules! report_event {
             attachment_count = $ir.attachments.len(),
             stack_trace_present = $ir.metadata.stack_trace.is_some(),
             stack_trace_frame_count = $ir.metadata.stack_trace.as_ref().map(|x| x.frames.len()).unwrap_or(0),
-            causes_present = $ir.metadata.causes.is_some(),
-            causes_count = $ir.metadata.causes.as_ref().map(|x| x.items.len()).unwrap_or(0),
-            causes_truncated = $ir.metadata.causes.as_ref().map(|x| x.truncated).unwrap_or(false),
-            causes_cycle_detected = $ir.metadata.causes.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
+            display_causes_present = $ir.metadata.display_causes.is_some(),
+            display_causes_count = $ir.metadata.display_causes.as_ref().map(|x| x.items.len()).unwrap_or(0),
+            display_causes_truncated = $ir.metadata.display_causes.as_ref().map(|x| x.truncated).unwrap_or(false),
+            display_causes_cycle_detected = $ir.metadata.display_causes.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
+            error_sources_present = $ir.metadata.error_sources.is_some(),
+            error_sources_count = $ir.metadata.error_sources.as_ref().map(|x| x.items.len()).unwrap_or(0),
+            error_sources_truncated = $ir.metadata.error_sources.as_ref().map(|x| x.truncated).unwrap_or(false),
+            error_sources_cycle_detected = $ir.metadata.error_sources.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
             trace_event_count = $ir.trace.events.len(),
             "diagweave report emitted"
         )

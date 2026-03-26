@@ -250,7 +250,7 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["error_code", "severity", "category", "retryable", "stack_trace", "causes"],
+      "required": ["error_code", "severity", "category", "retryable", "stack_trace", "display_causes", "error_sources"],
       "properties": {
         "error_code": { "type": ["string", "null"] },
         "severity": {
@@ -267,7 +267,13 @@
             { "type": "null" }
           ]
         },
-        "causes": {
+        "display_causes": {
+          "oneOf": [
+            { "$ref": "#/$defs/cause_chain" },
+            { "type": "null" }
+          ]
+        },
+        "error_sources": {
           "oneOf": [
             { "$ref": "#/$defs/cause_chain" },
             { "type": "null" }

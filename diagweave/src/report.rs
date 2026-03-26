@@ -19,7 +19,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
-pub use ext::{Diagnostic, ReportResultCauseExt, ReportResultExt};
+pub use ext::{Diagnostic, ReportResultExt};
 pub use store::{
     CauseNode, CauseStore, DefaultCauseStore, EventCauseStore, EventOnlyStore, LocalCause,
     LocalCauseStore, LocalErrorCauseStore, StdCause, StdCauseStore, StdErrorCauseStore,
@@ -49,6 +49,7 @@ struct DiagnosticBag<C> {
     trace: ReportTrace,
     attachments: Vec<Attachment>,
     causes: C,
+    error_sources: Vec<Box<dyn Error + 'static>>,
 }
 
 impl<C> Default for DiagnosticBag<C>
@@ -61,6 +62,7 @@ where
             trace: ReportTrace::default(),
             attachments: Vec::new(),
             causes: C::default(),
+            error_sources: Vec::new(),
         }
     }
 }
@@ -71,7 +73,8 @@ const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
     category: None,
     retryable: None,
     stack_trace: None,
-    causes: None,
+    display_causes: None,
+    error_sources: None,
 };
 
 /// Global context information that can be injected into reports.
@@ -413,29 +416,48 @@ where
         self
     }
 
-    /// Adds a cause to the report.
-    pub fn with_cause(mut self, cause: C::Cause) -> Self {
-        self.diagnostics_mut().causes.push(cause);
+    /// Adds a display cause to the report.
+    ///
+    /// Display causes are always recorded as event messages and are intended
+    /// for diagnostic rendering, not for error source propagation.
+    pub fn with_cause(mut self, cause: impl Display) -> Self
+    where
+        C: EventCauseStore,
+    {
+        self.diagnostics_mut()
+            .causes
+            .push(C::event_cause(cause.to_string()));
         self
     }
 
-    /// Adds multiple causes to the report.
-    pub fn with_causes<I>(mut self, causes: I) -> Self
+    /// Adds multiple display causes to the report.
+    pub fn with_causes<I, T>(mut self, causes: I) -> Self
     where
-        I: IntoIterator<Item = C::Cause>,
+        I: IntoIterator<Item = T>,
+        T: Display,
+        C: EventCauseStore,
     {
-        self.diagnostics_mut().causes.extend(causes);
+        self.diagnostics_mut().causes.extend(
+            causes
+                .into_iter()
+                .map(|cause| C::event_cause(cause.to_string())),
+        );
+        self
+    }
+
+    /// Adds an error source to the report's error chain.
+    pub fn with_error_source(mut self, err: impl Error + 'static) -> Self {
+        self.diagnostics_mut().error_sources.push(Box::new(err));
         self
     }
 
     /// Wraps the report into another error type.
     pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, C>
     where
-        Self: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore,
+        Self: Error + 'static,
     {
-        let mut causes = C::default();
-        causes.push(C::std_error_cause(Box::new(self)));
+        let mut error_sources = Vec::new();
+        error_sources.push(Box::new(self) as Box<dyn Error + 'static>);
         Report {
             inner: outer,
             cold: Some(Box::new(ColdData {
@@ -444,7 +466,8 @@ where
                     #[cfg(feature = "trace")]
                     trace: ReportTrace::default(),
                     attachments: Vec::new(),
-                    causes,
+                    causes: C::default(),
+                    error_sources,
                 },
             })),
         }
@@ -457,16 +480,37 @@ where
         Report { inner: outer, cold }
     }
 
-    pub(crate) fn collect_causes(&self, options: CauseCollectOptions) -> CauseCollection
+    pub(crate) fn collect_display_causes(&self, options: CauseCollectOptions) -> CauseCollection
     where
         E: Error + 'static,
     {
-        let mut state = match self.diagnostics() {
+        match self.diagnostics() {
             Some(diag) => diag.causes.collect(options),
             None => CauseCollection::default(),
-        };
-        let mut depth = state.messages.len();
+        }
+    }
+
+    pub(crate) fn collect_error_sources(&self, options: CauseCollectOptions) -> CauseCollection
+    where
+        E: Error + 'static,
+    {
+        let mut state = CauseCollection::default();
+        let mut depth = 0usize;
         let mut seen = BTreeSet::<usize>::new();
+        if let Some(diag) = self.diagnostics() {
+            for err in &diag.error_sources {
+                store::collect_error_chain(
+                    Some(err.as_ref()),
+                    options,
+                    &mut state,
+                    &mut depth,
+                    &mut seen,
+                );
+                if state.truncated || state.cycle_detected {
+                    return state;
+                }
+            }
+        }
         store::collect_error_chain(
             self.inner.source(),
             options,
@@ -482,44 +526,5 @@ impl<E> Report<E, DefaultCauseStore> {
     /// Creates a new report with the default cause store.
     pub fn new(inner: E) -> Self {
         Self::new_with_store(inner)
-    }
-}
-
-impl<E, C> Report<E, C>
-where
-    C: CauseStore + EventCauseStore,
-{
-    /// Adds an event cause to the report.
-    pub fn with_event(mut self, message: impl Into<alloc::string::String>) -> Self {
-        self.diagnostics_mut()
-            .causes
-            .push(C::event_cause(message.into()));
-        self
-    }
-}
-
-impl<E, C> Report<E, C>
-where
-    C: CauseStore + StdErrorCauseStore,
-{
-    /// Adds a standard error source to the report.
-    pub fn with_source(mut self, err: impl Error + Send + Sync + 'static) -> Self {
-        self.diagnostics_mut()
-            .causes
-            .push(C::std_error_cause(Box::new(err)));
-        self
-    }
-}
-
-impl<E, C> Report<E, C>
-where
-    C: CauseStore + LocalErrorCauseStore,
-{
-    /// Adds a local error source to the report.
-    pub fn with_local_source(mut self, err: impl Error + 'static) -> Self {
-        self.diagnostics_mut()
-            .causes
-            .push(C::local_error_cause(Box::new(err)));
-        self
     }
 }

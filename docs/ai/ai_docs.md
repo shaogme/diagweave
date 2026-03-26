@@ -140,7 +140,7 @@ enum FileError {
 ## 4. `Report<E, C>` Diagnostic Report
 
 ### Overview
-The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, cause chain, trace info). Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
+The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, display-cause chain, trace info). Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
 
 ### Declaration and Definition
 ```rust
@@ -161,7 +161,7 @@ pub struct Report<E, C = DefaultCauseStore> {
 | `report.metadata()` | Returns a reference to the raw metadata (`&ReportMetadata`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
-| `report.wrap(outer: Outer)` | Wraps current report into another error and adds to cause chain (requires `StdErrorCauseStore`) |
+| `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
 ### Global Injection
@@ -185,8 +185,8 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_error_code` | `impl Into<String>` | Set stable error code (e.g., "E001") |
 | `with_category` | `impl Into<String>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
-| `with_cause` | `C::Cause` | Manually inject a single cause into the Store |
-| `with_causes` | `impl IntoIterator<Item = C::Cause>` | Bulk inject causes |
+| `with_cause` | `impl Display` | Add one display cause (recorded as an event message) |
+| `with_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display causes (recorded as event messages) |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
 | `capture_stack_trace` | None | (std) Capture current stack trace (skip if already exists) |
 | `force_capture_stack` | None | (std) Force re-capture stack trace |
@@ -230,15 +230,10 @@ Proxy versions of all `Report` chained configuration methods:
 - **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
 - **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
-- **Cause Chain**: `with_source(err)`, `with_local_source(err)`, `with_event(msg)`, `with_cause(c)`, `with_causes(cc)`
+- **Display Causes**: `with_cause(c)`, `with_causes(cc)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **Wrapping**: `wrap(outer)`, `wrap_with(map)`
 
-#### 3. `ReportResultCauseExt` (for cause chain enhancement)
-Injects cause info without fully converting Result:
-- `with_source(error)`: Attach a cause implementing `Error`.
-- `with_local_source(error)`: Attach a local error not meeting `Send/Sync`.
-- `with_event(message)`: Attach a plain text event record.
 
 ### Usage Example
 ```rust
@@ -356,7 +351,7 @@ Exports diagnostic reports to monitoring systems or log streams.
 
 ### Export Behavior
 - **Attribute Mapping**: `Context` is mapped as named fields for the `tracing` event.
-- **Cause Chain**: The cause chain is concatenated into an `error.causes` string.
+- **Display Causes**: Display-cause messages are concatenated into an `error.causes` string.
 - **Trace ID Binding**: If Report contains `TraceContext`, it is automatically associated, or associated via injector from current Span environment.
 
 ### Usage Example
@@ -400,8 +395,8 @@ report.with_payload(
 );
 ```
 
-### 2. Multi-Level Cause Chain and Wrapping (Wrap)
-Preserve the full cause chain when passing through architectural layers.
+### 2. Multi-Level Wrapping Across Layers
+Preserve the full error source chain when passing through architectural layers.
 ```rust
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()

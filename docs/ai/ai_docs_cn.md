@@ -140,7 +140,7 @@ enum FileError {
 ## 4. `Report<E, C>` 诊断报告
 
 ### 概览
-核心诊断容器，封装原始错误 `E` 并持有可选的“冷数据”（元数据、附件、原因链、追踪信息）。采用延迟分配策略，仅在添加辅助信息时才分配堆内存。
+核心诊断容器，封装原始错误 `E` 并持有可选的“冷数据”（元数据、附件、展示原因链、追踪信息）。采用延迟分配策略，仅在添加辅助信息时才分配堆内存。
 
 ### 声明定义
 ```rust
@@ -161,7 +161,7 @@ pub struct Report<E, C = DefaultCauseStore> {
 | `report.metadata()` | 返回原始元数据引用 (`&ReportMetadata`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
-| `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并存入原因链 (需 `StdErrorCauseStore`) |
+| `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
 ### 全局注入 (Global Injection)
@@ -185,8 +185,8 @@ pub struct Report<E, C = DefaultCauseStore> {
 | `with_error_code` | `impl Into<String>` | 设置稳定的错误代码 (如 "E001") |
 | `with_category` | `impl Into<String>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
-| `with_cause` | `C::Cause` | 手动向 Store 注入单个原因 |
-| `with_causes` | `impl IntoIterator<Item = C::Cause>` | 批量注入原因 |
+| `with_cause` | `impl Display` | 添加单个展示原因（以事件消息写入） |
+| `with_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因（以事件消息写入） |
 | `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
 | `capture_stack_trace` | 无 | (std) 捕获当前堆栈 (若已存在则跳过) |
 | `force_capture_stack` | 无 | (std) 强制重新捕获堆栈 |
@@ -230,15 +230,10 @@ let report = Report::new(MyError::Timeout)
 - **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
 - **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **延迟加载**: `context_lazy(key, f)`, `note_lazy(f)` (仅在 Err 时执行闭包)
-- **原因链**: `with_source(err)`, `with_local_source(err)`, `with_event(msg)`, `with_cause(c)`, `with_causes(cc)`
+- **展示原因**: `with_cause(c)`, `with_causes(cc)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **包装**: `wrap(outer)`, `wrap_with(map)`
 
-#### 3. `ReportResultCauseExt` (作用于原因链增强)
-专门用于在不完全转换 Result 的情况下向报告注入原因信息：
-- `with_source(error)`: 附加一个实现 `Error` 的原因。
-- `with_local_source(error)`: 附加一个非 `Send/Sync` 的本地错误。
-- `with_event(message)`: 附加一个纯文字事件记录。
 
 ### 用法示例
 ```rust
@@ -356,7 +351,7 @@ let json_str = report.json().to_string();
 
 ### 导出行为
 - **属性映射**：`Context` 会被映射为 `tracing` 事件的命名字段。
-- **原因链**：原因链会被拼接为 `error.causes` 字符串。
+- **展示原因**：展示原因会被拼接为 `error.causes` 字符串。
 - **Trace ID 绑定**：若 Report 包含 `TraceContext`，导出时会自动关联，或通过注入器自动关联当前 Span 环境信息。
 
 ### 用法示例
@@ -400,8 +395,8 @@ report.with_payload(
 );
 ```
 
-### 2. 多级原因链与包装 (Wrap)
-在架构各层之间传递时保留完整的原因链条。
+### 2. 多层包装与错误链透传 (Wrap)
+在架构各层之间传递时保留完整的 `source` 错误链。
 ```rust
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()

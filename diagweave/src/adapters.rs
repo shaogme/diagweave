@@ -219,36 +219,66 @@ impl DiagnosticIr {
     }
 
     fn tracing_causes(&self, fields: &mut Vec<TracingField>) {
-        if let Some(causes) = &self.metadata.causes {
+        if let Some(display_causes) = &self.metadata.display_causes {
             fields.push(TracingField {
-                key: "causes.present".to_owned(),
+                key: "display_causes.present".to_owned(),
                 value: AdapterValue::Bool(true),
             });
             fields.push(TracingField {
-                key: "causes.count".to_owned(),
-                value: AdapterValue::U64(causes.items.len() as u64),
+                key: "display_causes.count".to_owned(),
+                value: AdapterValue::U64(display_causes.items.len() as u64),
             });
             fields.push(TracingField {
-                key: "causes.truncated".to_owned(),
-                value: AdapterValue::Bool(causes.truncated),
+                key: "display_causes.truncated".to_owned(),
+                value: AdapterValue::Bool(display_causes.truncated),
             });
             fields.push(TracingField {
-                key: "causes.cycle_detected".to_owned(),
-                value: AdapterValue::Bool(causes.cycle_detected),
+                key: "display_causes.cycle_detected".to_owned(),
+                value: AdapterValue::Bool(display_causes.cycle_detected),
             });
-            for (idx, cause) in causes.items.iter().enumerate() {
+            for (idx, cause) in display_causes.items.iter().enumerate() {
                 fields.push(TracingField {
-                    key: format!("causes.{idx}.kind"),
+                    key: format!("display_causes.{idx}.kind"),
                     value: AdapterValue::String(cause.kind.to_string()),
                 });
                 fields.push(TracingField {
-                    key: format!("causes.{idx}.message"),
+                    key: format!("display_causes.{idx}.message"),
                     value: AdapterValue::String(cause.message.clone()),
                 });
             }
         } else {
             fields.push(TracingField {
-                key: "causes.present".to_owned(),
+                key: "display_causes.present".to_owned(),
+                value: AdapterValue::Bool(false),
+            });
+        }
+
+        if let Some(error_sources) = &self.metadata.error_sources {
+            fields.push(TracingField {
+                key: "error_sources.present".to_owned(),
+                value: AdapterValue::Bool(true),
+            });
+            fields.push(TracingField {
+                key: "error_sources.count".to_owned(),
+                value: AdapterValue::U64(error_sources.items.len() as u64),
+            });
+            fields.push(TracingField {
+                key: "error_sources.truncated".to_owned(),
+                value: AdapterValue::Bool(error_sources.truncated),
+            });
+            fields.push(TracingField {
+                key: "error_sources.cycle_detected".to_owned(),
+                value: AdapterValue::Bool(error_sources.cycle_detected),
+            });
+            for (idx, source) in error_sources.items.iter().enumerate() {
+                fields.push(TracingField {
+                    key: format!("error_sources.{idx}.message"),
+                    value: AdapterValue::String(source.message.clone()),
+                });
+            }
+        } else {
+            fields.push(TracingField {
+                key: "error_sources.present".to_owned(),
                 value: AdapterValue::Bool(false),
             });
         }
@@ -353,26 +383,50 @@ impl DiagnosticIr {
     }
 
     fn otel_meta_causes(&self, attributes: &mut Vec<OtelAttribute>) {
-        if let Some(causes) = &self.metadata.causes {
+        if let Some(display_causes) = &self.metadata.display_causes {
             attributes.push(OtelAttribute {
-                key: "causes.present".to_owned(),
+                key: "display_causes.present".to_owned(),
                 value: AdapterValue::Bool(true),
             });
             attributes.push(OtelAttribute {
-                key: "causes.count".to_owned(),
-                value: AdapterValue::U64(causes.items.len() as u64),
+                key: "display_causes.count".to_owned(),
+                value: AdapterValue::U64(display_causes.items.len() as u64),
             });
             attributes.push(OtelAttribute {
-                key: "causes.truncated".to_owned(),
-                value: AdapterValue::Bool(causes.truncated),
+                key: "display_causes.truncated".to_owned(),
+                value: AdapterValue::Bool(display_causes.truncated),
             });
             attributes.push(OtelAttribute {
-                key: "causes.cycle_detected".to_owned(),
-                value: AdapterValue::Bool(causes.cycle_detected),
+                key: "display_causes.cycle_detected".to_owned(),
+                value: AdapterValue::Bool(display_causes.cycle_detected),
             });
         } else {
             attributes.push(OtelAttribute {
-                key: "causes.present".to_owned(),
+                key: "display_causes.present".to_owned(),
+                value: AdapterValue::Bool(false),
+            });
+        }
+
+        if let Some(error_sources) = &self.metadata.error_sources {
+            attributes.push(OtelAttribute {
+                key: "error_sources.present".to_owned(),
+                value: AdapterValue::Bool(true),
+            });
+            attributes.push(OtelAttribute {
+                key: "error_sources.count".to_owned(),
+                value: AdapterValue::U64(error_sources.items.len() as u64),
+            });
+            attributes.push(OtelAttribute {
+                key: "error_sources.truncated".to_owned(),
+                value: AdapterValue::Bool(error_sources.truncated),
+            });
+            attributes.push(OtelAttribute {
+                key: "error_sources.cycle_detected".to_owned(),
+                value: AdapterValue::Bool(error_sources.cycle_detected),
+            });
+        } else {
+            attributes.push(OtelAttribute {
+                key: "error_sources.present".to_owned(),
                 value: AdapterValue::Bool(false),
             });
         }

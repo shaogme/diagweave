@@ -50,8 +50,10 @@ pub struct ReportJsonMetadata {
     pub retryable: Option<bool>,
     /// The stack trace if available.
     pub stack_trace: Option<ReportJsonStackTrace>,
-    /// The cause chain if available.
-    pub causes: Option<ReportJsonCauseChain>,
+    /// The display cause chain if available.
+    pub display_causes: Option<ReportJsonCauseChain>,
+    /// The error source chain if available.
+    pub error_sources: Option<ReportJsonCauseChain>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -258,7 +260,14 @@ impl From<DiagnosticIr> for ReportJsonDocument {
                 category: value.metadata.category,
                 retryable: value.metadata.retryable,
                 stack_trace: value.metadata.stack_trace.map(ReportJsonStackTrace::from),
-                causes: value.metadata.causes.map(ReportJsonCauseChain::from),
+                display_causes: value
+                    .metadata
+                    .display_causes
+                    .map(ReportJsonCauseChain::from),
+                error_sources: value
+                    .metadata
+                    .error_sources
+                    .map(ReportJsonCauseChain::from),
             },
             #[cfg(feature = "trace")]
             trace: value.trace,

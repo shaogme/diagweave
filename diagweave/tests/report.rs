@@ -256,7 +256,7 @@ fn pretty_output_is_structured() {
     assert!(pretty.contains("Governance:"));
     assert!(pretty.contains("Context:"));
     assert!(pretty.contains("Attachments:"));
-    assert!(pretty.contains("Caused by:"));
+    assert!(pretty.contains("Error Sources:"));
     assert!(pretty.contains("auth invalid token [code=AUTH.INVALID_TOKEN, severity=error, request_id=tx-pretty, raw_body=<3 bytes> (application/octet-stream)]"));
 }
 
@@ -318,7 +318,8 @@ fn pretty_can_hide_type_and_empty_sections_and_change_indent() {
     assert!(!pretty.contains("Governance:"));
     assert!(!pretty.contains("Context:"));
     assert!(!pretty.contains("Attachments:"));
-    assert!(!pretty.contains("Caused by:"));
+    assert!(!pretty.contains("Display Causes:"));
+    assert!(!pretty.contains("Error Sources:"));
 }
 
 #[test]
@@ -362,5 +363,6 @@ fn pretty_options_can_hide_specific_sections() {
     assert!(!pretty.contains("Governance:"));
     assert!(!pretty.contains("Context:"));
     assert!(!pretty.contains("Attachments:"));
-    assert!(!pretty.contains("Caused by:"));
+    assert!(!pretty.contains("Display Causes:"));
+    assert!(!pretty.contains("Error Sources:"));
 }

@@ -4,6 +4,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::error::Error;
+use core::fmt::{Display, Formatter, Result as FmtResult};
 
 use super::types::{CauseCollectOptions, CauseCollection};
 
@@ -75,6 +76,26 @@ impl StdCause {
     /// Creates a new group cause.
     pub fn group(causes: impl IntoIterator<Item = StdCause>) -> Self {
         Self::Group(causes.into_iter().collect())
+    }
+}
+
+impl Display for StdCause {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            StdCause::Error(err) => write!(f, "{err}"),
+            StdCause::Event(message) => write!(f, "{message}"),
+            StdCause::Group(children) => {
+                let mut first = true;
+                for child in children {
+                    if !first {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{child}")?;
+                    first = false;
+                }
+                Ok(())
+            }
+        }
     }
 }
 
@@ -162,6 +183,26 @@ impl LocalCause {
     /// Creates a new local group cause.
     pub fn group(causes: impl IntoIterator<Item = LocalCause>) -> Self {
         Self::Group(causes.into_iter().collect())
+    }
+}
+
+impl Display for LocalCause {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            LocalCause::Error(err) => write!(f, "{err}"),
+            LocalCause::Event(message) => write!(f, "{message}"),
+            LocalCause::Group(children) => {
+                let mut first = true;
+                for child in children {
+                    if !first {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{child}")?;
+                    first = false;
+                }
+                Ok(())
+            }
+        }
     }
 }
 

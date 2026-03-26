@@ -36,7 +36,8 @@ pub struct ReportMetadata {
     pub category: Option<String>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<StackTrace>,
-    pub causes: Option<CauseChain>,
+    pub display_causes: Option<CauseChain>,
+    pub error_sources: Option<CauseChain>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

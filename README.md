@@ -18,7 +18,7 @@
 `diagweave` unifies three layers that are often split across different crates:
 
 - **Type layer**: `set!` / `union!` for composable, strongly-typed error modeling
-- **Propagation layer**: `Report` for context, attachments, events, stack trace, and source/cause chain
+- **Propagation layer**: `Report` for context, attachments, events, stack trace, and source chain
 - **Presentation layer**: `Compact` / `Pretty` / `Json`, plus tracing/telemetry export
 
 ## Table of Contents
@@ -264,9 +264,14 @@ Common enrichers on `Result<T, Report<E, C>>`:
 
 - `with_context`, `with_note`, `with_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
-- `with_source`, `with_local_source`, `with_event`, `with_causes`
+- `with_cause`, `with_causes`
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
+
+Cause semantics:
+
+- `with_cause` / `with_causes` accept `impl Display` and record display causes as event messages (for rendering/IR).
+- Error source propagation is maintained by `wrap` / `wrap_with` and `Error::source()`.
 
 Global context injector (`std`):
 

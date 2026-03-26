@@ -1,11 +1,10 @@
 use alloc::string::String;
-use core::error::Error;
 use core::fmt::Display;
 
 use super::{
-    AttachmentValue, CauseStore, EventCauseStore, LocalErrorCauseStore, Report, ReportMetadata,
-    Severity, StackTrace, StdErrorCauseStore,
+    AttachmentValue, CauseStore, EventCauseStore, Report, ReportMetadata, Severity, StackTrace,
 };
+use core::error::Error;
 #[cfg(feature = "trace")]
 use super::{ReportTrace, TraceEvent, TraceEventAttribute, TraceEventLevel};
 
@@ -148,23 +147,17 @@ where
     #[cfg(feature = "std")]
     fn capture_stack_trace(self) -> Result<T, Report<E, C>>;
 
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore;
-
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore;
-
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
+    fn with_cause(self, cause: impl Display) -> Result<T, Report<E, C>>
     where
         C: EventCauseStore;
 
-    fn with_cause(self, cause: C::Cause) -> Result<T, Report<E, C>>;
-
-    fn with_causes<I>(self, causes: I) -> Result<T, Report<E, C>>
+    fn with_causes<I, TCause>(self, causes: I) -> Result<T, Report<E, C>>
     where
-        I: IntoIterator<Item = C::Cause>;
+        I: IntoIterator<Item = TCause>,
+        TCause: Display,
+        C: EventCauseStore;
+
+    fn with_error_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>;
 
     fn context_lazy(
         self,
@@ -176,32 +169,11 @@ where
 
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, C>>
     where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore;
+        Report<E, C>: Error + 'static;
 
-    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, C>>
-    where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore;
+    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, C>>;
 }
 
-/// Extension trait specifically for adding causes to a diagnostic result.
-pub trait ReportResultCauseExt<T, E, C = super::DefaultCauseStore>
-where
-    C: CauseStore,
-{
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore;
-
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore;
-
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
-    where
-        C: EventCauseStore;
-}
 
 impl<T, E, C> ReportResultExt<T, E, C> for Result<T, Report<E, C>>
 where
@@ -350,36 +322,24 @@ where
         self.map_err(|report| report.capture_stack_trace())
     }
 
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore,
-    {
-        self.map_err(|report| report.with_source(err))
-    }
-
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore,
-    {
-        self.map_err(|report| report.with_local_source(err))
-    }
-
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
+    fn with_cause(self, cause: impl Display) -> Result<T, Report<E, C>>
     where
         C: EventCauseStore,
     {
-        self.map_err(|report| report.with_event(message))
-    }
-
-    fn with_cause(self, cause: C::Cause) -> Result<T, Report<E, C>> {
         self.map_err(|report| report.with_cause(cause))
     }
 
-    fn with_causes<I>(self, causes: I) -> Result<T, Report<E, C>>
+    fn with_causes<I, TCause>(self, causes: I) -> Result<T, Report<E, C>>
     where
-        I: IntoIterator<Item = C::Cause>,
+        I: IntoIterator<Item = TCause>,
+        TCause: Display,
+        C: EventCauseStore,
     {
         self.map_err(|report| report.with_causes(causes))
+    }
+
+    fn with_error_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>> {
+        self.map_err(|report| report.with_error_source(err))
     }
 
     fn context_lazy(
@@ -397,43 +357,12 @@ where
 
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, C>>
     where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore,
+        Report<E, C>: Error + 'static,
     {
         self.map_err(|report| report.wrap(outer))
     }
 
-    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, C>>
-    where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore,
-    {
+    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, C>> {
         self.map_err(|report| report.wrap_with(map))
-    }
-}
-
-impl<T, E, C> ReportResultCauseExt<T, E, C> for Result<T, Report<E, C>>
-where
-    C: CauseStore,
-{
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore,
-    {
-        self.map_err(|report| report.with_source(err))
-    }
-
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore,
-    {
-        self.map_err(|report| report.with_local_source(err))
-    }
-
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
-    where
-        C: EventCauseStore,
-    {
-        self.map_err(|report| report.with_event(message))
     }
 }

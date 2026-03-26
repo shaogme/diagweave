@@ -126,8 +126,10 @@ pub struct DiagnosticIrMetadata {
     pub retryable: Option<bool>,
     /// The stack trace if available.
     pub stack_trace: Option<StackTrace>,
-    /// The cause chain if available.
-    pub causes: Option<CauseChain>,
+    /// The display cause chain if available.
+    pub display_causes: Option<CauseChain>,
+    /// The error source chain if available.
+    pub error_sources: Option<CauseChain>,
 }
 
 /// A context item in the diagnostic IR.
@@ -215,7 +217,8 @@ impl From<&ReportMetadata> for DiagnosticIrMetadata {
             category: value.category.clone(),
             retryable: value.retryable,
             stack_trace: value.stack_trace.clone(),
-            causes: value.causes.clone(),
+            display_causes: value.display_causes.clone(),
+            error_sources: value.error_sources.clone(),
         }
     }
 }
@@ -227,11 +230,16 @@ where
 {
     /// Converts the report to a diagnostic intermediate representation.
     pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr {
-        let cause_state = self.collect_causes(CauseCollectOptions {
+        let display_cause_state = self.collect_display_causes(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });
-        let causes = cause_collection_to_chain(&cause_state);
+        let display_causes = cause_collection_to_chain(&display_cause_state);
+        let error_source_state = self.collect_error_sources(CauseCollectOptions {
+            max_depth: options.max_source_depth,
+            detect_cycle: options.detect_source_cycle,
+        });
+        let error_sources = cause_collection_to_chain_error_only(&error_source_state);
 
         let mut context = Vec::new();
         let mut attachments = Vec::new();
@@ -257,7 +265,8 @@ where
         }
 
         let mut metadata = DiagnosticIrMetadata::from(self.metadata());
-        metadata.causes = causes;
+        metadata.display_causes = display_causes;
+        metadata.error_sources = error_sources;
 
         DiagnosticIr {
             error: DiagnosticIrError {
@@ -293,6 +302,27 @@ fn cause_collection_to_chain(cause_state: &CauseCollection) -> Option<CauseChain
                     message: message.clone(),
                 }
             }
+        })
+        .collect();
+
+    Some(CauseChain {
+        items,
+        truncated: cause_state.truncated,
+        cycle_detected: cause_state.cycle_detected,
+    })
+}
+
+fn cause_collection_to_chain_error_only(cause_state: &CauseCollection) -> Option<CauseChain> {
+    if cause_state.messages.is_empty() && !cause_state.truncated && !cause_state.cycle_detected {
+        return None;
+    }
+
+    let items = cause_state
+        .messages
+        .iter()
+        .map(|message| CauseEntry {
+            kind: CauseKind::Error,
+            message: message.clone(),
         })
         .collect();
 

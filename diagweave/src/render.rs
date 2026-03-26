@@ -15,8 +15,9 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    Attachment, AttachmentValue, CauseChain, CauseCollectOptions, CauseCollection, CauseEntry,
-    CauseKind, CauseStore, DefaultCauseStore, Report, ReportMetadata, Severity, StackTrace,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseStore,
+    DefaultCauseStore, DisplayCauseChain, Report, ReportMetadata, Severity, SourceError,
+    SourceErrorChain, StackTrace,
 };
 
 pub use pretty::Pretty;
@@ -24,8 +25,8 @@ pub use pretty::Pretty;
 #[cfg(feature = "json")]
 pub use json::{
     Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
-    ReportJsonCauseChain, ReportJsonCauseKind, ReportJsonCauseNode, ReportJsonContext,
-    ReportJsonDocument, ReportJsonError, ReportJsonMetadata, ReportJsonStackFrame,
+    ReportJsonContext, ReportJsonDisplayCauseChain, ReportJsonDocument, ReportJsonError,
+    ReportJsonMetadata, ReportJsonSourceError, ReportJsonSourceErrorChain, ReportJsonStackFrame,
     ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
 };
 
@@ -53,7 +54,7 @@ pub struct ReportRenderOptions {
     /// Whether to show the attachments section.
     pub show_attachments_section: bool,
     /// Whether to show the causes section.
-    pub show_causes_section: bool,
+    pub show_cause_chains_section: bool,
     /// Maximum number of lines to show for a raw stack trace.
     pub stack_trace_max_lines: usize,
     /// Whether to include the raw stack trace if frames are missing.
@@ -86,7 +87,7 @@ impl Default for ReportRenderOptions {
             show_stack_trace_section: true,
             show_context_section: true,
             show_attachments_section: true,
-            show_causes_section: true,
+            show_cause_chains_section: true,
             stack_trace_max_lines: 24,
             stack_trace_include_raw: true,
             stack_trace_include_frames: true,
@@ -127,9 +128,9 @@ pub struct DiagnosticIrMetadata {
     /// The stack trace if available.
     pub stack_trace: Option<StackTrace>,
     /// The display cause chain if available.
-    pub display_causes: Option<CauseChain>,
+    pub display_causes: Option<DisplayCauseChain>,
     /// The error source chain if available.
-    pub error_sources: Option<CauseChain>,
+    pub source_errors: Option<SourceErrorChain>,
 }
 
 /// A context item in the diagnostic IR.
@@ -218,7 +219,7 @@ impl From<&ReportMetadata> for DiagnosticIrMetadata {
             retryable: value.retryable,
             stack_trace: value.stack_trace.clone(),
             display_causes: value.display_causes.clone(),
-            error_sources: value.error_sources.clone(),
+            source_errors: value.source_errors.clone(),
         }
     }
 }
@@ -230,16 +231,16 @@ where
 {
     /// Converts the report to a diagnostic intermediate representation.
     pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr {
-        let display_cause_state = self.collect_display_causes(CauseCollectOptions {
+        let display_cause_collection = self.collect_display_causes(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });
-        let display_causes = cause_collection_to_chain(&display_cause_state);
-        let error_source_state = self.collect_error_sources(CauseCollectOptions {
+        let display_causes = cause_collection_to_display_cause_chain(&display_cause_collection);
+        let source_error_collection = self.collect_source_errors(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });
-        let error_sources = cause_collection_to_chain_error_only(&error_source_state);
+        let source_errors = cause_collection_to_source_error_chain(&source_error_collection);
 
         let mut context = Vec::new();
         let mut attachments = Vec::new();
@@ -266,7 +267,7 @@ where
 
         let mut metadata = DiagnosticIrMetadata::from(self.metadata());
         metadata.display_causes = display_causes;
-        metadata.error_sources = error_sources;
+        metadata.source_errors = source_errors;
 
         DiagnosticIr {
             error: DiagnosticIrError {
@@ -282,54 +283,50 @@ where
     }
 }
 
-fn cause_collection_to_chain(cause_state: &CauseCollection) -> Option<CauseChain> {
-    if cause_state.messages.is_empty() && !cause_state.truncated && !cause_state.cycle_detected {
+fn cause_collection_to_display_cause_chain(
+    collection: &CauseCollection,
+) -> Option<DisplayCauseChain> {
+    if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
         return None;
     }
 
-    let items = cause_state
+    let items = collection
         .messages
         .iter()
         .map(|message| {
-            if let Some(event_message) = message.strip_prefix("event: ") {
-                CauseEntry {
-                    kind: CauseKind::Event,
-                    message: event_message.to_owned(),
-                }
-            } else {
-                CauseEntry {
-                    kind: CauseKind::Error,
-                    message: message.clone(),
-                }
-            }
+            message
+                .strip_prefix("event: ")
+                .unwrap_or(message.as_str())
+                .to_owned()
         })
         .collect();
 
-    Some(CauseChain {
+    Some(DisplayCauseChain {
         items,
-        truncated: cause_state.truncated,
-        cycle_detected: cause_state.cycle_detected,
+        truncated: collection.truncated,
+        cycle_detected: collection.cycle_detected,
     })
 }
 
-fn cause_collection_to_chain_error_only(cause_state: &CauseCollection) -> Option<CauseChain> {
-    if cause_state.messages.is_empty() && !cause_state.truncated && !cause_state.cycle_detected {
+fn cause_collection_to_source_error_chain(
+    collection: &CauseCollection,
+) -> Option<SourceErrorChain> {
+    if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
         return None;
     }
 
-    let items = cause_state
+    let items = collection
         .messages
         .iter()
-        .map(|message| CauseEntry {
-            kind: CauseKind::Error,
-            message: message.clone(),
+        .map(|message| SourceError {
+            message: message.to_owned(),
         })
         .collect();
 
-    Some(CauseChain {
+    Some(SourceErrorChain {
         items,
-        truncated: cause_state.truncated,
-        cycle_detected: cause_state.cycle_detected,
+        truncated: collection.truncated,
+        cycle_detected: collection.cycle_detected,
     })
 }
 

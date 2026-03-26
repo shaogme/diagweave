@@ -11,17 +11,17 @@ fn cause_tree_supports_multiple_sources_and_events() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_cause(AuthError::InvalidToken)
-        .with_cause("request was retried")
-        .with_cause(CauseNode::group([
+        .with_display_cause(AuthError::InvalidToken)
+        .with_display_cause("request was retried")
+        .with_display_cause(CauseNode::group([
             CauseNode::event("fallback cache missed"),
             CauseNode::error(ApiError::Wrapped { code: 502 }),
         ]));
 
     let pretty = report.pretty().to_string();
     assert!(pretty.contains("auth invalid token"));
-    assert!(pretty.contains("event: request was retried"));
-    assert!(pretty.contains("event: fallback cache missed"));
+    assert!(pretty.contains("request was retried"));
+    assert!(pretty.contains("fallback cache missed"));
     assert!(pretty.contains("api wrapped code=502"));
 }
 
@@ -37,7 +37,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
             retryable: Some(false),
             stack_trace: None,
             display_causes: None,
-            error_sources: None,
+            source_errors: None,
         })
         .attach("request_id", "req-ir-1")
         .attach_printable("note")
@@ -49,8 +49,8 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
             },
             Some("application/json".to_owned()),
         )
-        .with_cause(AuthError::InvalidToken)
-        .with_cause("retry happened");
+        .with_display_cause(AuthError::InvalidToken)
+        .with_display_cause("retry happened");
 
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     assert_eq!(ir.error.message, "api unauthorized");
@@ -110,8 +110,8 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             ])),
             Some("application/json".to_owned()),
         )
-        .with_cause(AuthError::InvalidToken)
-        .with_cause("fallback path");
+        .with_display_cause(AuthError::InvalidToken)
+        .with_display_cause("fallback path");
 
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     let tracing_fields = ir.to_tracing_fields();
@@ -193,7 +193,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
                 value: AttachmentValue::from("postgres"),
             }],
         })
-        .with_cause("fallback path");
+        .with_display_cause("fallback path");
 
     report.emit_tracing_with(&exporter, ReportRenderOptions::default());
     assert_eq!(calls.get(), 1);

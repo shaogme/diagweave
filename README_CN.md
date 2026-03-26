@@ -264,14 +264,15 @@ pub enum MyError {
 
 - `with_context`、`with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
-- `with_cause`、`with_causes`
+- `with_display_cause`、`with_display_causes`、`with_source_error`
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
 
 原因语义说明：
 
-- `with_cause` / `with_causes` 接收 `impl Display`，以事件消息形式记录到展示链（用于渲染与 IR）。
-- 真正的错误传播链由 `wrap` / `wrap_with` 与 `Error::source()` 维护。
+- `with_display_cause` / `with_display_causes` 接收 `impl Display`，并追加到展示原因字符串链（用于渲染与 IR）。
+- `with_source_error` 用于显式追加错误对象到 source 链元数据。
+- 真正的错误传播链由 `with_source_error`、`wrap` / `wrap_with` 与 `Error::source()` 共同维护。
 
 全局上下文注入（`std`）：
 

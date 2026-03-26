@@ -26,7 +26,7 @@ fn derive_error_template_and_transparent_display_work() {
 }
 
 #[test]
-fn derive_error_source_and_diag_work() {
+fn derive_source_errors_and_diag_work() {
     let up = DemoError::Upstream(std::io::Error::other("db down"));
     let src = up.source().expect("source exists");
     assert_eq!(src.to_string(), "db down");

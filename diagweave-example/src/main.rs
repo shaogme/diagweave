@@ -121,25 +121,25 @@ struct ConsoleExporter;
 impl TracingExporterTrait for ConsoleExporter {
     fn export_ir(&self, ir: &DiagnosticIr) {
         let display_causes = ir.metadata.display_causes.as_ref();
-        let error_sources = ir.metadata.error_sources.as_ref();
+        let source_errors = ir.metadata.source_errors.as_ref();
         let display_cause_count = display_causes.map(|c| c.items.len()).unwrap_or(0);
-        let error_source_count = error_sources.map(|c| c.items.len()).unwrap_or(0);
+        let source_errors_count = source_errors.map(|c| c.items.len()).unwrap_or(0);
         println!(
-            "[Tracing Exporter] error={}, severity={:?}, display_causes={}, error_sources={}, stack_trace={}",
+            "[Tracing Exporter] error={}, severity={:?}, display_causes={}, source_errors={}, stack_trace={}",
             ir.error.message,
             ir.metadata.severity,
             display_cause_count,
-            error_source_count,
+            source_errors_count,
             ir.metadata.stack_trace.is_some()
         );
         if let Some(causes) = display_causes {
             for (idx, cause) in causes.items.iter().enumerate() {
-                println!("  display_cause[{idx}] {}: {}", cause.kind, cause.message);
+                println!("  display_cause[{idx}] {}", cause);
             }
         }
-        if let Some(sources) = error_sources {
+        if let Some(sources) = source_errors {
             for (idx, source) in sources.items.iter().enumerate() {
-                println!("  error_source[{idx}] {}: {}", source.kind, source.message);
+                println!("  source_errors[{idx}] {}", source.message);
             }
         }
     }
@@ -164,9 +164,9 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     db_operation()
         .diag_context("user_id", user_id)
         .with_note("failing over to secondary database")
-        .with_cause("db operation failed")
-        .with_cause("query plan fallback selected")
-        .with_error_source(io::Error::other("replica lag detected"))
+        .with_display_cause("db operation failed")
+        .with_display_cause("query plan fallback selected")
+        .with_source_error(io::Error::other("replica lag detected"))
         .capture_stack_trace()
         .wrap_with(|db_err| match db_err {
             DatabaseError::ConnectionLost(io) => AppError::Io(io),
@@ -250,7 +250,7 @@ where
     println!(
         "JSON check: schema_version={}, causes_present={}\n",
         parsed.schema_version,
-        parsed.metadata.display_causes.is_some() || parsed.metadata.error_sources.is_some()
+        parsed.metadata.display_causes.is_some() || parsed.metadata.source_errors.is_some()
     );
 
     let lean_pretty_opts = ReportRenderOptions {
@@ -277,15 +277,15 @@ where
     println!("Display Causes:");
     if let Some(display_causes) = &ir.metadata.display_causes {
         for (idx, cause) in display_causes.items.iter().enumerate() {
-            println!("  {}. {}: {}", idx + 1, cause.kind, cause.message);
+            println!("  {}. {}", idx + 1, cause);
         }
     } else {
         println!("  (none)");
     }
-    println!("Error Causes (Error Sources Chain):");
-    if let Some(error_sources) = &ir.metadata.error_sources {
-        for (idx, source) in error_sources.items.iter().enumerate() {
-            println!("  {}. {}: {}", idx + 1, source.kind, source.message);
+    println!("Error Causes (Source Errors Chain):");
+    if let Some(source_errors) = &ir.metadata.source_errors {
+        for (idx, source) in source_errors.items.iter().enumerate() {
+            println!("  {}. {}", idx + 1, source.message);
         }
     } else {
         println!("  (none)");
@@ -311,8 +311,8 @@ fn demo_specialized_stores() {
     let event_report: Report<BaseError, EventOnlyStore> =
         Result::<(), _>::Err(BaseError::not_found("item_1".into()))
             .diag_with::<EventOnlyStore>()
-            .with_cause("cache invalidated")
-            .with_cause(io::Error::other("hardware failure"))
+            .with_display_cause("cache invalidated")
+            .with_display_cause(io::Error::other("hardware failure"))
             .expect_err("demo");
     println!("EventOnlyStore Report:\n{}\n", event_report.pretty());
 

@@ -185,8 +185,9 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_error_code` | `impl Into<String>` | Set stable error code (e.g., "E001") |
 | `with_category` | `impl Into<String>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
-| `with_cause` | `impl Display` | Add one display cause (recorded as an event message) |
-| `with_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display causes (recorded as event messages) |
+| `with_display_cause` | `impl Display` | Add one display-cause string |
+| `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |
+| `with_source_error` | `impl Error + 'static` | Add one explicit error source object |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
 | `capture_stack_trace` | None | (std) Capture current stack trace (skip if already exists) |
 | `force_capture_stack` | None | (std) Force re-capture stack trace |
@@ -230,7 +231,8 @@ Proxy versions of all `Report` chained configuration methods:
 - **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
 - **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
-- **Display Causes**: `with_cause(c)`, `with_causes(cc)`
+- **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
+- **Source Errors**: `with_source_error(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **Wrapping**: `wrap(outer)`, `wrap_with(map)`
 
@@ -295,7 +297,7 @@ Converts `Report` with rich metadata into displayable strings or structured data
 | `pretty_indent` | `Spaces(2)` | Indentation style for `Pretty` rendering (supports `Tab`) |
 | `json_pretty` | `false`| Whether JSON output has formatted indentation |
 | `show_empty_sections` | `true`| Whether to show empty segments (e.g., when Trace is empty) |
-| `show_causes_section` | `true`| Whether to show Cause Chain section |
+| `show_cause_chains_section` | `true`| Whether to show Cause Chain section |
 | `show_context_section`| `true`| Whether to show Context K-V section |
 | `show_attachments_section`| `true`| Whether to show Attachments (Payload/Note) section |
 | `show_stack_trace_section`| `true`| Whether to show Stack Trace section |
@@ -307,7 +309,7 @@ Renderers don't process `Report` directly, but first convert it via `to_diagnost
 ```rust
 pub struct DiagnosticIr {
     pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, causes }
+    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
     pub trace: ReportTrace,             // { context, events }
     pub context: Vec<DiagnosticIrContext>,
     pub attachments: Vec<DiagnosticIrAttachment>,

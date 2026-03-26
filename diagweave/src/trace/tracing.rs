@@ -67,10 +67,10 @@ macro_rules! report_event {
             display_causes_count = $ir.metadata.display_causes.as_ref().map(|x| x.items.len()).unwrap_or(0),
             display_causes_truncated = $ir.metadata.display_causes.as_ref().map(|x| x.truncated).unwrap_or(false),
             display_causes_cycle_detected = $ir.metadata.display_causes.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
-            error_sources_present = $ir.metadata.error_sources.is_some(),
-            error_sources_count = $ir.metadata.error_sources.as_ref().map(|x| x.items.len()).unwrap_or(0),
-            error_sources_truncated = $ir.metadata.error_sources.as_ref().map(|x| x.truncated).unwrap_or(false),
-            error_sources_cycle_detected = $ir.metadata.error_sources.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
+            source_errors_present = $ir.metadata.source_errors.is_some(),
+            source_errors_count = $ir.metadata.source_errors.as_ref().map(|x| x.items.len()).unwrap_or(0),
+            source_errors_truncated = $ir.metadata.source_errors.as_ref().map(|x| x.truncated).unwrap_or(false),
+            source_errors_cycle_detected = $ir.metadata.source_errors.as_ref().map(|x| x.cycle_detected).unwrap_or(false),
             trace_event_count = $ir.trace.events.len(),
             "diagweave report emitted"
         )

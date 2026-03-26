@@ -39,7 +39,7 @@ where
         render_context_section(f, &ir, &self.options, &indent)?;
         render_attachments(f, &ir, &self.options, &indent)?;
         render_display_causes_section(f, &ir, &self.options, &indent)?;
-        render_error_sources_section(f, &ir, &self.options, &indent)?;
+        render_source_errors_section(f, &ir, &self.options, &indent)?;
 
         Ok(())
     }
@@ -79,7 +79,7 @@ fn render_governance_section(
         || metadata.retryable.is_some()
         || metadata.stack_trace.is_some()
         || metadata.display_causes.is_some()
-        || metadata.error_sources.is_some();
+        || metadata.source_errors.is_some();
 
     if options.show_governance_section && (options.show_empty_sections || has_metadata) {
         writeln!(f, "Governance:")?;
@@ -123,21 +123,21 @@ fn render_governance_section(
                     display_causes.cycle_detected
                 )?;
             }
-            if let Some(error_sources) = &metadata.error_sources {
+            if let Some(source_errors) = &metadata.source_errors {
                 writeln!(
                     f,
-                    "{indent}- error_sources.count: {}",
-                    error_sources.items.len()
+                    "{indent}- source_errors.count: {}",
+                    source_errors.items.len()
                 )?;
                 writeln!(
                     f,
-                    "{indent}- error_sources.truncated: {}",
-                    error_sources.truncated
+                    "{indent}- source_errors.truncated: {}",
+                    source_errors.truncated
                 )?;
                 writeln!(
                     f,
-                    "{indent}- error_sources.cycle_detected: {}",
-                    error_sources.cycle_detected
+                    "{indent}- source_errors.cycle_detected: {}",
+                    source_errors.cycle_detected
                 )?;
             }
         }
@@ -298,14 +298,14 @@ fn render_display_causes_section(
     indent: &str,
 ) -> fmt::Result {
     let causes = ir.metadata.display_causes.as_ref();
-    if options.show_causes_section && (options.show_empty_sections || causes.is_some()) {
+    if options.show_cause_chains_section && (options.show_empty_sections || causes.is_some()) {
         writeln!(f, "Display Causes:")?;
         if let Some(causes) = causes {
             if causes.items.is_empty() {
                 writeln!(f, "{indent}- (none)")?;
             } else {
                 for (idx, cause) in causes.items.iter().enumerate() {
-                    writeln!(f, "{indent}{}. {}: {}", idx + 1, cause.kind, cause.message)?;
+                    writeln!(f, "{indent}{}. {}", idx + 1, cause)?;
                 }
             }
             if causes.truncated {
@@ -321,21 +321,21 @@ fn render_display_causes_section(
     Ok(())
 }
 
-fn render_error_sources_section(
+fn render_source_errors_section(
     f: &mut Formatter<'_>,
     ir: &DiagnosticIr,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
-    let sources = ir.metadata.error_sources.as_ref();
-    if options.show_causes_section && (options.show_empty_sections || sources.is_some()) {
-        writeln!(f, "Error Sources:")?;
+    let sources = ir.metadata.source_errors.as_ref();
+    if options.show_cause_chains_section && (options.show_empty_sections || sources.is_some()) {
+        writeln!(f, "Source Errors:")?;
         if let Some(sources) = sources {
             if sources.items.is_empty() {
                 writeln!(f, "{indent}- (none)")?;
             } else {
                 for (idx, source) in sources.items.iter().enumerate() {
-                    writeln!(f, "{indent}{}. {}: {}", idx + 1, source.kind, source.message)?;
+                    writeln!(f, "{indent}{}. {}", idx + 1, source.message)?;
                 }
             }
             if sources.truncated {

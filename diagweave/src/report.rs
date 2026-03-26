@@ -21,12 +21,13 @@ use std::sync::OnceLock;
 
 pub use ext::{Diagnostic, ReportResultExt};
 pub use store::{
-    CauseNode, CauseStore, DefaultCauseStore, EventCauseStore, EventOnlyStore, LocalCause,
-    LocalCauseStore, LocalErrorCauseStore, StdCause, StdCauseStore, StdErrorCauseStore,
+    CauseNode, CauseStore, DefaultCauseStore, DisplayCauseStore, EventCauseStore, EventOnlyStore,
+    LocalCause, LocalCauseStore, LocalErrorCauseStore, StdCause, StdCauseStore, StdErrorCauseStore,
 };
 pub use types::{
-    Attachment, AttachmentValue, CauseChain, CauseCollectOptions, CauseCollection, CauseEntry,
-    CauseKind, ReportMetadata, Severity, StackFrame, StackTrace, StackTraceFormat,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind,
+    DisplayCauseChain, ReportMetadata, Severity, SourceError, SourceErrorChain, StackFrame,
+    StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
@@ -49,7 +50,7 @@ struct DiagnosticBag<C> {
     trace: ReportTrace,
     attachments: Vec<Attachment>,
     causes: C,
-    error_sources: Vec<Box<dyn Error + 'static>>,
+    source_errors: Vec<Box<dyn Error + 'static>>,
 }
 
 impl<C> Default for DiagnosticBag<C>
@@ -62,7 +63,7 @@ where
             trace: ReportTrace::default(),
             attachments: Vec::new(),
             causes: C::default(),
-            error_sources: Vec::new(),
+            source_errors: Vec::new(),
         }
     }
 }
@@ -74,7 +75,7 @@ const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
     retryable: None,
     stack_trace: None,
     display_causes: None,
-    error_sources: None,
+    source_errors: None,
 };
 
 /// Global context information that can be injected into reports.
@@ -418,36 +419,36 @@ where
 
     /// Adds a display cause to the report.
     ///
-    /// Display causes are always recorded as event messages and are intended
-    /// for diagnostic rendering, not for error source propagation.
-    pub fn with_cause(mut self, cause: impl Display) -> Self
+    /// Display causes are intended for diagnostic rendering, not for
+    /// error source propagation.
+    pub fn with_display_cause(mut self, cause: impl Display) -> Self
     where
-        C: EventCauseStore,
+        C: DisplayCauseStore,
     {
         self.diagnostics_mut()
             .causes
-            .push(C::event_cause(cause.to_string()));
+            .push(C::display_cause(cause.to_string()));
         self
     }
 
     /// Adds multiple display causes to the report.
-    pub fn with_causes<I, T>(mut self, causes: I) -> Self
+    pub fn with_display_causes<I, T>(mut self, causes: I) -> Self
     where
         I: IntoIterator<Item = T>,
         T: Display,
-        C: EventCauseStore,
+        C: DisplayCauseStore,
     {
         self.diagnostics_mut().causes.extend(
             causes
                 .into_iter()
-                .map(|cause| C::event_cause(cause.to_string())),
+                .map(|cause| C::display_cause(cause.to_string())),
         );
         self
     }
 
     /// Adds an error source to the report's error chain.
-    pub fn with_error_source(mut self, err: impl Error + 'static) -> Self {
-        self.diagnostics_mut().error_sources.push(Box::new(err));
+    pub fn with_source_error(mut self, err: impl Error + 'static) -> Self {
+        self.diagnostics_mut().source_errors.push(Box::new(err));
         self
     }
 
@@ -456,8 +457,8 @@ where
     where
         Self: Error + 'static,
     {
-        let mut error_sources = Vec::new();
-        error_sources.push(Box::new(self) as Box<dyn Error + 'static>);
+        let mut source_errors = Vec::new();
+        source_errors.push(Box::new(self) as Box<dyn Error + 'static>);
         Report {
             inner: outer,
             cold: Some(Box::new(ColdData {
@@ -467,7 +468,7 @@ where
                     trace: ReportTrace::default(),
                     attachments: Vec::new(),
                     causes: C::default(),
-                    error_sources,
+                    source_errors,
                 },
             })),
         }
@@ -490,7 +491,7 @@ where
         }
     }
 
-    pub(crate) fn collect_error_sources(&self, options: CauseCollectOptions) -> CauseCollection
+    pub(crate) fn collect_source_errors(&self, options: CauseCollectOptions) -> CauseCollection
     where
         E: Error + 'static,
     {
@@ -498,7 +499,7 @@ where
         let mut depth = 0usize;
         let mut seen = BTreeSet::<usize>::new();
         if let Some(diag) = self.diagnostics() {
-            for err in &diag.error_sources {
+            for err in &diag.source_errors {
                 store::collect_error_chain(
                     Some(err.as_ref()),
                     options,

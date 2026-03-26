@@ -34,19 +34,20 @@ pub mod render {
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
         Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
-        ReportJsonCauseChain, ReportJsonCauseKind, ReportJsonCauseNode, ReportJsonContext,
-        ReportJsonDocument, ReportJsonError, ReportJsonMetadata, ReportJsonStackFrame,
-        ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
+        ReportJsonContext, ReportJsonDisplayCauseChain, ReportJsonDocument, ReportJsonError,
+        ReportJsonMetadata, ReportJsonSourceError, ReportJsonSourceErrorChain,
+        ReportJsonStackFrame, ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
     };
 }
 
 pub mod report {
     pub use crate::report_impl::{
-        Attachment, AttachmentValue, CauseChain, CauseCollectOptions, CauseCollection, CauseEntry,
-        CauseKind, CauseNode, CauseStore, DefaultCauseStore, Diagnostic, EventCauseStore,
-        EventOnlyStore, GlobalContext, LocalCause, LocalCauseStore, LocalErrorCauseStore, Report,
-        ReportMetadata, ReportResultExt, Severity, StackFrame, StackTrace, StackTraceFormat,
-        StdCause, StdCauseStore, StdErrorCauseStore,
+        Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind, CauseNode,
+        CauseStore, DefaultCauseStore, Diagnostic, DisplayCauseChain, DisplayCauseStore,
+        EventCauseStore, EventOnlyStore, GlobalContext, LocalCause, LocalCauseStore,
+        LocalErrorCauseStore, Report, ReportMetadata, ReportResultExt, Severity, SourceError,
+        SourceErrorChain, StackFrame, StackTrace, StackTraceFormat, StdCause, StdCauseStore,
+        StdErrorCauseStore,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};

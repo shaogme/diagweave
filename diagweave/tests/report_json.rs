@@ -45,7 +45,7 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(json.contains("\"attachments\""));
         assert!(json.contains("\"stack_trace\""));
         assert!(json.contains("\"display_causes\""));
-        assert!(json.contains("\"error_sources\""));
+        assert!(json.contains("\"source_errors\""));
 
         let parsed: ReportJsonDocument = serde_json::from_str(&json).expect("json schema shape");
         assert_eq!(parsed.schema_version, REPORT_JSON_SCHEMA_VERSION);
@@ -54,7 +54,7 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(parsed.metadata.retryable.is_none());
         assert!(parsed.metadata.stack_trace.is_none());
         assert!(parsed.metadata.display_causes.is_none());
-        assert!(parsed.metadata.error_sources.is_some());
+        assert!(parsed.metadata.source_errors.is_some());
         assert_eq!(parsed.attachments.len(), 0);
     }
 }
@@ -97,7 +97,7 @@ fn json_document_carries_metadata_and_structured_attachments() {
     assert_eq!(parsed.metadata.category.as_deref(), Some("auth"));
     assert_eq!(parsed.metadata.retryable, Some(false));
     assert!(parsed.metadata.display_causes.is_none());
-    assert!(parsed.metadata.error_sources.is_none());
+    assert!(parsed.metadata.source_errors.is_none());
     #[cfg(feature = "trace")]
     assert!(parsed.trace.events.is_empty());
     assert_eq!(parsed.context.len(), 1);

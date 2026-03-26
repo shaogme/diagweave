@@ -264,14 +264,15 @@ Common enrichers on `Result<T, Report<E, C>>`:
 
 - `with_context`, `with_note`, `with_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
-- `with_cause`, `with_causes`
+- `with_display_cause`, `with_display_causes`, `with_source_error`
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
 
 Cause semantics:
 
-- `with_cause` / `with_causes` accept `impl Display` and record display causes as event messages (for rendering/IR).
-- Error source propagation is maintained by `wrap` / `wrap_with` and `Error::source()`.
+- `with_display_cause` / `with_display_causes` accept `impl Display` and append display-cause strings (for rendering/IR).
+- `with_source_error` appends explicit error objects into the source chain metadata.
+- Error source propagation is maintained by `with_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
 
 Global context injector (`std`):
 

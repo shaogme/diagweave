@@ -39,6 +39,22 @@ pub trait EventCauseStore: CauseStore {
     fn event_cause(message: String) -> Self::Cause;
 }
 
+/// A store that supports recording display/message causes.
+pub trait DisplayCauseStore: CauseStore {
+    /// Creates a display cause from a message string.
+    fn display_cause(message: String) -> Self::Cause;
+}
+
+impl<T> DisplayCauseStore for T
+where
+    T: CauseStore,
+    T::Cause: From<String>,
+{
+    fn display_cause(message: String) -> Self::Cause {
+        Self::Cause::from(message)
+    }
+}
+
 /// A store that supports recording standard `Error` causes that are `Send + Sync + 'static`.
 pub trait StdErrorCauseStore: CauseStore {
     /// Creates a cause from a standard `Error`.
@@ -76,6 +92,12 @@ impl StdCause {
     /// Creates a new group cause.
     pub fn group(causes: impl IntoIterator<Item = StdCause>) -> Self {
         Self::Group(causes.into_iter().collect())
+    }
+}
+
+impl From<String> for StdCause {
+    fn from(message: String) -> Self {
+        Self::Event(message)
     }
 }
 
@@ -183,6 +205,12 @@ impl LocalCause {
     /// Creates a new local group cause.
     pub fn group(causes: impl IntoIterator<Item = LocalCause>) -> Self {
         Self::Group(causes.into_iter().collect())
+    }
+}
+
+impl From<String> for LocalCause {
+    fn from(message: String) -> Self {
+        Self::Event(message)
     }
 }
 

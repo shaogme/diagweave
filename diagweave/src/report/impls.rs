@@ -61,7 +61,7 @@ where
             || metadata.retryable.is_some()
             || metadata.stack_trace.is_some()
             || metadata.display_causes.is_some()
-            || metadata.error_sources.is_some();
+            || metadata.source_errors.is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
             !diag.attachments.is_empty() || {
                 #[cfg(feature = "trace")]
@@ -118,8 +118,8 @@ where
         if let Some(display_causes) = &metadata.display_causes {
             write_field("display_causes", &display_causes.items.len())?;
         }
-        if let Some(error_sources) = &metadata.error_sources {
-            write_field("error_sources", &error_sources.items.len())?;
+        if let Some(source_errors) = &metadata.source_errors {
+            write_field("source_errors", &source_errors.items.len())?;
         }
         Ok(())
     }
@@ -175,7 +175,7 @@ where
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
-            .and_then(|diag| diag.error_sources.first().map(|err| err.as_ref()))
+            .and_then(|diag| diag.source_errors.first().map(|err| err.as_ref()))
             .or_else(|| self.inner().source())
     }
 }

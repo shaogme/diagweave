@@ -36,8 +36,8 @@ pub struct ReportMetadata {
     pub category: Option<String>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<StackTrace>,
-    pub display_causes: Option<CauseChain>,
-    pub error_sources: Option<CauseChain>,
+    pub display_causes: Option<DisplayCauseChain>,
+    pub source_errors: Option<SourceErrorChain>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,17 +127,24 @@ impl Display for CauseKind {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub struct DisplayCauseChain {
+    pub items: Vec<String>,
+    pub truncated: bool,
+    pub cycle_detected: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub struct CauseEntry {
-    pub kind: CauseKind,
+pub struct SourceError {
     pub message: String,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub struct CauseChain {
-    pub items: Vec<CauseEntry>,
+pub struct SourceErrorChain {
+    pub items: Vec<SourceError>,
     pub truncated: bool,
     pub cycle_detected: bool,
 }

@@ -185,8 +185,9 @@ pub struct Report<E, C = DefaultCauseStore> {
 | `with_error_code` | `impl Into<String>` | 设置稳定的错误代码 (如 "E001") |
 | `with_category` | `impl Into<String>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
-| `with_cause` | `impl Display` | 添加单个展示原因（以事件消息写入） |
-| `with_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因（以事件消息写入） |
+| `with_display_cause` | `impl Display` | 添加单个展示原因字符串 |
+| `with_display_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因字符串 |
+| `with_source_error` | `impl Error + 'static` | 添加单个显式错误源对象 |
 | `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
 | `capture_stack_trace` | 无 | (std) 捕获当前堆栈 (若已存在则跳过) |
 | `force_capture_stack` | 无 | (std) 强制重新捕获堆栈 |
@@ -230,7 +231,8 @@ let report = Report::new(MyError::Timeout)
 - **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
 - **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **延迟加载**: `context_lazy(key, f)`, `note_lazy(f)` (仅在 Err 时执行闭包)
-- **展示原因**: `with_cause(c)`, `with_causes(cc)`
+- **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
+- **错误源**: `with_source_error(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **包装**: `wrap(outer)`, `wrap_with(map)`
 
@@ -295,7 +297,7 @@ fn process() -> Result<(), Report<io::Error>> {
 | `pretty_indent` | `Spaces(2)`| `Pretty` 渲染的缩进风格 (支持 `Tab`) |
 | `json_pretty` | `false` | JSON 输出是否带格式化缩进 |
 | `show_empty_sections` | `true` | 是否展示没有内容的片段 (如 Trace 为空时) |
-| `show_causes_section` | `true` | 是否显示原因链 (Causes) 部分 |
+| `show_cause_chains_section` | `true` | 是否显示原因链 (Causes) 部分 |
 | `show_context_section`| `true` | 是否显示上下文关联词部分 |
 | `show_attachments_section`| `true` | 是否显示附件 (Payload/Note) 部分 |
 | `show_stack_trace_section`| `true` | 是否显示堆栈轨迹部分 |
@@ -307,7 +309,7 @@ fn process() -> Result<(), Report<io::Error>> {
 ```rust
 pub struct DiagnosticIr {
     pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, causes }
+    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
     pub trace: ReportTrace,             // { context, events }
     pub context: Vec<DiagnosticIrContext>,
     pub attachments: Vec<DiagnosticIrAttachment>,

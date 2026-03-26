@@ -452,7 +452,7 @@ fn from_variant_source(enum_ident: &Ident, variant: &Variant) -> Result<(Type, T
         }
         _ => Err(Error::new_spanned(
             variant,
-            "#[from] requires exactly one tuple field variant, e.g. Variant(SourceError)",
+            "#[from] requires exactly one tuple field variant, e.g. Variant(Source)",
         )),
     }
 }

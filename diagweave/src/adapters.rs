@@ -238,12 +238,8 @@ impl DiagnosticIr {
             });
             for (idx, cause) in display_causes.items.iter().enumerate() {
                 fields.push(TracingField {
-                    key: format!("display_causes.{idx}.kind"),
-                    value: AdapterValue::String(cause.kind.to_string()),
-                });
-                fields.push(TracingField {
                     key: format!("display_causes.{idx}.message"),
-                    value: AdapterValue::String(cause.message.clone()),
+                    value: AdapterValue::String(cause.clone()),
                 });
             }
         } else {
@@ -253,32 +249,32 @@ impl DiagnosticIr {
             });
         }
 
-        if let Some(error_sources) = &self.metadata.error_sources {
+        if let Some(source_errors) = &self.metadata.source_errors {
             fields.push(TracingField {
-                key: "error_sources.present".to_owned(),
+                key: "source_errors.present".to_owned(),
                 value: AdapterValue::Bool(true),
             });
             fields.push(TracingField {
-                key: "error_sources.count".to_owned(),
-                value: AdapterValue::U64(error_sources.items.len() as u64),
+                key: "source_errors.count".to_owned(),
+                value: AdapterValue::U64(source_errors.items.len() as u64),
             });
             fields.push(TracingField {
-                key: "error_sources.truncated".to_owned(),
-                value: AdapterValue::Bool(error_sources.truncated),
+                key: "source_errors.truncated".to_owned(),
+                value: AdapterValue::Bool(source_errors.truncated),
             });
             fields.push(TracingField {
-                key: "error_sources.cycle_detected".to_owned(),
-                value: AdapterValue::Bool(error_sources.cycle_detected),
+                key: "source_errors.cycle_detected".to_owned(),
+                value: AdapterValue::Bool(source_errors.cycle_detected),
             });
-            for (idx, source) in error_sources.items.iter().enumerate() {
+            for (idx, source) in source_errors.items.iter().enumerate() {
                 fields.push(TracingField {
-                    key: format!("error_sources.{idx}.message"),
+                    key: format!("source_errors.{idx}.message"),
                     value: AdapterValue::String(source.message.clone()),
                 });
             }
         } else {
             fields.push(TracingField {
-                key: "error_sources.present".to_owned(),
+                key: "source_errors.present".to_owned(),
                 value: AdapterValue::Bool(false),
             });
         }
@@ -407,26 +403,26 @@ impl DiagnosticIr {
             });
         }
 
-        if let Some(error_sources) = &self.metadata.error_sources {
+        if let Some(source_errors) = &self.metadata.source_errors {
             attributes.push(OtelAttribute {
-                key: "error_sources.present".to_owned(),
+                key: "source_errors.present".to_owned(),
                 value: AdapterValue::Bool(true),
             });
             attributes.push(OtelAttribute {
-                key: "error_sources.count".to_owned(),
-                value: AdapterValue::U64(error_sources.items.len() as u64),
+                key: "source_errors.count".to_owned(),
+                value: AdapterValue::U64(source_errors.items.len() as u64),
             });
             attributes.push(OtelAttribute {
-                key: "error_sources.truncated".to_owned(),
-                value: AdapterValue::Bool(error_sources.truncated),
+                key: "source_errors.truncated".to_owned(),
+                value: AdapterValue::Bool(source_errors.truncated),
             });
             attributes.push(OtelAttribute {
-                key: "error_sources.cycle_detected".to_owned(),
-                value: AdapterValue::Bool(error_sources.cycle_detected),
+                key: "source_errors.cycle_detected".to_owned(),
+                value: AdapterValue::Bool(source_errors.cycle_detected),
             });
         } else {
             attributes.push(OtelAttribute {
-                key: "error_sources.present".to_owned(),
+                key: "source_errors.present".to_owned(),
                 value: AdapterValue::Bool(false),
             });
         }

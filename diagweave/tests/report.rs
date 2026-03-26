@@ -256,7 +256,7 @@ fn pretty_output_is_structured() {
     assert!(pretty.contains("Governance:"));
     assert!(pretty.contains("Context:"));
     assert!(pretty.contains("Attachments:"));
-    assert!(pretty.contains("Error Sources:"));
+    assert!(pretty.contains("Source Errors:"));
     assert!(pretty.contains("auth invalid token [code=AUTH.INVALID_TOKEN, severity=error, request_id=tx-pretty, raw_body=<3 bytes> (application/octet-stream)]"));
 }
 
@@ -303,7 +303,7 @@ fn pretty_can_hide_type_and_empty_sections_and_change_indent() {
         show_stack_trace_section: true,
         show_context_section: true,
         show_attachments_section: true,
-        show_causes_section: true,
+        show_cause_chains_section: true,
         stack_trace_max_lines: 24,
         stack_trace_include_raw: true,
         stack_trace_include_frames: true,
@@ -319,7 +319,7 @@ fn pretty_can_hide_type_and_empty_sections_and_change_indent() {
     assert!(!pretty.contains("Context:"));
     assert!(!pretty.contains("Attachments:"));
     assert!(!pretty.contains("Display Causes:"));
-    assert!(!pretty.contains("Error Sources:"));
+    assert!(!pretty.contains("Source Errors:"));
 }
 
 #[test]
@@ -356,7 +356,7 @@ fn pretty_options_can_hide_specific_sections() {
         show_governance_section: false,
         show_context_section: false,
         show_attachments_section: false,
-        show_causes_section: false,
+        show_cause_chains_section: false,
         ..ReportRenderOptions::default()
     };
     let pretty = report.render(Pretty::new(opts)).to_string();
@@ -364,5 +364,5 @@ fn pretty_options_can_hide_specific_sections() {
     assert!(!pretty.contains("Context:"));
     assert!(!pretty.contains("Attachments:"));
     assert!(!pretty.contains("Display Causes:"));
-    assert!(!pretty.contains("Error Sources:"));
+    assert!(!pretty.contains("Source Errors:"));
 }

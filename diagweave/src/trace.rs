@@ -14,10 +14,10 @@ pub use tracing::TracingExporter;
 /// Trait for exporting diagnostics to a tracing system.
 pub trait TracingExporterTrait {
     /// Exports a `DiagnosticIr` to the tracing system.
-    fn export_ir(&self, ir: &DiagnosticIr);
+    fn export_ir(&self, ir: &DiagnosticIr<'_>);
 }
 
-impl DiagnosticIr {
+impl DiagnosticIr<'_> {
     /// Emits the diagnostic information using the default tracing exporter.
     #[cfg(feature = "tracing")]
     pub fn emit_tracing(&self) {

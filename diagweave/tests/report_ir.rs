@@ -170,7 +170,8 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
             self.calls.set(self.calls.get() + 1);
             self.stack_trace_present
                 .set(ir.metadata.stack_trace.is_some());
-            self.trace_events.set(ir.trace.events.len());
+            self.trace_events
+                .set(ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0));
         }
     }
 

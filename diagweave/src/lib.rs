@@ -41,10 +41,7 @@ pub mod render {
     };
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
-        Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
-        ReportJsonContext, ReportJsonDisplayCauseChain, ReportJsonDocument, ReportJsonError,
-        ReportJsonMetadata, ReportJsonSourceError, ReportJsonSourceErrorChain,
-        ReportJsonStackFrame, ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
+        Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, report_json_schema,
     };
 }
 

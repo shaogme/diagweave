@@ -6,9 +6,7 @@ use diagweave::prelude::{
     ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, TraceEvent,
     TraceEventAttribute, TraceEventLevel, register_global_injector, set, union,
 };
-use diagweave::render::{
-    DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION, ReportJsonDocument,
-};
+use diagweave::render::{DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
 use diagweave::trace::TracingExporterTrait;
 
@@ -240,16 +238,17 @@ where
     println!("--- JSON Rendering ---");
     println!("{}\n", json);
 
-    let parsed: ReportJsonDocument = serde_json::from_str(&json)
+    let parsed: serde_json::Value = serde_json::from_str(&json)
         .map_err(|e| {
             println!("JSON deserialization failed: {e}");
             e
         })
-        .unwrap_or_default();
+        .unwrap_or(serde_json::Value::Null);
     println!(
         "JSON check: schema_version={}, causes_present={}\n",
-        parsed.schema_version,
-        parsed.metadata.display_causes.is_some() || parsed.metadata.source_errors.is_some()
+        parsed["schema_version"],
+        parsed["metadata"]["display_causes"].is_object()
+            || parsed["metadata"]["source_errors"].is_object()
     );
 
     let lean_pretty_opts = ReportRenderOptions {

@@ -363,6 +363,7 @@ fn process() -> Result<(), Report<io::Error>> {
 | `show_trace_section` | `true` | 是否显示分布式追踪 (TraceID/Event) 部分 |
 | `stack_trace_max_lines` | `24` | 原始堆栈渲染的最大行数截断 |
 
+
 ### 诊断中间表示 (`DiagnosticIr`)
 渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。
 ```rust
@@ -371,21 +372,18 @@ use diagweave::render::{
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
+#[cfg(feature = "json")]
+use std::borrow::Cow;
 
-#[cfg(feature = "trace")]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub trace: ReportTrace,             // { context, events }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
-}
-#[cfg(not(feature = "trace"))]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
+pub struct DiagnosticIr<'a> {
+    #[cfg(feature = "json")]
+    pub schema_version: Cow<'static, str>,
+    pub error: DiagnosticIrError<'a>,
+    pub metadata: DiagnosticIrMetadata<'a>,
+    #[cfg(feature = "trace")]
+    pub trace: Option<&'a ReportTrace>,
+    pub context: Vec<DiagnosticIrContext<'a>>,
+    pub attachments: Vec<DiagnosticIrAttachment<'a>>,
 }
 ```
 

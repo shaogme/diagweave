@@ -363,6 +363,7 @@ Converts `Report` with rich metadata into displayable strings or structured data
 | `show_trace_section` | `true`| Whether to show Distributed Tracing (TraceID/Event) section |
 | `stack_trace_max_lines` | `24` | Maximum lines for raw stack trace rendering |
 
+
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
 Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure.
 ```rust
@@ -371,21 +372,18 @@ use diagweave::render::{
 };
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
+#[cfg(feature = "json")]
+use std::borrow::Cow;
 
-#[cfg(feature = "trace")]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub trace: ReportTrace,             // { context, events }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
-}
-#[cfg(not(feature = "trace"))]
-pub struct DiagnosticIr {
-    pub error: DiagnosticIrError,       // { message, type }
-    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
-    pub context: Vec<DiagnosticIrContext>,
-    pub attachments: Vec<DiagnosticIrAttachment>,
+pub struct DiagnosticIr<'a> {
+    #[cfg(feature = "json")]
+    pub schema_version: Cow<'static, str>,
+    pub error: DiagnosticIrError<'a>,
+    pub metadata: DiagnosticIrMetadata<'a>,
+    #[cfg(feature = "trace")]
+    pub trace: Option<&'a ReportTrace>,
+    pub context: Vec<DiagnosticIrContext<'a>>,
+    pub attachments: Vec<DiagnosticIrAttachment<'a>>,
 }
 ```
 

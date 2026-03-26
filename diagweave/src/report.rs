@@ -7,7 +7,6 @@ mod types;
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
-use alloc::collections::BTreeSet;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
@@ -507,7 +506,7 @@ impl<E> Report<E> {
     {
         let mut state = CauseCollection::default();
         let mut depth = 0usize;
-        let mut seen = BTreeSet::<usize>::new();
+        let mut seen = SeenErrorAddrs::new();
         if let Some(diag) = self.diagnostics() {
             for err in &diag.source_errors {
                 collect_error_chain(
@@ -538,7 +537,7 @@ fn collect_error_chain(
     options: CauseCollectOptions,
     state: &mut CauseCollection,
     depth: &mut usize,
-    seen: &mut BTreeSet<usize>,
+    seen: &mut SeenErrorAddrs,
 ) {
     let mut current = start;
     while let Some(err) = current {
@@ -557,5 +556,41 @@ fn collect_error_chain(
         state.messages.push(err.to_string().into());
         *depth += 1;
         current = err.source();
+    }
+}
+
+struct SeenErrorAddrs {
+    inline: [usize; 8],
+    len: usize,
+    spill: Vec<usize>,
+}
+
+impl SeenErrorAddrs {
+    fn new() -> Self {
+        Self {
+            inline: [0usize; 8],
+            len: 0,
+            spill: Vec::new(),
+        }
+    }
+
+    fn insert(&mut self, addr: usize) -> bool {
+        if self.contains(addr) {
+            return false;
+        }
+        if self.len < self.inline.len() {
+            self.inline[self.len] = addr;
+            self.len += 1;
+            return true;
+        }
+        self.spill.push(addr);
+        true
+    }
+
+    fn contains(&self, addr: usize) -> bool {
+        if self.inline[..self.len].contains(&addr) {
+            return true;
+        }
+        self.spill.contains(&addr)
     }
 }

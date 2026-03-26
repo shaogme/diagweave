@@ -4,7 +4,8 @@ use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
 use super::{
-    DiagnosticIr, DiagnosticIrAttachment, PrettyIndent, ReportRenderOptions, ReportRenderer,
+    DiagnosticIr, DiagnosticIrAttachment, DiagnosticIrMetadata, PrettyIndent, ReportRenderOptions,
+    ReportRenderer,
 };
 use crate::report::Report;
 
@@ -53,7 +54,7 @@ fn pretty_indent(indent: PrettyIndent) -> String {
 
 fn render_error_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
@@ -67,7 +68,7 @@ fn render_error_section(
 
 fn render_governance_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
@@ -96,16 +97,16 @@ fn render_governance_section(
 
 fn render_gov_meta(
     f: &mut Formatter<'_>,
-    metadata: &super::DiagnosticIrMetadata,
+    metadata: &DiagnosticIrMetadata<'_>,
     indent: &str,
 ) -> fmt::Result {
-    if let Some(error_code) = &metadata.error_code {
+    if let Some(error_code) = metadata.error_code {
         writeln!(f, "{indent}- error_code: {error_code}")?;
     }
     if let Some(severity) = metadata.severity {
         writeln!(f, "{indent}- severity: {severity}")?;
     }
-    if let Some(category) = &metadata.category {
+    if let Some(category) = metadata.category {
         writeln!(f, "{indent}- category: {category}")?;
     }
     if let Some(retryable) = metadata.retryable {
@@ -116,10 +117,10 @@ fn render_gov_meta(
 
 fn render_gov_stack(
     f: &mut Formatter<'_>,
-    metadata: &super::DiagnosticIrMetadata,
+    metadata: &DiagnosticIrMetadata<'_>,
     indent: &str,
 ) -> fmt::Result {
-    if let Some(stack_trace) = &metadata.stack_trace {
+    if let Some(stack_trace) = metadata.stack_trace {
         writeln!(f, "{indent}- stack_trace.format: {:?}", stack_trace.format)?;
         writeln!(
             f,
@@ -132,7 +133,7 @@ fn render_gov_stack(
 
 fn render_gov_causes(
     f: &mut Formatter<'_>,
-    metadata: &super::DiagnosticIrMetadata,
+    metadata: &DiagnosticIrMetadata<'_>,
     indent: &str,
 ) -> fmt::Result {
     if let Some(display_causes) = &metadata.display_causes {
@@ -157,7 +158,7 @@ fn render_gov_causes(
 
 fn render_gov_errors(
     f: &mut Formatter<'_>,
-    metadata: &super::DiagnosticIrMetadata,
+    metadata: &DiagnosticIrMetadata<'_>,
     indent: &str,
 ) -> fmt::Result {
     if let Some(source_errors) = &metadata.source_errors {
@@ -183,16 +184,15 @@ fn render_gov_errors(
 #[cfg(feature = "trace")]
 fn render_trace_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
-    if options.show_trace_section && (options.show_empty_sections || !ir.trace.is_empty()) {
+    let trace = ir.trace;
+    let trace_is_empty = trace.map(|value| value.is_empty()).unwrap_or(true);
+    if options.show_trace_section && (options.show_empty_sections || !trace_is_empty) {
         writeln!(f, "Trace:")?;
-        if ir.trace.is_empty() {
-            writeln!(f, "{indent}- (none)")?;
-        } else {
-            let trace = &ir.trace;
+        if let Some(trace) = trace.filter(|t| !t.is_empty()) {
             if let Some(trace_id) = &trace.context.trace_id {
                 writeln!(f, "{indent}- trace_id: {trace_id}")?;
             }
@@ -214,6 +214,8 @@ fn render_trace_section(
             for (idx, event) in trace.events.iter().enumerate() {
                 writeln!(f, "{indent}- event[{idx}]: {}", event.name)?;
             }
+        } else {
+            writeln!(f, "{indent}- (none)")?;
         }
     }
     Ok(())
@@ -221,11 +223,11 @@ fn render_trace_section(
 
 fn render_stack_trace(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
-    let stack_trace = ir.metadata.stack_trace.as_ref();
+    let stack_trace = ir.metadata.stack_trace;
     let has_stack = stack_trace.is_some();
     if !options.show_stack_trace_section || (!options.show_empty_sections && !has_stack) {
         return Ok(());
@@ -274,7 +276,7 @@ fn render_raw_stack_trace(
 
 fn render_context_section(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
@@ -293,7 +295,7 @@ fn render_context_section(
 
 fn render_attachments(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
@@ -328,7 +330,7 @@ fn render_attachments(
 
 fn render_display_causes(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {
@@ -358,7 +360,7 @@ fn render_display_causes(
 
 fn render_source_errors(
     f: &mut Formatter<'_>,
-    ir: &DiagnosticIr,
+    ir: &DiagnosticIr<'_>,
     options: &ReportRenderOptions,
     indent: &str,
 ) -> fmt::Result {

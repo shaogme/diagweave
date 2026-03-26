@@ -3,7 +3,7 @@ use core::fmt::{self, Display, Formatter};
 
 use crate::report::Report;
 
-use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
+use super::{PrettyIndent, ReportRenderOptions, ReportRenderer, dispatch_attachments};
 
 /// A renderer that outputs the diagnostic report in a human-readable pretty format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -36,8 +36,7 @@ where
         #[cfg(feature = "trace")]
         render_trace_section(f, report, options)?;
         render_stack_trace(f, report, options)?;
-        render_context_section(f, report, options)?;
-        render_attachments(f, report, options)?;
+        render_attachment_sections(f, report, options)?;
         render_display_causes(f, report, options)?;
         render_source_errors(f, report, options)?;
         Ok(())
@@ -304,77 +303,62 @@ fn render_raw_stack_trace(
     Ok(())
 }
 
-fn render_context_section(
+fn render_attachment_sections(
     f: &mut Formatter<'_>,
     report: &Report<impl Error + Display + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    let context_count = report
-        .attachments()
-        .iter()
-        .filter(|item| item.as_context().is_some())
-        .count();
+    let dispatched = dispatch_attachments(report.attachments());
 
-    if options.show_context_section && (options.show_empty_sections || context_count > 0) {
-        writeln!(f, "Context:")?;
-        if context_count == 0 {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
+    if options.show_context_section {
+        if dispatched.contexts.is_empty() {
+            if options.show_empty_sections {
+                writeln!(f, "Context:")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- (none)")?;
+            }
         } else {
-            for item in report.attachments() {
-                if let Some((key, value)) = item.as_context() {
-                    write_indent(f, options.pretty_indent)?;
-                    writeln!(f, "- {key}: {value}")?;
+            writeln!(f, "Context:")?;
+            for (key, value) in &dispatched.contexts {
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- {}: {}", key.as_ref(), value)?;
+            }
+        }
+    }
+
+    if options.show_attachments_section {
+        if dispatched.notes.is_empty() && dispatched.payloads.is_empty() {
+            if options.show_empty_sections {
+                writeln!(f, "Attachments:")?;
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- (none)")?;
+            }
+        } else {
+            writeln!(f, "Attachments:")?;
+            for message in &dispatched.notes {
+                write_indent(f, options.pretty_indent)?;
+                writeln!(f, "- note: {}", message.as_ref())?;
+            }
+            for payload in &dispatched.payloads {
+                write_indent(f, options.pretty_indent)?;
+                match payload.media_type {
+                    Some(media_type) => {
+                        writeln!(
+                            f,
+                            "- payload {} ({}): {}",
+                            payload.name.as_ref(),
+                            media_type.as_ref(),
+                            payload.value
+                        )?;
+                    }
+                    None => {
+                        writeln!(f, "- payload {}: {}", payload.name.as_ref(), payload.value)?;
+                    }
                 }
             }
         }
     }
-    Ok(())
-}
 
-fn render_attachments(
-    f: &mut Formatter<'_>,
-    report: &Report<impl Error + Display + 'static>,
-    options: ReportRenderOptions,
-) -> fmt::Result {
-    let attachment_count = report
-        .attachments()
-        .iter()
-        .filter(|item| item.as_note().is_some() || item.as_payload().is_some())
-        .count();
-
-    if options.show_attachments_section && (options.show_empty_sections || attachment_count > 0) {
-        writeln!(f, "Attachments:")?;
-        if attachment_count == 0 {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
-        } else {
-            for item in report.attachments() {
-                match item {
-                    crate::report::Attachment::Note { message } => {
-                        write_indent(f, options.pretty_indent)?;
-                        writeln!(f, "- note: {message}")?;
-                    }
-                    crate::report::Attachment::Payload {
-                        name,
-                        value,
-                        media_type,
-                    } => {
-                        write_indent(f, options.pretty_indent)?;
-                        match media_type {
-                            Some(media_type) => {
-                                writeln!(f, "- payload {name} ({media_type}): {value}")?;
-                            }
-                            None => {
-                                writeln!(f, "- payload {name}: {value}")?;
-                            }
-                        }
-                    }
-                    crate::report::Attachment::Context { .. } => {}
-                }
-            }
-        }
-    }
     Ok(())
 }
 
@@ -426,12 +410,14 @@ fn render_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
+    let mut iter = report.iter_source_errors_with(traversal_options);
     let mut count = 0usize;
-    let traversal = report.for_each_source_error_with(traversal_options, |err| {
+    for err in iter.by_ref() {
         count += 1;
         write_indent(f, options.pretty_indent)?;
-        writeln!(f, "{}. {}", count, err)
-    })?;
+        writeln!(f, "{}. {}", count, err)?;
+    }
+    let traversal = iter.state();
 
     if options.show_cause_chains_section
         && (options.show_empty_sections

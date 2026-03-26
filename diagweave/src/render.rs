@@ -121,6 +121,46 @@ pub enum DiagnosticIrAttachment<'a> {
     },
 }
 
+pub(crate) struct AttachmentPayloadRef<'a> {
+    pub name: &'a Cow<'static, str>,
+    pub value: &'a AttachmentValue,
+    pub media_type: Option<&'a Cow<'static, str>>,
+}
+
+pub(crate) struct AttachmentDispatch<'a> {
+    pub contexts: Vec<(&'a Cow<'static, str>, &'a AttachmentValue)>,
+    pub notes: Vec<&'a Cow<'static, str>>,
+    pub payloads: Vec<AttachmentPayloadRef<'a>>,
+}
+
+pub(crate) fn dispatch_attachments(attachments: &[Attachment]) -> AttachmentDispatch<'_> {
+    let mut contexts = Vec::new();
+    let mut notes = Vec::new();
+    let mut payloads = Vec::new();
+
+    for item in attachments {
+        match item {
+            Attachment::Context { key, value } => contexts.push((key, value)),
+            Attachment::Note { message } => notes.push(message),
+            Attachment::Payload {
+                name,
+                value,
+                media_type,
+            } => payloads.push(AttachmentPayloadRef {
+                name,
+                value,
+                media_type: media_type.as_ref(),
+            }),
+        }
+    }
+
+    AttachmentDispatch {
+        contexts,
+        notes,
+        payloads,
+    }
+}
+
 /// Context items borrowed from the report attachments.
 pub struct DiagnosticIrContexts<'a> {
     attachments: &'a [Attachment],
@@ -370,39 +410,6 @@ enum SourceErrorStage {
     Done,
 }
 
-struct SeenErrorAddrs {
-    inline: [usize; 8],
-    len: usize,
-    spill: Vec<usize>,
-}
-
-impl SeenErrorAddrs {
-    fn new() -> Self {
-        Self {
-            inline: [0usize; 8],
-            len: 0,
-            spill: Vec::new(),
-        }
-    }
-
-    fn insert(&mut self, addr: usize) -> bool {
-        if self.contains(addr) {
-            return false;
-        }
-        if self.len < self.inline.len() {
-            self.inline[self.len] = addr;
-            self.len += 1;
-        } else {
-            self.spill.push(addr);
-        }
-        true
-    }
-
-    fn contains(&self, addr: usize) -> bool {
-        self.inline[..self.len].contains(&addr) || self.spill.contains(&addr)
-    }
-}
-
 /// Iterator over source errors.
 pub struct DiagnosticIrSourceErrorIter<'a> {
     source_errors: core::iter::Take<core::slice::Iter<'a, Box<dyn Error + 'static>>>,
@@ -598,8 +605,7 @@ where
 {
     let source_errors = report.source_errors();
     let root_source = report.inner().source();
-    let (count, truncated, cycle_detected) =
-        count_source_errors(source_errors, root_source, options);
+    let (count, truncated, cycle_detected) = count_source_errors(report, options);
 
     if count == 0 && !truncated && !cycle_detected {
         return None;
@@ -619,70 +625,49 @@ where
 }
 
 fn count_source_errors(
-    source_errors: &[Box<dyn Error + 'static>],
-    root_source: Option<&(dyn Error + 'static)>,
+    report: &Report<impl Error + Display + 'static>,
     options: CauseCollectOptions,
 ) -> (usize, bool, bool) {
+    let mut iter = report.iter_source_errors_with(options);
     let mut count = 0usize;
-    let mut truncated = false;
-    let mut cycle_detected = false;
-    let mut depth = 0usize;
-    let mut seen = SeenErrorAddrs::new();
-
-    for err in source_errors {
-        if visit_error_chain_count(
-            Some(err.as_ref()),
-            options,
-            &mut count,
-            &mut truncated,
-            &mut cycle_detected,
-            &mut depth,
-            &mut seen,
-        ) {
-            return (count, truncated, cycle_detected);
-        }
+    for _ in iter.by_ref() {
+        count += 1;
     }
-
-    visit_error_chain_count(
-        root_source,
-        options,
-        &mut count,
-        &mut truncated,
-        &mut cycle_detected,
-        &mut depth,
-        &mut seen,
-    );
-
-    (count, truncated, cycle_detected)
+    let state = iter.state();
+    (count, state.truncated, state.cycle_detected)
 }
 
-fn visit_error_chain_count(
-    mut current: Option<&(dyn Error + 'static)>,
-    options: CauseCollectOptions,
-    count: &mut usize,
-    truncated: &mut bool,
-    cycle_detected: &mut bool,
-    depth: &mut usize,
-    seen: &mut SeenErrorAddrs,
-) -> bool {
-    while let Some(err) = current {
-        if *depth >= options.max_depth {
-            *truncated = true;
-            return true;
+struct SeenErrorAddrs {
+    inline: [usize; 8],
+    len: usize,
+    spill: Vec<usize>,
+}
+
+impl SeenErrorAddrs {
+    fn new() -> Self {
+        Self {
+            inline: [0usize; 8],
+            len: 0,
+            spill: Vec::new(),
         }
-        if options.detect_cycle {
-            let ptr = (err as *const dyn Error) as *const ();
-            let addr = ptr as usize;
-            if !seen.insert(addr) {
-                *cycle_detected = true;
-                return true;
-            }
-        }
-        *count += 1;
-        *depth += 1;
-        current = err.source();
     }
-    false
+
+    fn insert(&mut self, addr: usize) -> bool {
+        if self.contains(addr) {
+            return false;
+        }
+        if self.len < self.inline.len() {
+            self.inline[self.len] = addr;
+            self.len += 1;
+        } else {
+            self.spill.push(addr);
+        }
+        true
+    }
+
+    fn contains(&self, addr: usize) -> bool {
+        self.inline[..self.len].contains(&addr) || self.spill.contains(&addr)
+    }
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.

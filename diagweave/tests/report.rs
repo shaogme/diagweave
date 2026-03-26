@@ -403,6 +403,16 @@ fn public_cause_visit_apis_are_accessible() {
         )
         .expect("cycle traversal");
     assert!(cycle.cycle_detected);
+
+    let mut iter = report.iter_source_errors_with(CauseCollectOptions {
+        max_depth: 4,
+        detect_cycle: true,
+    });
+    let collected: Vec<String> = iter.by_ref().map(|err| err.to_string()).collect();
+    let iter_state = iter.state();
+    assert_eq!(collected, vec!["api unauthorized".to_owned()]);
+    assert!(!iter_state.truncated);
+    assert!(!iter_state.cycle_detected);
 }
 
 #[test]

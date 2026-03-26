@@ -37,6 +37,84 @@ pub struct CauseTraversalState {
     pub cycle_detected: bool,
 }
 
+enum SourceErrorIterStage {
+    Attached,
+    Inner,
+    Done,
+}
+
+/// Iterator over source errors with depth/cycle control.
+pub struct ReportSourceErrorIter<'a> {
+    source_errors: core::slice::Iter<'a, Box<dyn Error + 'static>>,
+    root_source: Option<&'a (dyn Error + 'static)>,
+    current: Option<&'a (dyn Error + 'static)>,
+    stage: SourceErrorIterStage,
+    depth: usize,
+    options: CauseCollectOptions,
+    seen: SeenErrorAddrs,
+    state: CauseTraversalState,
+}
+
+impl<'a> ReportSourceErrorIter<'a> {
+    /// Returns traversal state observed so far.
+    pub fn state(&self) -> CauseTraversalState {
+        self.state
+    }
+}
+
+impl<'a> Iterator for ReportSourceErrorIter<'a> {
+    type Item = &'a (dyn Error + 'static);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.state.truncated || self.state.cycle_detected {
+            self.stage = SourceErrorIterStage::Done;
+            return None;
+        }
+
+        loop {
+            let err = match self.current.take() {
+                Some(err) => err,
+                None => match self.stage {
+                    SourceErrorIterStage::Attached => {
+                        if let Some(err) = self.source_errors.next() {
+                            err.as_ref()
+                        } else {
+                            self.stage = SourceErrorIterStage::Inner;
+                            continue;
+                        }
+                    }
+                    SourceErrorIterStage::Inner => {
+                        let Some(err) = self.root_source.take() else {
+                            self.stage = SourceErrorIterStage::Done;
+                            return None;
+                        };
+                        err
+                    }
+                    SourceErrorIterStage::Done => return None,
+                },
+            };
+
+            if self.depth >= self.options.max_depth {
+                self.state.truncated = true;
+                self.stage = SourceErrorIterStage::Done;
+                return None;
+            }
+            if self.options.detect_cycle {
+                let ptr = (err as *const dyn Error) as *const ();
+                let addr = ptr as usize;
+                if !self.seen.insert(addr) {
+                    self.state.cycle_detected = true;
+                    self.stage = SourceErrorIterStage::Done;
+                    return None;
+                }
+            }
+            self.current = err.source();
+            self.depth += 1;
+            return Some(err);
+        }
+    }
+}
+
 #[derive(Default)]
 struct ColdData {
     metadata: ReportMetadata,
@@ -534,6 +612,33 @@ impl<E> Report<E>
 where
     E: Error + 'static,
 {
+    /// Iterates source errors using default collection options.
+    pub fn iter_source_errors(&self) -> ReportSourceErrorIter<'_> {
+        self.iter_source_errors_with(CauseCollectOptions::default())
+    }
+
+    /// Iterates source errors using custom collection options.
+    pub fn iter_source_errors_with(
+        &self,
+        options: CauseCollectOptions,
+    ) -> ReportSourceErrorIter<'_> {
+        let source_errors = self
+            .diagnostics()
+            .map(|diag| diag.source_errors.as_slice())
+            .unwrap_or(&[]);
+
+        ReportSourceErrorIter {
+            source_errors: source_errors.iter(),
+            root_source: self.inner.source(),
+            current: None,
+            stage: SourceErrorIterStage::Attached,
+            depth: 0,
+            options,
+            seen: SeenErrorAddrs::new(),
+            state: CauseTraversalState::default(),
+        }
+    }
+
     pub fn for_each_display_cause_with<F>(
         &self,
         options: CauseCollectOptions,
@@ -568,69 +673,12 @@ where
     where
         F: FnMut(&dyn Error) -> fmt::Result,
     {
-        let mut state = CauseTraversalState::default();
-        let mut depth = 0usize;
-        let mut seen = SeenErrorAddrs::new();
-
-        if let Some(diag) = self.diagnostics() {
-            for err in &diag.source_errors {
-                visit_error_chain(
-                    Some(err.as_ref()),
-                    options,
-                    &mut visit,
-                    &mut state,
-                    &mut depth,
-                    &mut seen,
-                )?;
-                if state.truncated || state.cycle_detected {
-                    return Ok(state);
-                }
-            }
+        let mut iter = self.iter_source_errors_with(options);
+        for err in iter.by_ref() {
+            visit(err)?;
         }
-
-        visit_error_chain(
-            self.inner.source(),
-            options,
-            &mut visit,
-            &mut state,
-            &mut depth,
-            &mut seen,
-        )?;
-
-        Ok(state)
+        Ok(iter.state())
     }
-}
-
-fn visit_error_chain<F>(
-    start: Option<&(dyn Error + 'static)>,
-    options: CauseCollectOptions,
-    visit: &mut F,
-    state: &mut CauseTraversalState,
-    depth: &mut usize,
-    seen: &mut SeenErrorAddrs,
-) -> Result<(), fmt::Error>
-where
-    F: FnMut(&dyn Error) -> fmt::Result,
-{
-    let mut current = start;
-    while let Some(err) = current {
-        if *depth >= options.max_depth {
-            state.truncated = true;
-            break;
-        }
-        if options.detect_cycle {
-            let ptr = (err as *const dyn Error) as *const ();
-            let addr = ptr as usize;
-            if !seen.insert(addr) {
-                state.cycle_detected = true;
-                break;
-            }
-        }
-        visit(err)?;
-        *depth += 1;
-        current = err.source();
-    }
-    Ok(())
 }
 
 struct SeenErrorAddrs {

@@ -50,7 +50,7 @@ pub mod report {
     pub use crate::report_impl::{
         Attachment, AttachmentValue, CauseCollectOptions, CauseKind, CauseTraversalState,
         Diagnostic, DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalContext, Report,
-        ReportMetadata, ReportResultExt, ReportResultInspectExt, Severity, SourceError,
+        ReportMetadata, ReportResultExt, ReportResultInspectExt, ReportSourceErrorIter, Severity, SourceError,
         SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "std")]

@@ -2,13 +2,13 @@ use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
 use crate::report::{
-    Attachment, AttachmentValue, CauseCollectOptions, ErrorCode, Report, StackTrace,
+    AttachmentValue, CauseCollectOptions, ErrorCode, Report, StackTrace,
 };
 
 #[cfg(feature = "trace")]
 use crate::report::{TraceContext, TraceEvent, TraceEventAttribute};
 
-use super::{ReportRenderOptions, ReportRenderer};
+use super::{AttachmentPayloadRef, ReportRenderOptions, ReportRenderer, dispatch_attachments};
 
 /// A renderer that outputs the diagnostic report in JSON format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,6 +51,7 @@ where
 {
     let pretty = options.json_pretty;
     let mut first = true;
+    let dispatched = dispatch_attachments(report.attachments());
 
     f.write_char('{')?;
     write_object_field(f, pretty, 0, &mut first, "schema_version", |f| {
@@ -69,10 +70,10 @@ where
         })?;
     }
     write_object_field(f, pretty, 0, &mut first, "context", |f| {
-        write_context_array(f, pretty, 1, report.attachments())
+        write_context_array(f, pretty, 1, &dispatched.contexts)
     })?;
     write_object_field(f, pretty, 0, &mut first, "attachments", |f| {
-        write_attachments_array(f, pretty, 1, report.attachments())
+        write_attachments_array(f, pretty, 1, &dispatched.notes, &dispatched.payloads)
     })?;
 
     if pretty && !first {
@@ -307,15 +308,13 @@ fn write_context_array(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    attachments: &[Attachment],
+    contexts: &[(&alloc::borrow::Cow<'static, str>, &AttachmentValue)],
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('[')?;
-    for item in attachments {
-        if let Some((key, value)) = item.as_context() {
-            write_array_item_prefix(f, pretty, depth, &mut first)?;
-            write_object_with_key_value(f, pretty, depth + 1, key, value)?;
-        }
+    for (key, value) in contexts {
+        write_array_item_prefix(f, pretty, depth, &mut first)?;
+        write_object_with_key_value(f, pretty, depth + 1, key.as_ref(), value)?;
     }
     close_array(f, pretty, depth, first)
 }
@@ -324,33 +323,25 @@ fn write_attachments_array(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    attachments: &[Attachment],
+    notes: &[&alloc::borrow::Cow<'static, str>],
+    payloads: &[AttachmentPayloadRef<'_>],
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('[')?;
-    for item in attachments {
-        match item {
-            Attachment::Context { .. } => {}
-            Attachment::Note { message } => {
-                write_array_item_prefix(f, pretty, depth, &mut first)?;
-                write_note_attachment_object(f, pretty, depth + 1, message.as_ref())?;
-            }
-            Attachment::Payload {
-                name,
-                value,
-                media_type,
-            } => {
-                write_array_item_prefix(f, pretty, depth, &mut first)?;
-                write_payload_attachment_object(
-                    f,
-                    pretty,
-                    depth + 1,
-                    name.as_ref(),
-                    value,
-                    media_type.as_ref().map(|m| m.as_ref()),
-                )?;
-            }
-        }
+    for message in notes {
+        write_array_item_prefix(f, pretty, depth, &mut first)?;
+        write_note_attachment_object(f, pretty, depth + 1, message.as_ref())?;
+    }
+    for payload in payloads {
+        write_array_item_prefix(f, pretty, depth, &mut first)?;
+        write_payload_attachment_object(
+            f,
+            pretty,
+            depth + 1,
+            payload.name.as_ref(),
+            payload.value,
+            payload.media_type.map(|m| m.as_ref()),
+        )?;
     }
     close_array(f, pretty, depth, first)
 }
@@ -430,38 +421,29 @@ fn write_display_cause_chain_object(
     report: &Report<impl Error + Display + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    let traversal_options = CauseCollectOptions {
-        max_depth: options.max_source_depth,
-        detect_cycle: options.detect_source_cycle,
-    };
-    let mut item_count = 0usize;
-    let traversal_state = report.for_each_display_cause_with(traversal_options, |_cause| {
-        item_count += 1;
-        Ok(())
-    })?;
-    if item_count == 0 && !traversal_state.truncated && !traversal_state.cycle_detected {
+    let display_causes = report.display_causes();
+    if display_causes.is_empty() {
         return f.write_str("null");
     }
+    let item_count = core::cmp::min(display_causes.len(), options.max_source_depth);
+    let truncated = display_causes.len() > options.max_source_depth;
 
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "items", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        let mut written = 0usize;
-        report.for_each_display_cause_with(traversal_options, |cause| {
+        for cause in display_causes.iter().take(item_count) {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            written += 1;
-            write_json_string_from_display(f, cause)
-        })?;
-        debug_assert_eq!(written, item_count);
-        close_array(f, pretty, depth + 1, !array_first)
+            write_json_string_from_display(f, cause.as_ref())?;
+        }
+        close_array(f, pretty, depth + 1, array_first)
     })?;
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
-        write!(f, "{}", traversal_state.truncated)
+        write!(f, "{truncated}")
     })?;
     write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
-        write!(f, "{}", traversal_state.cycle_detected)
+        f.write_str("false")
     })?;
     close_object(f, pretty, depth, first)
 }
@@ -473,33 +455,28 @@ fn write_source_error_chain_object(
     report: &Report<impl Error + Display + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
+    if report.source_errors().is_empty() && report.inner().source().is_none() {
+        return f.write_str("null");
+    }
+
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let mut item_count = 0usize;
-    let traversal_state = report.for_each_source_error_with(traversal_options, |_err| {
-        item_count += 1;
-        Ok(())
-    })?;
-    if item_count == 0 && !traversal_state.truncated && !traversal_state.cycle_detected {
-        return f.write_str("null");
-    }
+    let mut traversal = report.iter_source_errors_with(traversal_options);
 
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "items", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        let mut written = 0usize;
-        report.for_each_source_error_with(traversal_options, |err| {
+        for err in traversal.by_ref() {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            written += 1;
-            write_source_error_object(f, pretty, depth + 2, err)
-        })?;
-        debug_assert_eq!(written, item_count);
-        close_array(f, pretty, depth + 1, !array_first)
+            write_source_error_object(f, pretty, depth + 2, err)?;
+        }
+        close_array(f, pretty, depth + 1, array_first)
     })?;
+    let traversal_state = traversal.state();
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
         write!(f, "{}", traversal_state.truncated)
     })?;
@@ -592,26 +569,17 @@ fn write_attachment_value(
     depth: usize,
     value: &AttachmentValue,
 ) -> fmt::Result {
+    if let Some(result) = write_scalar_attachment_value(f, pretty, depth, value) {
+        return result;
+    }
+
     match value {
-        AttachmentValue::Null => write_kind_only(f, pretty, depth, "null"),
-        AttachmentValue::String(v) => write_kind_and_value(f, pretty, depth, "string", |f| {
-            write_json_string(f, v.as_ref())
-        }),
-        AttachmentValue::Integer(v) => {
-            write_kind_and_value(f, pretty, depth, "integer", |f| write!(f, "{v}"))
-        }
-        AttachmentValue::Unsigned(v) => {
-            write_kind_and_value(f, pretty, depth, "unsigned", |f| write!(f, "{v}"))
-        }
-        AttachmentValue::Float(v) => {
-            if !v.is_finite() {
-                return Err(fmt::Error);
-            }
-            write_kind_and_value(f, pretty, depth, "float", |f| write!(f, "{v}"))
-        }
-        AttachmentValue::Bool(v) => {
-            write_kind_and_value(f, pretty, depth, "bool", |f| write!(f, "{v}"))
-        }
+        AttachmentValue::Null
+        | AttachmentValue::String(_)
+        | AttachmentValue::Integer(_)
+        | AttachmentValue::Unsigned(_)
+        | AttachmentValue::Float(_)
+        | AttachmentValue::Bool(_) => unreachable!("handled in scalar fast path"),
         AttachmentValue::Array(values) => write_kind_and_value(f, pretty, depth, "array", |f| {
             let mut first = true;
             f.write_char('[')?;
@@ -659,6 +627,37 @@ fn write_attachment_value(
             })?;
             close_object(f, pretty, depth, first)
         }
+    }
+}
+
+fn write_scalar_attachment_value(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    value: &AttachmentValue,
+) -> Option<fmt::Result> {
+    match value {
+        AttachmentValue::Null => Some(write_kind_only(f, pretty, depth, "null")),
+        AttachmentValue::String(v) => Some(write_kind_and_value(f, pretty, depth, "string", |f| {
+            write_json_string(f, v.as_ref())
+        })),
+        AttachmentValue::Integer(v) => Some(write_kind_and_value(f, pretty, depth, "integer", |f| {
+            write!(f, "{v}")
+        })),
+        AttachmentValue::Unsigned(v) => Some(write_kind_and_value(f, pretty, depth, "unsigned", |f| {
+            write!(f, "{v}")
+        })),
+        AttachmentValue::Float(v) => {
+            if !v.is_finite() {
+                Some(Err(fmt::Error))
+            } else {
+                Some(write_kind_and_value(f, pretty, depth, "float", |f| write!(f, "{v}")))
+            }
+        }
+        AttachmentValue::Bool(v) => Some(write_kind_and_value(f, pretty, depth, "bool", |f| {
+            write!(f, "{v}")
+        })),
+        _ => None,
     }
 }
 

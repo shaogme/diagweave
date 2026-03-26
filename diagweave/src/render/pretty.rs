@@ -38,8 +38,8 @@ where
         render_stack_trace(f, &ir, &self.options, &indent)?;
         render_context_section(f, &ir, &self.options, &indent)?;
         render_attachments(f, &ir, &self.options, &indent)?;
-        render_display_causes_section(f, &ir, &self.options, &indent)?;
-        render_source_errors_section(f, &ir, &self.options, &indent)?;
+        render_display_causes(f, &ir, &self.options, &indent)?;
+        render_source_errors(f, &ir, &self.options, &indent)?;
 
         Ok(())
     }
@@ -86,61 +86,97 @@ fn render_governance_section(
         if !has_metadata {
             writeln!(f, "{indent}- (none)")?;
         } else {
-            if let Some(error_code) = &metadata.error_code {
-                writeln!(f, "{indent}- error_code: {error_code}")?;
-            }
-            if let Some(severity) = metadata.severity {
-                writeln!(f, "{indent}- severity: {severity}")?;
-            }
-            if let Some(category) = &metadata.category {
-                writeln!(f, "{indent}- category: {category}")?;
-            }
-            if let Some(retryable) = metadata.retryable {
-                writeln!(f, "{indent}- retryable: {retryable}")?;
-            }
-            if let Some(stack_trace) = &metadata.stack_trace {
-                writeln!(f, "{indent}- stack_trace.format: {:?}", stack_trace.format)?;
-                writeln!(
-                    f,
-                    "{indent}- stack_trace.frames: {}",
-                    stack_trace.frames.len()
-                )?;
-            }
-            if let Some(display_causes) = &metadata.display_causes {
-                writeln!(
-                    f,
-                    "{indent}- display_causes.count: {}",
-                    display_causes.items.len()
-                )?;
-                writeln!(
-                    f,
-                    "{indent}- display_causes.truncated: {}",
-                    display_causes.truncated
-                )?;
-                writeln!(
-                    f,
-                    "{indent}- display_causes.cycle_detected: {}",
-                    display_causes.cycle_detected
-                )?;
-            }
-            if let Some(source_errors) = &metadata.source_errors {
-                writeln!(
-                    f,
-                    "{indent}- source_errors.count: {}",
-                    source_errors.items.len()
-                )?;
-                writeln!(
-                    f,
-                    "{indent}- source_errors.truncated: {}",
-                    source_errors.truncated
-                )?;
-                writeln!(
-                    f,
-                    "{indent}- source_errors.cycle_detected: {}",
-                    source_errors.cycle_detected
-                )?;
-            }
+            render_gov_meta(f, metadata, indent)?;
+            render_gov_stack(f, metadata, indent)?;
+            render_gov_causes(f, metadata, indent)?;
+            render_gov_errors(f, metadata, indent)?;
         }
+    }
+    Ok(())
+}
+
+fn render_gov_meta(
+    f: &mut Formatter<'_>,
+    metadata: &super::DiagnosticIrMetadata,
+    indent: &str,
+) -> fmt::Result {
+    if let Some(error_code) = &metadata.error_code {
+        writeln!(f, "{indent}- error_code: {error_code}")?;
+    }
+    if let Some(severity) = metadata.severity {
+        writeln!(f, "{indent}- severity: {severity}")?;
+    }
+    if let Some(category) = &metadata.category {
+        writeln!(f, "{indent}- category: {category}")?;
+    }
+    if let Some(retryable) = metadata.retryable {
+        writeln!(f, "{indent}- retryable: {retryable}")?;
+    }
+    Ok(())
+}
+
+fn render_gov_stack(
+    f: &mut Formatter<'_>,
+    metadata: &super::DiagnosticIrMetadata,
+    indent: &str,
+) -> fmt::Result {
+    if let Some(stack_trace) = &metadata.stack_trace {
+        writeln!(f, "{indent}- stack_trace.format: {:?}", stack_trace.format)?;
+        writeln!(
+            f,
+            "{indent}- stack_trace.frames: {}",
+            stack_trace.frames.len()
+        )?;
+    }
+    Ok(())
+}
+
+fn render_gov_causes(
+    f: &mut Formatter<'_>,
+    metadata: &super::DiagnosticIrMetadata,
+    indent: &str,
+) -> fmt::Result {
+    if let Some(display_causes) = &metadata.display_causes {
+        writeln!(
+            f,
+            "{indent}- display_causes.count: {}",
+            display_causes.items.len()
+        )?;
+        writeln!(
+            f,
+            "{indent}- display_causes.truncated: {}",
+            display_causes.truncated
+        )?;
+        writeln!(
+            f,
+            "{indent}- display_causes.cycle_detected: {}",
+            display_causes.cycle_detected
+        )?;
+    }
+    Ok(())
+}
+
+fn render_gov_errors(
+    f: &mut Formatter<'_>,
+    metadata: &super::DiagnosticIrMetadata,
+    indent: &str,
+) -> fmt::Result {
+    if let Some(source_errors) = &metadata.source_errors {
+        writeln!(
+            f,
+            "{indent}- source_errors.count: {}",
+            source_errors.items.len()
+        )?;
+        writeln!(
+            f,
+            "{indent}- source_errors.truncated: {}",
+            source_errors.truncated
+        )?;
+        writeln!(
+            f,
+            "{indent}- source_errors.cycle_detected: {}",
+            source_errors.cycle_detected
+        )?;
     }
     Ok(())
 }
@@ -291,7 +327,7 @@ fn render_attachments(
     Ok(())
 }
 
-fn render_display_causes_section(
+fn render_display_causes(
     f: &mut Formatter<'_>,
     ir: &DiagnosticIr,
     options: &ReportRenderOptions,
@@ -321,7 +357,7 @@ fn render_display_causes_section(
     Ok(())
 }
 
-fn render_source_errors_section(
+fn render_source_errors(
     f: &mut Formatter<'_>,
     ir: &DiagnosticIr,
     options: &ReportRenderOptions,

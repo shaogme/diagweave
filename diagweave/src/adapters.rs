@@ -219,6 +219,11 @@ impl DiagnosticIr {
     }
 
     fn tracing_causes(&self, fields: &mut Vec<TracingField>) {
+        self.tracing_display(fields);
+        self.tracing_source(fields);
+    }
+
+    fn tracing_display(&self, fields: &mut Vec<TracingField>) {
         if let Some(display_causes) = &self.metadata.display_causes {
             fields.push(TracingField {
                 key: "display_causes.present".to_owned(),
@@ -248,7 +253,9 @@ impl DiagnosticIr {
                 value: AdapterValue::Bool(false),
             });
         }
+    }
 
+    fn tracing_source(&self, fields: &mut Vec<TracingField>) {
         if let Some(source_errors) = &self.metadata.source_errors {
             fields.push(TracingField {
                 key: "source_errors.present".to_owned(),

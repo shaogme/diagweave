@@ -457,8 +457,7 @@ where
     where
         Self: Error + 'static,
     {
-        let mut source_errors = Vec::new();
-        source_errors.push(Box::new(self) as Box<dyn Error + 'static>);
+        let source_errors = alloc::vec![Box::new(self) as Box<dyn Error + 'static>];
         Report {
             inner: outer,
             cold: Some(Box::new(ColdData {
@@ -481,7 +480,7 @@ where
         Report { inner: outer, cold }
     }
 
-    pub(crate) fn collect_display_causes(&self, options: CauseCollectOptions) -> CauseCollection
+    pub(crate) fn display_causes(&self, options: CauseCollectOptions) -> CauseCollection
     where
         E: Error + 'static,
     {
@@ -491,7 +490,7 @@ where
         }
     }
 
-    pub(crate) fn collect_source_errors(&self, options: CauseCollectOptions) -> CauseCollection
+    pub(crate) fn source_errors(&self, options: CauseCollectOptions) -> CauseCollection
     where
         E: Error + 'static,
     {

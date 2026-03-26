@@ -231,16 +231,16 @@ where
 {
     /// Converts the report to a diagnostic intermediate representation.
     pub fn to_diagnostic_ir(&self, options: ReportRenderOptions) -> DiagnosticIr {
-        let display_cause_collection = self.collect_display_causes(CauseCollectOptions {
+        let display_cause_collection = self.display_causes(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });
-        let display_causes = cause_collection_to_display_cause_chain(&display_cause_collection);
-        let source_error_collection = self.collect_source_errors(CauseCollectOptions {
+        let display_causes = to_display_causes(&display_cause_collection);
+        let source_error_collection = self.source_errors(CauseCollectOptions {
             max_depth: options.max_source_depth,
             detect_cycle: options.detect_source_cycle,
         });
-        let source_errors = cause_collection_to_source_error_chain(&source_error_collection);
+        let source_errors = to_source_errors(&source_error_collection);
 
         let mut context = Vec::new();
         let mut attachments = Vec::new();
@@ -283,9 +283,7 @@ where
     }
 }
 
-fn cause_collection_to_display_cause_chain(
-    collection: &CauseCollection,
-) -> Option<DisplayCauseChain> {
+fn to_display_causes(collection: &CauseCollection) -> Option<DisplayCauseChain> {
     if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
         return None;
     }
@@ -308,9 +306,7 @@ fn cause_collection_to_display_cause_chain(
     })
 }
 
-fn cause_collection_to_source_error_chain(
-    collection: &CauseCollection,
-) -> Option<SourceErrorChain> {
+fn to_source_errors(collection: &CauseCollection) -> Option<SourceErrorChain> {
     if collection.messages.is_empty() && !collection.truncated && !collection.cycle_detected {
         return None;
     }

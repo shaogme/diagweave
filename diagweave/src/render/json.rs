@@ -1,3 +1,4 @@
+use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -7,8 +8,8 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    AttachmentValue, CauseChain, CauseEntry, CauseKind, CauseStore, Report, Severity, StackFrame,
-    StackTrace, StackTraceFormat,
+    AttachmentValue, DisplayCauseChain, ErrorCode, Report, Severity, SourceError, SourceErrorChain,
+    StackFrame, StackTrace, StackTraceFormat,
 };
 
 use super::{DiagnosticIr, DiagnosticIrAttachment, ReportRenderOptions, ReportRenderer};
@@ -32,53 +33,56 @@ pub fn report_json_schema() -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonError {
     /// The formatted error message.
-    pub message: String,
+    pub message: Cow<'static, str>,
     /// The type name of the error.
-    pub r#type: String,
+    pub r#type: Cow<'static, str>,
 }
 
 /// JSON representation of error metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonMetadata {
     /// An optional error code.
-    pub error_code: Option<String>,
+    pub error_code: Option<ErrorCode>,
     /// The severity of the error.
     pub severity: Option<Severity>,
     /// The category of the error.
-    pub category: Option<String>,
+    pub category: Option<Cow<'static, str>>,
     /// Whether the error is retryable.
     pub retryable: Option<bool>,
     /// The stack trace if available.
     pub stack_trace: Option<ReportJsonStackTrace>,
-    /// The cause chain if available.
-    pub causes: Option<ReportJsonCauseChain>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReportJsonCauseKind {
-    #[default]
-    Error,
-    Event,
-}
-
-/// JSON representation of a cause node.
-#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonCauseNode {
-    /// The kind of the cause.
-    pub kind: ReportJsonCauseKind,
-    /// The formatted cause message.
-    pub message: String,
+    /// The display cause chain if available.
+    pub display_causes: Option<ReportJsonDisplayCauseChain>,
+    /// The error source chain if available.
+    pub source_errors: Option<ReportJsonSourceErrorChain>,
 }
 
 /// JSON representation of a cause chain.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
-pub struct ReportJsonCauseChain {
+pub struct ReportJsonDisplayCauseChain {
     /// The items in the cause chain.
-    pub items: Vec<ReportJsonCauseNode>,
+    pub items: Vec<String>,
     /// Whether the cause chain was truncated.
     pub truncated: bool,
     /// Whether a cycle was detected in the cause chain.
+    pub cycle_detected: bool,
+}
+
+/// JSON representation of one structured error source.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ReportJsonSourceError {
+    /// The formatted source message.
+    pub message: Cow<'static, str>,
+}
+
+/// JSON representation of an error source chain.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ReportJsonSourceErrorChain {
+    /// The items in the error source chain.
+    pub items: Vec<ReportJsonSourceError>,
+    /// Whether the source chain was truncated.
+    pub truncated: bool,
+    /// Whether a cycle was detected in the source chain.
     pub cycle_detected: bool,
 }
 
@@ -120,7 +124,7 @@ pub struct ReportJsonStackTrace {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonContext {
     /// The key of the context item.
-    pub key: String,
+    pub key: Cow<'static, str>,
     /// The value of the context item.
     pub value: AttachmentValue,
 }
@@ -129,12 +133,12 @@ pub struct ReportJsonContext {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ReportJsonAttachment {
     Note {
-        message: String,
+        message: Cow<'static, str>,
     },
     Payload {
-        name: String,
+        name: Cow<'static, str>,
         value: AttachmentValue,
-        media_type: Option<String>,
+        media_type: Option<Cow<'static, str>>,
     },
 }
 
@@ -212,31 +216,31 @@ impl From<StackTrace> for ReportJsonStackTrace {
     }
 }
 
-impl From<CauseKind> for ReportJsonCauseKind {
-    fn from(value: CauseKind) -> Self {
-        match value {
-            CauseKind::Error => Self::Error,
-            CauseKind::Event => Self::Event,
+impl From<DisplayCauseChain> for ReportJsonDisplayCauseChain {
+    fn from(value: DisplayCauseChain) -> Self {
+        Self {
+            items: value.items,
+            truncated: value.truncated,
+            cycle_detected: value.cycle_detected,
         }
     }
 }
 
-impl From<CauseEntry> for ReportJsonCauseNode {
-    fn from(value: CauseEntry) -> Self {
+impl From<SourceError> for ReportJsonSourceError {
+    fn from(value: SourceError) -> Self {
         Self {
-            kind: value.kind.into(),
             message: value.message,
         }
     }
 }
 
-impl From<CauseChain> for ReportJsonCauseChain {
-    fn from(value: CauseChain) -> Self {
+impl From<SourceErrorChain> for ReportJsonSourceErrorChain {
+    fn from(value: SourceErrorChain) -> Self {
         Self {
             items: value
                 .items
                 .into_iter()
-                .map(ReportJsonCauseNode::from)
+                .map(ReportJsonSourceError::from)
                 .collect(),
             truncated: value.truncated,
             cycle_detected: value.cycle_detected,
@@ -258,7 +262,14 @@ impl From<DiagnosticIr> for ReportJsonDocument {
                 category: value.metadata.category,
                 retryable: value.metadata.retryable,
                 stack_trace: value.metadata.stack_trace.map(ReportJsonStackTrace::from),
-                causes: value.metadata.causes.map(ReportJsonCauseChain::from),
+                display_causes: value
+                    .metadata
+                    .display_causes
+                    .map(ReportJsonDisplayCauseChain::from),
+                source_errors: value
+                    .metadata
+                    .source_errors
+                    .map(ReportJsonSourceErrorChain::from),
             },
             #[cfg(feature = "trace")]
             trace: value.trace,
@@ -292,24 +303,22 @@ impl From<DiagnosticIr> for ReportJsonDocument {
     }
 }
 
-impl<E, C> ReportRenderer<E, C> for Json
+impl<E> ReportRenderer<E> for Json
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
-    fn render(&self, report: &Report<E, C>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
         render_json(report, self.options, f)
     }
 }
 
-fn render_json<E, C>(
-    report: &Report<E, C>,
+fn render_json<E>(
+    report: &Report<E>,
     options: ReportRenderOptions,
     f: &mut Formatter<'_>,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
     let node: ReportJsonDocument = report.to_diagnostic_ir(options).into();
     let encoded = if options.json_pretty {

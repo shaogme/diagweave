@@ -43,13 +43,6 @@ fn expand_derive_error(input: DeriveInput) -> Result<proc_macro2::TokenStream> {
             pub fn source(&self) -> ::core::option::Option<&(dyn ::core::error::Error + 'static)> {
                 <Self as ::core::error::Error>::source(self)
             }
-
-            pub fn diag_with<C>(self) -> ::diagweave::report::Report<Self, C>
-            where
-                C: ::diagweave::report::CauseStore,
-            {
-                ::diagweave::report::Report::<Self, C>::new_with_store(self)
-            }
         }
 
         impl #impl_generics ::core::fmt::Display for #ident #ty_generics #where_clause {

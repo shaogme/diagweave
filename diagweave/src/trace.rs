@@ -1,12 +1,12 @@
 #[cfg(feature = "tracing")]
-#[path = "tracing_export/tracing.rs"]
+#[path = "trace/tracing.rs"]
 mod tracing;
 
 use core::error::Error;
 use core::fmt::Display;
 
 use crate::render::{DiagnosticIr, ReportRenderOptions};
-use crate::report::{CauseStore, Report};
+use crate::report::Report;
 
 #[cfg(feature = "tracing")]
 pub use tracing::TracingExporter;
@@ -30,10 +30,9 @@ impl DiagnosticIr {
     }
 }
 
-impl<E, C> Report<E, C>
+impl<E> Report<E>
 where
     E: Error + Display + 'static,
-    C: CauseStore,
 {
     /// Emits the report using the default tracing exporter.
     #[cfg(feature = "tracing")]

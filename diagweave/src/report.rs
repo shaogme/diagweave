@@ -2,67 +2,49 @@
 mod ext;
 #[path = "report/impls.rs"]
 mod impls;
-#[path = "report/store.rs"]
-mod store;
 #[path = "report/types.rs"]
 mod types;
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::collections::BTreeSet;
-use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
-use core::fmt::{Debug, Display};
+use core::fmt::Display;
 #[cfg(feature = "std")]
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
-pub use ext::{Diagnostic, ReportResultCauseExt, ReportResultExt};
-pub use store::{
-    CauseNode, CauseStore, DefaultCauseStore, EventCauseStore, EventOnlyStore, LocalCause,
-    LocalCauseStore, LocalErrorCauseStore, StdCause, StdCauseStore, StdErrorCauseStore,
-};
+pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
-    Attachment, AttachmentValue, CauseChain, CauseCollectOptions, CauseCollection, CauseEntry,
-    CauseKind, ReportMetadata, Severity, StackFrame, StackTrace, StackTraceFormat,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind,
+    DisplayCauseChain, ErrorCode, ErrorCodeIntError, ReportMetadata, Severity, SourceError,
+    SourceErrorChain, StackFrame, StackTrace, StackTraceFormat,
 };
 #[cfg(feature = "trace")]
 pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
-pub struct Report<E, C = DefaultCauseStore> {
+pub struct Report<E> {
     inner: E,
-    cold: Option<Box<ColdData<C>>>,
+    cold: Option<Box<ColdData>>,
 }
 
-#[derive(Debug, Default)]
-struct ColdData<C> {
+#[derive(Default)]
+struct ColdData {
     metadata: ReportMetadata,
-    diagnostics: DiagnosticBag<C>,
+    diagnostics: DiagnosticBag,
 }
 
-#[derive(Debug)]
-struct DiagnosticBag<C> {
+#[derive(Default)]
+struct DiagnosticBag {
     #[cfg(feature = "trace")]
     trace: ReportTrace,
     attachments: Vec<Attachment>,
-    causes: C,
-}
-
-impl<C> Default for DiagnosticBag<C>
-where
-    C: Default,
-{
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "trace")]
-            trace: ReportTrace::default(),
-            attachments: Vec::new(),
-            causes: C::default(),
-        }
-    }
+    display_causes: Vec<Box<dyn Display + 'static>>,
+    source_errors: Vec<Box<dyn Error + 'static>>,
 }
 
 const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
@@ -71,23 +53,24 @@ const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
     category: None,
     retryable: None,
     stack_trace: None,
-    causes: None,
+    display_causes: None,
+    source_errors: None,
 };
 
 /// Global context information that can be injected into reports.
 #[derive(Debug, Clone, Default)]
 pub struct GlobalContext {
     /// Context key-value pairs.
-    pub context: Vec<(String, AttachmentValue)>,
+    pub context: Vec<(Cow<'static, str>, AttachmentValue)>,
     /// Global trace ID if available.
     #[cfg(feature = "trace")]
-    pub trace_id: Option<String>,
+    pub trace_id: Option<Cow<'static, str>>,
     /// Global span ID if available.
     #[cfg(feature = "trace")]
-    pub span_id: Option<String>,
+    pub span_id: Option<Cow<'static, str>>,
     /// Global parent span ID if available.
     #[cfg(feature = "trace")]
-    pub parent_span_id: Option<String>,
+    pub parent_span_id: Option<Cow<'static, str>>,
 }
 
 /// Context injector type alias for global context providers.
@@ -115,12 +98,9 @@ pub fn register_global_injector(
         .map_err(|_| RegisterGlobalContextError)
 }
 
-impl<E, C> Report<E, C>
-where
-    C: CauseStore,
-{
-    /// Creates a new report with the specified error and cause store.
-    pub fn new_with_store(inner: E) -> Self {
+impl<E> Report<E> {
+    /// Creates a new report.
+    pub fn new(inner: E) -> Self {
         #[cfg(feature = "std")]
         let mut report = Self { inner, cold: None };
         #[cfg(not(feature = "std"))]
@@ -156,6 +136,26 @@ where
             .unwrap_or(&EMPTY_REPORT_METADATA)
     }
 
+    /// Returns the error code from report metadata, if present.
+    pub fn error_code(&self) -> Option<&ErrorCode> {
+        self.metadata().error_code.as_ref()
+    }
+
+    /// Returns the severity from report metadata, if present.
+    pub fn severity(&self) -> Option<Severity> {
+        self.metadata().severity
+    }
+
+    /// Returns the category from report metadata, if present.
+    pub fn category(&self) -> Option<&str> {
+        self.metadata().category.as_deref()
+    }
+
+    /// Returns whether the report is marked retryable, if present.
+    pub fn retryable(&self) -> Option<bool> {
+        self.metadata().retryable
+    }
+
     /// Returns the stack trace associated with the report, if any.
     pub fn stack_trace(&self) -> Option<&StackTrace> {
         self.metadata().stack_trace.as_ref()
@@ -167,22 +167,17 @@ where
         self.diagnostics().map(|diag| &diag.trace)
     }
 
-    /// Returns the cause store associated with the report, if any.
-    pub fn cause_store(&self) -> Option<&C> {
-        self.diagnostics().map(|diag| &diag.causes)
-    }
-
-    fn diagnostics(&self) -> Option<&DiagnosticBag<C>> {
+    fn diagnostics(&self) -> Option<&DiagnosticBag> {
         self.cold.as_ref().map(|cold| &cold.diagnostics)
     }
 
-    fn ensure_cold(&mut self) -> &mut ColdData<C> {
+    fn ensure_cold(&mut self) -> &mut ColdData {
         self.cold
             .get_or_insert_with(|| Box::new(ColdData::default()))
             .as_mut()
     }
 
-    fn diagnostics_mut(&mut self) -> &mut DiagnosticBag<C> {
+    fn diagnostics_mut(&mut self) -> &mut DiagnosticBag {
         &mut self.ensure_cold().diagnostics
     }
 
@@ -218,7 +213,7 @@ where
     /// Attaches a context key-value pair to the report.
     pub fn attach(
         mut self,
-        key: impl Into<alloc::string::String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Self {
         self.diagnostics_mut()
@@ -229,29 +224,31 @@ where
 
     /// Attaches a printable note to the report.
     pub fn attach_printable(mut self, message: impl Display) -> Self {
-        self.diagnostics_mut()
-            .attachments
-            .push(Attachment::note(message.to_string()));
+        self.diagnostics_mut().attachments.push(Attachment::Note {
+            message: Cow::Owned(message.to_string()),
+        });
         self
     }
 
     /// Attaches a payload with an optional media type to the report.
     pub fn attach_payload(
         mut self,
-        name: impl Into<alloc::string::String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<alloc::string::String>,
+        media_type: Option<impl Into<Cow<'static, str>>>,
     ) -> Self {
-        self.diagnostics_mut()
-            .attachments
-            .push(Attachment::payload(name, value, media_type));
+        self.diagnostics_mut().attachments.push(Attachment::payload(
+            name,
+            value,
+            media_type.map(|m| m.into()),
+        ));
         self
     }
 
     /// Adds context to the report (alias for `attach`).
     pub fn with_context(
         self,
-        key: impl Into<alloc::string::String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Self {
         self.attach(key, value)
@@ -265,9 +262,9 @@ where
     /// Adds a payload to the report (alias for `attach_payload`).
     pub fn with_payload(
         self,
-        name: impl Into<alloc::string::String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<alloc::string::String>,
+        media_type: Option<impl Into<Cow<'static, str>>>,
     ) -> Self {
         self.attach_payload(name, value, media_type)
     }
@@ -289,8 +286,8 @@ where
     #[cfg(feature = "trace")]
     pub fn with_trace_ids(
         mut self,
-        trace_id: impl Into<alloc::string::String>,
-        span_id: impl Into<alloc::string::String>,
+        trace_id: impl Into<Cow<'static, str>>,
+        span_id: impl Into<Cow<'static, str>>,
     ) -> Self {
         let trace = &mut self.diagnostics_mut().trace;
         trace.context.trace_id = Some(trace_id.into());
@@ -300,7 +297,7 @@ where
 
     /// Sets the parent span ID for the report.
     #[cfg(feature = "trace")]
-    pub fn with_parent_span_id(mut self, parent_span_id: impl Into<alloc::string::String>) -> Self {
+    pub fn with_parent_span_id(mut self, parent_span_id: impl Into<Cow<'static, str>>) -> Self {
         self.diagnostics_mut().trace.context.parent_span_id = Some(parent_span_id.into());
         self
     }
@@ -314,7 +311,7 @@ where
 
     /// Sets the trace state.
     #[cfg(feature = "trace")]
-    pub fn with_trace_state(mut self, trace_state: impl Into<alloc::string::String>) -> Self {
+    pub fn with_trace_state(mut self, trace_state: impl Into<Cow<'static, str>>) -> Self {
         self.diagnostics_mut().trace.context.trace_state = Some(trace_state.into());
         self
     }
@@ -335,7 +332,7 @@ where
 
     /// Pushes a trace event with the specified name.
     #[cfg(feature = "trace")]
-    pub fn push_trace_event(mut self, name: impl Into<alloc::string::String>) -> Self {
+    pub fn push_trace_event(mut self, name: impl Into<Cow<'static, str>>) -> Self {
         self.diagnostics_mut().trace.events.push(TraceEvent {
             name: name.into(),
             ..TraceEvent::default()
@@ -347,7 +344,7 @@ where
     #[cfg(feature = "trace")]
     pub fn push_trace_event_ext(
         mut self,
-        name: impl Into<alloc::string::String>,
+        name: impl Into<Cow<'static, str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
@@ -362,7 +359,7 @@ where
     }
 
     /// Sets the error code for the report.
-    pub fn with_error_code(mut self, error_code: impl Into<alloc::string::String>) -> Self {
+    pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
         self.ensure_cold().metadata.error_code = Some(error_code.into());
         self
     }
@@ -374,7 +371,7 @@ where
     }
 
     /// Sets the category for the report.
-    pub fn with_category(mut self, category: impl Into<alloc::string::String>) -> Self {
+    pub fn with_category(mut self, category: impl Into<Cow<'static, str>>) -> Self {
         self.ensure_cold().metadata.category = Some(category.into());
         self
     }
@@ -413,29 +410,38 @@ where
         self
     }
 
-    /// Adds a cause to the report.
-    pub fn with_cause(mut self, cause: C::Cause) -> Self {
-        self.diagnostics_mut().causes.push(cause);
+    /// Adds a display cause to the report.
+    pub fn with_display_cause(mut self, cause: impl Display + 'static) -> Self {
+        self.diagnostics_mut().display_causes.push(Box::new(cause));
         self
     }
 
-    /// Adds multiple causes to the report.
-    pub fn with_causes<I>(mut self, causes: I) -> Self
+    /// Adds multiple display causes to the report.
+    pub fn with_display_causes<I, T>(mut self, causes: I) -> Self
     where
-        I: IntoIterator<Item = C::Cause>,
+        I: IntoIterator<Item = T>,
+        T: Display + 'static,
     {
-        self.diagnostics_mut().causes.extend(causes);
+        self.diagnostics_mut().display_causes.extend(
+            causes
+                .into_iter()
+                .map(|cause| Box::new(cause) as Box<dyn Display + 'static>),
+        );
+        self
+    }
+
+    /// Adds an error source to the report's error chain.
+    pub fn with_source_error(mut self, err: impl Error + 'static) -> Self {
+        self.diagnostics_mut().source_errors.push(Box::new(err));
         self
     }
 
     /// Wraps the report into another error type.
-    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, C>
+    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer>
     where
-        Self: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore,
+        Self: Error + 'static,
     {
-        let mut causes = C::default();
-        causes.push(C::std_error_cause(Box::new(self)));
+        let source_errors = alloc::vec![Box::new(self) as Box<dyn Error + 'static>];
         Report {
             inner: outer,
             cold: Some(Box::new(ColdData {
@@ -444,30 +450,79 @@ where
                     #[cfg(feature = "trace")]
                     trace: ReportTrace::default(),
                     attachments: Vec::new(),
-                    causes,
+                    display_causes: Vec::new(),
+                    source_errors,
                 },
             })),
         }
     }
 
     /// Wraps the report using a mapping function for the inner error.
-    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, C> {
+    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer> {
         let Self { inner, cold } = self;
         let outer = map(inner);
         Report { inner: outer, cold }
     }
 
-    pub(crate) fn collect_causes(&self, options: CauseCollectOptions) -> CauseCollection
+    /// Collects display causes using default collection options.
+    pub fn display_causes(&self) -> CauseCollection
     where
         E: Error + 'static,
     {
-        let mut state = match self.diagnostics() {
-            Some(diag) => diag.causes.collect(options),
-            None => CauseCollection::default(),
+        self.display_causes_with(CauseCollectOptions::default())
+    }
+
+    /// Collects display causes using custom collection options.
+    pub fn display_causes_with(&self, options: CauseCollectOptions) -> CauseCollection
+    where
+        E: Error + 'static,
+    {
+        let mut state = CauseCollection::default();
+        let Some(diag) = self.diagnostics() else {
+            return state;
         };
-        let mut depth = state.messages.len();
+
+        for cause in &diag.display_causes {
+            if state.messages.len() >= options.max_depth {
+                state.truncated = true;
+                break;
+            }
+            state.messages.push(alloc::format!("event: {cause}").into());
+        }
+        state
+    }
+
+    /// Collects source errors using default collection options.
+    pub fn source_errors(&self) -> CauseCollection
+    where
+        E: Error + 'static,
+    {
+        self.source_errors_with(CauseCollectOptions::default())
+    }
+
+    /// Collects source errors using custom collection options.
+    pub fn source_errors_with(&self, options: CauseCollectOptions) -> CauseCollection
+    where
+        E: Error + 'static,
+    {
+        let mut state = CauseCollection::default();
+        let mut depth = 0usize;
         let mut seen = BTreeSet::<usize>::new();
-        store::collect_error_chain(
+        if let Some(diag) = self.diagnostics() {
+            for err in &diag.source_errors {
+                collect_error_chain(
+                    Some(err.as_ref()),
+                    options,
+                    &mut state,
+                    &mut depth,
+                    &mut seen,
+                );
+                if state.truncated || state.cycle_detected {
+                    return state;
+                }
+            }
+        }
+        collect_error_chain(
             self.inner.source(),
             options,
             &mut state,
@@ -478,48 +533,29 @@ where
     }
 }
 
-impl<E> Report<E, DefaultCauseStore> {
-    /// Creates a new report with the default cause store.
-    pub fn new(inner: E) -> Self {
-        Self::new_with_store(inner)
-    }
-}
-
-impl<E, C> Report<E, C>
-where
-    C: CauseStore + EventCauseStore,
-{
-    /// Adds an event cause to the report.
-    pub fn with_event(mut self, message: impl Into<alloc::string::String>) -> Self {
-        self.diagnostics_mut()
-            .causes
-            .push(C::event_cause(message.into()));
-        self
-    }
-}
-
-impl<E, C> Report<E, C>
-where
-    C: CauseStore + StdErrorCauseStore,
-{
-    /// Adds a standard error source to the report.
-    pub fn with_source(mut self, err: impl Error + Send + Sync + 'static) -> Self {
-        self.diagnostics_mut()
-            .causes
-            .push(C::std_error_cause(Box::new(err)));
-        self
-    }
-}
-
-impl<E, C> Report<E, C>
-where
-    C: CauseStore + LocalErrorCauseStore,
-{
-    /// Adds a local error source to the report.
-    pub fn with_local_source(mut self, err: impl Error + 'static) -> Self {
-        self.diagnostics_mut()
-            .causes
-            .push(C::local_error_cause(Box::new(err)));
-        self
+fn collect_error_chain(
+    start: Option<&(dyn Error + 'static)>,
+    options: CauseCollectOptions,
+    state: &mut CauseCollection,
+    depth: &mut usize,
+    seen: &mut BTreeSet<usize>,
+) {
+    let mut current = start;
+    while let Some(err) = current {
+        if *depth >= options.max_depth {
+            state.truncated = true;
+            break;
+        }
+        if options.detect_cycle {
+            let ptr = (err as *const dyn Error) as *const ();
+            let addr = ptr as usize;
+            if !seen.insert(addr) {
+                state.cycle_detected = true;
+                break;
+            }
+        }
+        state.messages.push(err.to_string().into());
+        *depth += 1;
+        current = err.source();
     }
 }

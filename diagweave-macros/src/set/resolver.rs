@@ -195,5 +195,8 @@ impl<'a> ResolveContext<'a> {
 pub(crate) fn variant_signature(variant: &Variant) -> String {
     let mut shape_only = variant.clone();
     shape_only.attrs = vec![];
+    for field in shape_only.fields.iter_mut() {
+        field.attrs = vec![];
+    }
     quote!(#shape_only).to_string()
 }

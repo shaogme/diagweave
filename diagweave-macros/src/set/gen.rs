@@ -38,9 +38,6 @@ pub(crate) fn generate_enum_impl(set: &ResolvedSet, options: &SetOptions) -> Res
             pub fn source(&self) -> ::core::option::Option<&(dyn ::core::error::Error + 'static)> {
                 <Self as ::core::error::Error>::source(self)
             }
-            pub fn diag_with<C>(self) -> ::diagweave::report::Report<Self, C> where C: ::diagweave::report::CauseStore {
-                ::diagweave::report::Report::<Self, C>::new_with_store(self)
-            }
         }
         impl ::core::fmt::Display for #enum_ident {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
@@ -94,6 +91,9 @@ pub(crate) fn generate_all_from_impls(
 fn sanitize_variant(variant: &Variant) -> Variant {
     let mut sanitized = variant.clone();
     sanitized.attrs = sanitize_attrs(&sanitized.attrs);
+    for field in sanitized.fields.iter_mut() {
+        field.attrs = sanitize_attrs(&field.attrs);
+    }
     sanitized
 }
 
@@ -387,7 +387,7 @@ fn from_impls_for_variants(
     let mut impls = Vec::new();
     for resolved in variants {
         let variant = &resolved.variant;
-        if !has_from_attr(&variant.attrs)? {
+        if !is_from_variant(variant)? {
             continue;
         }
         let (source_ty, ctor) = from_variant_source(enum_ident, variant)?;
@@ -411,6 +411,25 @@ fn from_impls_for_variants(
         });
     }
     Ok(impls)
+}
+
+fn is_from_variant(variant: &Variant) -> Result<bool> {
+    let mut count = 0;
+    if has_from_attr(&variant.attrs)? {
+        count += 1;
+    }
+    for field in variant.fields.iter() {
+        if has_from_attr(&field.attrs)? {
+            count += 1;
+        }
+    }
+    if count > 1 {
+        return Err(Error::new_spanned(
+            variant,
+            "duplicate #[from] on variant or its fields",
+        ));
+    }
+    Ok(count == 1)
 }
 
 fn has_from_attr(attrs: &[Attribute]) -> Result<bool> {
@@ -452,7 +471,7 @@ fn from_variant_source(enum_ident: &Ident, variant: &Variant) -> Result<(Type, T
         }
         _ => Err(Error::new_spanned(
             variant,
-            "#[from] requires exactly one tuple field variant, e.g. Variant(SourceError)",
+            "#[from] requires exactly one tuple field variant, e.g. Variant(Source)",
         )),
     }
 }

@@ -1,13 +1,11 @@
+use alloc::borrow::Cow;
 use alloc::string::String;
-use core::error::Error;
 use core::fmt::Display;
 
-use super::{
-    AttachmentValue, CauseStore, EventCauseStore, LocalErrorCauseStore, Report, ReportMetadata,
-    Severity, StackTrace, StdErrorCauseStore,
-};
+use super::{Attachment, AttachmentValue, ErrorCode, Report, ReportMetadata, Severity, StackTrace};
 #[cfg(feature = "trace")]
 use super::{ReportTrace, TraceEvent, TraceEventAttribute, TraceEventLevel};
+use core::error::Error;
 
 /// A trait for types that can be converted into a diagnostic result.
 pub trait Diagnostic {
@@ -18,14 +16,9 @@ pub trait Diagnostic {
 
     fn diag(self) -> Result<Self::Value, Report<Self::Error>>;
 
-    fn diag_with<C>(self) -> Result<Self::Value, Report<Self::Error, C>>
-    where
-        C: CauseStore,
-        Self::Error: Sized;
-
     fn diag_context(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Result<Self::Value, Report<Self::Error>>
     where
@@ -49,391 +42,342 @@ impl<T, E> Diagnostic for Result<T, E> {
     fn diag(self) -> Result<Self::Value, Report<Self::Error>> {
         self.map_err(Report::new)
     }
-
-    fn diag_with<C>(self) -> Result<Self::Value, Report<Self::Error, C>>
-    where
-        C: CauseStore,
-        Self::Error: Sized,
-    {
-        self.map_err(Report::<E, C>::new_with_store)
-    }
 }
 
-/// Extension trait for `Result<T, Report<E, C>>` to add diagnostic information.
-pub trait ReportResultExt<T, E, C = super::DefaultCauseStore>
-where
-    C: CauseStore,
-{
+/// Extension trait for `Result<T, Report<E>>` to add diagnostic information.
+pub trait ReportResultExt<T, E> {
     fn attach(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-    ) -> Result<T, Report<E, C>>;
+    ) -> Result<T, Report<E>>;
 
-    fn attach_printable(self, message: impl Display) -> Result<T, Report<E, C>>;
+    fn attach_printable(self, message: impl Display) -> Result<T, Report<E>>;
 
     fn attach_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
-    ) -> Result<T, Report<E, C>>;
+    ) -> Result<T, Report<E>>;
 
     fn with_context(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-    ) -> Result<T, Report<E, C>>;
+    ) -> Result<T, Report<E>>;
 
-    fn with_note(self, message: impl Display) -> Result<T, Report<E, C>>;
+    fn with_note(self, message: impl Display) -> Result<T, Report<E>>;
 
     fn with_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
-    ) -> Result<T, Report<E, C>>;
+    ) -> Result<T, Report<E>>;
 
-    fn with_metadata(self, metadata: ReportMetadata) -> Result<T, Report<E, C>>;
+    fn with_metadata(self, metadata: ReportMetadata) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace(self, trace: ReportTrace) -> Result<T, Report<E, C>>;
+    fn with_trace(self, trace: ReportTrace) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn with_trace_ids(
         self,
-        trace_id: impl Into<String>,
-        span_id: impl Into<String>,
-    ) -> Result<T, Report<E, C>>;
+        trace_id: impl Into<Cow<'static, str>>,
+        span_id: impl Into<Cow<'static, str>>,
+    ) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_parent_span_id(self, parent_span_id: impl Into<String>) -> Result<T, Report<E, C>>;
+    fn with_parent_span_id(
+        self,
+        parent_span_id: impl Into<Cow<'static, str>>,
+    ) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_sampled(self, sampled: bool) -> Result<T, Report<E, C>>;
+    fn with_trace_sampled(self, sampled: bool) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_state(self, trace_state: impl Into<String>) -> Result<T, Report<E, C>>;
+    fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_flags(self, flags: u32) -> Result<T, Report<E, C>>;
+    fn with_trace_flags(self, flags: u32) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E, C>>;
+    fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn push_trace_event(self, name: impl Into<String>) -> Result<T, Report<E, C>>;
+    fn push_trace_event(self, name: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn push_trace_event_with(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
-    ) -> Result<T, Report<E, C>>;
+    ) -> Result<T, Report<E>>;
 
-    fn with_error_code(self, error_code: impl Into<String>) -> Result<T, Report<E, C>>;
+    fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E>>;
 
-    fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E, C>>;
+    fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E>>;
 
-    fn with_category(self, category: impl Into<String>) -> Result<T, Report<E, C>>;
+    fn with_category(self, category: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
-    fn with_retryable(self, retryable: bool) -> Result<T, Report<E, C>>;
+    fn with_retryable(self, retryable: bool) -> Result<T, Report<E>>;
 
-    fn with_stack_trace(self, stack_trace: StackTrace) -> Result<T, Report<E, C>>;
+    fn with_stack_trace(self, stack_trace: StackTrace) -> Result<T, Report<E>>;
 
-    fn clear_stack_trace(self) -> Result<T, Report<E, C>>;
+    fn clear_stack_trace(self) -> Result<T, Report<E>>;
 
     #[cfg(feature = "std")]
-    fn capture_stack_trace(self) -> Result<T, Report<E, C>>;
+    fn capture_stack_trace(self) -> Result<T, Report<E>>;
 
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
+    fn with_display_cause(self, cause: impl Display + 'static) -> Result<T, Report<E>>;
+
+    fn with_display_causes<I, TCause>(self, causes: I) -> Result<T, Report<E>>
     where
-        C: StdErrorCauseStore;
+        I: IntoIterator<Item = TCause>,
+        TCause: Display + 'static;
 
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore;
-
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
-    where
-        C: EventCauseStore;
-
-    fn with_cause(self, cause: C::Cause) -> Result<T, Report<E, C>>;
-
-    fn with_causes<I>(self, causes: I) -> Result<T, Report<E, C>>
-    where
-        I: IntoIterator<Item = C::Cause>;
+    fn with_source_error(self, err: impl Error + 'static) -> Result<T, Report<E>>;
 
     fn context_lazy(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         make_value: impl FnOnce() -> AttachmentValue,
-    ) -> Result<T, Report<E, C>>;
+    ) -> Result<T, Report<E>>;
 
-    fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, C>>;
+    fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E>>;
 
-    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, C>>
+    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer>>
     where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore;
+        Report<E>: Error + 'static;
 
-    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, C>>
-    where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore;
+    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer>>;
 }
 
-/// Extension trait specifically for adding causes to a diagnostic result.
-pub trait ReportResultCauseExt<T, E, C = super::DefaultCauseStore>
-where
-    C: CauseStore,
-{
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore;
+/// Read-only extension trait for `Result<T, Report<E>>`.
+pub trait ReportResultInspectExt<T, E> {
+    fn report_ref(&self) -> Option<&Report<E>>;
 
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore;
+    fn report_attachments(&self) -> Option<&[Attachment]>;
 
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
-    where
-        C: EventCauseStore;
+    fn report_metadata(&self) -> Option<&ReportMetadata>;
+
+    fn report_error_code(&self) -> Option<&ErrorCode>;
+
+    fn report_severity(&self) -> Option<Severity>;
+
+    fn report_category(&self) -> Option<&str>;
+
+    fn report_retryable(&self) -> Option<bool>;
 }
 
-impl<T, E, C> ReportResultExt<T, E, C> for Result<T, Report<E, C>>
-where
-    C: CauseStore,
-{
+impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     fn attach(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-    ) -> Result<T, Report<E, C>> {
+    ) -> Result<T, Report<E>> {
         let key = key.into();
         self.map_err(|report| report.attach(key, value))
     }
 
-    fn attach_printable(self, message: impl Display) -> Result<T, Report<E, C>> {
+    fn attach_printable(self, message: impl Display) -> Result<T, Report<E>> {
         self.map_err(|report| report.attach_printable(message))
     }
 
     fn attach_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
-    ) -> Result<T, Report<E, C>> {
-        let name = name.into();
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.attach_payload(name, value, media_type))
     }
 
     fn with_context(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-    ) -> Result<T, Report<E, C>> {
+    ) -> Result<T, Report<E>> {
         self.attach(key, value)
     }
 
-    fn with_note(self, message: impl Display) -> Result<T, Report<E, C>> {
+    fn with_note(self, message: impl Display) -> Result<T, Report<E>> {
         self.attach_printable(message)
     }
 
     fn with_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
-    ) -> Result<T, Report<E, C>> {
+    ) -> Result<T, Report<E>> {
         self.attach_payload(name, value, media_type)
     }
 
-    fn with_metadata(self, metadata: ReportMetadata) -> Result<T, Report<E, C>> {
+    fn with_metadata(self, metadata: ReportMetadata) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_metadata(metadata))
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace(self, trace: ReportTrace) -> Result<T, Report<E, C>> {
+    fn with_trace(self, trace: ReportTrace) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace(trace))
     }
 
     #[cfg(feature = "trace")]
     fn with_trace_ids(
         self,
-        trace_id: impl Into<String>,
-        span_id: impl Into<String>,
-    ) -> Result<T, Report<E, C>> {
-        let trace_id = trace_id.into();
-        let span_id = span_id.into();
+        trace_id: impl Into<Cow<'static, str>>,
+        span_id: impl Into<Cow<'static, str>>,
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_ids(trace_id, span_id))
     }
 
     #[cfg(feature = "trace")]
-    fn with_parent_span_id(self, parent_span_id: impl Into<String>) -> Result<T, Report<E, C>> {
-        let parent_span_id = parent_span_id.into();
+    fn with_parent_span_id(
+        self,
+        parent_span_id: impl Into<Cow<'static, str>>,
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_parent_span_id(parent_span_id))
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_sampled(self, sampled: bool) -> Result<T, Report<E, C>> {
+    fn with_trace_sampled(self, sampled: bool) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_sampled(sampled))
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_state(self, trace_state: impl Into<String>) -> Result<T, Report<E, C>> {
-        let trace_state = trace_state.into();
+    fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_state(trace_state))
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_flags(self, flags: u32) -> Result<T, Report<E, C>> {
+    fn with_trace_flags(self, flags: u32) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_flags(flags))
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E, C>> {
+    fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_event(event))
     }
 
     #[cfg(feature = "trace")]
-    fn push_trace_event(self, name: impl Into<String>) -> Result<T, Report<E, C>> {
-        let name = name.into();
+    fn push_trace_event(self, name: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.push_trace_event(name))
     }
 
     #[cfg(feature = "trace")]
     fn push_trace_event_with(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
-    ) -> Result<T, Report<E, C>> {
-        let name = name.into();
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| {
             report.push_trace_event_ext(name, level, timestamp_unix_nano, attributes)
         })
     }
 
-    fn with_error_code(self, error_code: impl Into<String>) -> Result<T, Report<E, C>> {
-        let error_code = error_code.into();
+    fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_error_code(error_code))
     }
 
-    fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E, C>> {
+    fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E>> {
         let severity = severity.into();
         self.map_err(|report| report.with_severity(severity))
     }
 
-    fn with_category(self, category: impl Into<String>) -> Result<T, Report<E, C>> {
-        let category = category.into();
+    fn with_category(self, category: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_category(category))
     }
 
-    fn with_retryable(self, retryable: bool) -> Result<T, Report<E, C>> {
+    fn with_retryable(self, retryable: bool) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_retryable(retryable))
     }
 
-    fn with_stack_trace(self, stack_trace: StackTrace) -> Result<T, Report<E, C>> {
+    fn with_stack_trace(self, stack_trace: StackTrace) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_stack_trace(stack_trace))
     }
 
-    fn clear_stack_trace(self) -> Result<T, Report<E, C>> {
+    fn clear_stack_trace(self) -> Result<T, Report<E>> {
         self.map_err(|report| report.clear_stack_trace())
     }
 
     #[cfg(feature = "std")]
-    fn capture_stack_trace(self) -> Result<T, Report<E, C>> {
+    fn capture_stack_trace(self) -> Result<T, Report<E>> {
         self.map_err(|report| report.capture_stack_trace())
     }
 
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore,
-    {
-        self.map_err(|report| report.with_source(err))
+    fn with_display_cause(self, cause: impl Display + 'static) -> Result<T, Report<E>> {
+        self.map_err(|report| report.with_display_cause(cause))
     }
 
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
+    fn with_display_causes<I, TCause>(self, causes: I) -> Result<T, Report<E>>
     where
-        C: LocalErrorCauseStore,
+        I: IntoIterator<Item = TCause>,
+        TCause: Display + 'static,
     {
-        self.map_err(|report| report.with_local_source(err))
+        self.map_err(|report| report.with_display_causes(causes))
     }
 
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
-    where
-        C: EventCauseStore,
-    {
-        self.map_err(|report| report.with_event(message))
-    }
-
-    fn with_cause(self, cause: C::Cause) -> Result<T, Report<E, C>> {
-        self.map_err(|report| report.with_cause(cause))
-    }
-
-    fn with_causes<I>(self, causes: I) -> Result<T, Report<E, C>>
-    where
-        I: IntoIterator<Item = C::Cause>,
-    {
-        self.map_err(|report| report.with_causes(causes))
+    fn with_source_error(self, err: impl Error + 'static) -> Result<T, Report<E>> {
+        self.map_err(|report| report.with_source_error(err))
     }
 
     fn context_lazy(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         make_value: impl FnOnce() -> AttachmentValue,
-    ) -> Result<T, Report<E, C>> {
-        let key = key.into();
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.attach(key, make_value()))
     }
 
-    fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, C>> {
+    fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E>> {
         self.map_err(|report| report.attach_printable(make_message()))
     }
 
-    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, C>>
+    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer>>
     where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore,
+        Report<E>: Error + 'static,
     {
         self.map_err(|report| report.wrap(outer))
     }
 
-    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, C>>
-    where
-        Report<E, C>: Error + Send + Sync + 'static,
-        C: StdErrorCauseStore,
-    {
+    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer>> {
         self.map_err(|report| report.wrap_with(map))
     }
 }
 
-impl<T, E, C> ReportResultCauseExt<T, E, C> for Result<T, Report<E, C>>
-where
-    C: CauseStore,
-{
-    fn with_source(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E, C>>
-    where
-        C: StdErrorCauseStore,
-    {
-        self.map_err(|report| report.with_source(err))
+impl<T, E> ReportResultInspectExt<T, E> for Result<T, Report<E>> {
+    fn report_ref(&self) -> Option<&Report<E>> {
+        self.as_ref().err()
     }
 
-    fn with_local_source(self, err: impl Error + 'static) -> Result<T, Report<E, C>>
-    where
-        C: LocalErrorCauseStore,
-    {
-        self.map_err(|report| report.with_local_source(err))
+    fn report_attachments(&self) -> Option<&[Attachment]> {
+        self.report_ref().map(Report::attachments)
     }
 
-    fn with_event(self, message: impl Into<String>) -> Result<T, Report<E, C>>
-    where
-        C: EventCauseStore,
-    {
-        self.map_err(|report| report.with_event(message))
+    fn report_metadata(&self) -> Option<&ReportMetadata> {
+        self.report_ref().map(Report::metadata)
+    }
+
+    fn report_error_code(&self) -> Option<&ErrorCode> {
+        self.report_ref().and_then(Report::error_code)
+    }
+
+    fn report_severity(&self) -> Option<Severity> {
+        self.report_ref().and_then(Report::severity)
+    }
+
+    fn report_category(&self) -> Option<&str> {
+        self.report_ref().and_then(Report::category)
+    }
+
+    fn report_retryable(&self) -> Option<bool> {
+        self.report_ref().and_then(Report::retryable)
     }
 }

@@ -10,7 +10,7 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 
 - `schema_version: string` (const: `v0.1.0`)
 - `error: { message: string, type: string }`
-- `metadata: { error_code: string|null, severity: "debug"|"info"|"warn"|"error"|"fatal"|null, category: string|null, retryable: boolean|null, stack_trace: StackTrace|null, causes: CauseChain|null }`
+- `metadata: { error_code: string|integer|null, severity: "debug"|"info"|"warn"|"error"|"fatal"|null, category: string|null, retryable: boolean|null, stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, source_errors: SourceErrorChain|null }`
 - `trace: { context: TraceContext, events: TraceEvent[] }`
 - `context: Array<{ key: string, value: AttachmentValue }>`
 - `attachments: Array<Note|Payload>`
@@ -25,12 +25,17 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `metadata.stack_trace.frames[*].column: integer|null`
 - `metadata.stack_trace.raw: string|null`
 
-## CauseChain model
+## DisplayCauseChain model
 
-- `metadata.causes.items[*].kind: "error"|"event"`
-- `metadata.causes.items[*].message: string`
-- `metadata.causes.truncated: boolean`
-- `metadata.causes.cycle_detected: boolean`
+- `metadata.display_causes.items[*]: string`
+- `metadata.display_causes.truncated: boolean`
+- `metadata.display_causes.cycle_detected: boolean`
+
+## SourceErrorChain model
+
+- `metadata.source_errors.items[*].message: string`
+- `metadata.source_errors.truncated: boolean`
+- `metadata.source_errors.cycle_detected: boolean`
 
 ## Trace model
 
@@ -70,9 +75,9 @@ When `feature = "json"` is enabled, `diagweave` exports:
 - `ReportJsonStackTrace`
 - `ReportJsonStackFrame`
 - `ReportJsonStackTraceFormat`
-- `ReportJsonCauseChain`
-- `ReportJsonCauseNode`
-- `ReportJsonCauseKind`
+- `ReportJsonDisplayCauseChain`
+- `ReportJsonSourceError`
+- `ReportJsonSourceErrorChain`
 - `ReportJsonContext`
 - `ReportJsonAttachment`
 - `REPORT_JSON_SCHEMA_VERSION`

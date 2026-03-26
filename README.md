@@ -18,7 +18,7 @@
 `diagweave` unifies three layers that are often split across different crates:
 
 - **Type layer**: `set!` / `union!` for composable, strongly-typed error modeling
-- **Propagation layer**: `Report` for context, attachments, events, stack trace, and source/cause chain
+- **Propagation layer**: `Report` for context, attachments, events, stack trace, and source chain
 - **Presentation layer**: `Compact` / `Pretty` / `Json`, plus tracing/telemetry export
 
 ## Table of Contents
@@ -249,24 +249,50 @@ pub enum MyError {
 }
 ```
 
-Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `diag()` / `diag_with::<C>()` integration.
+Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `diag()` integration.
 
 ## `Report` and chain APIs
 
 From `Result<T, E>`:
 
 - `diag()`
-- `diag_with::<Store>()`
 - `diag_context(key, value)`
 - `diag_note(message)`
 
-Common enrichers on `Result<T, Report<E, C>>`:
+Common enrichers on `Result<T, Report<E>>`:
 
 - `with_context`, `with_note`, `with_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
-- `with_source`, `with_local_source`, `with_event`, `with_causes`
+- `with_display_cause`, `with_display_causes`, `with_source_error`
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
+
+Read APIs on `Report<E>`:
+
+- `attachments()`, `metadata()`, `stack_trace()`
+- `error_code()`, `severity()`, `category()`, `retryable()`
+- `display_causes()` / `display_causes_with(options)`
+- `source_errors()` / `source_errors_with(options)`
+
+Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
+
+- `report_ref()`, `report_metadata()`, `report_attachments()`
+- `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`
+
+`ErrorCode` design:
+
+- dual representation: `Integer(i64)` or `String(Cow<'static, str>)`
+- write path: `with_error_code(x)` accepts `impl Into<ErrorCode>`
+- integer inputs that fit in `i64` are stored as `Integer`; overflow falls back to decimal `String`
+- read path: `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` to integer types (`i8..i128`, `u8..u128`, `isize`, `usize`)
+- string path: `Into<String>` and `to_string()` are both supported
+- integer parse failures return `ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
+
+Cause semantics:
+
+- `with_display_cause` / `with_display_causes` accept `impl Display` and append display-cause strings (for rendering/IR).
+- `with_source_error` appends explicit error objects into the source chain metadata.
+- Error source propagation is maintained by `with_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
 
 Global context injector (`std`):
 
@@ -277,7 +303,7 @@ Global context injector (`std`):
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.push(("request_id".to_owned(), "req-001".into()));
+        ctx.context.push(("request_id".into(), "req-001".into()));
         Some(ctx)
     });
 }
@@ -372,7 +398,7 @@ See [`diagweave-example/src/main.rs`](diagweave-example/src/main.rs) for a runna
 - custom constructor prefixes
 - custom `ReportRenderer`
 - custom `TracingExporterTrait`
-- `EventOnlyStore` / `LocalCauseStore`
+- unified display causes list
 - manual and captured stack trace
 - global injector for context/trace propagation
 
@@ -397,9 +423,9 @@ cargo run -p diagweave-example
 ## Feature flags
 
 - `std` (default): std integrations
-- `json` (default): `Json` renderer (`serde` / `serde_json`)
-- `trace` (default): trace data model (`ReportTrace`, `TraceContext`, `TraceEvent`)
-- `tracing`: exporter APIs (`TracingExporterTrait`, `emit_tracing*`)
+- `json`: `Json` renderer (`serde` / `serde_json`)
+- `trace`: trace data model (`ReportTrace`, etc.) and pluggable exporter trait (`TracingExporterTrait`, `emit_tracing_with`)
+- `tracing`: default `tracing` crate integration (`TracingExporter`, `emit_tracing`)
 
 ## Workspace layout
 
@@ -430,3 +456,5 @@ If you only need minimal display derivation or quick app-level propagation, a li
 ## License
 
 Dual-licensed under MIT OR Apache-2.0.
+
+

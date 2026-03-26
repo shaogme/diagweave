@@ -18,7 +18,7 @@
 `diagweave` 把 Rust 错误处理里常被拆开的三层能力整合到同一数据模型中：
 
 - **类型层**：`set!` / `union!` 负责强类型、可组合的错误建模
-- **传播层**：`Report` 负责在传播过程中追加上下文、附件、事件、堆栈与 cause/source 链
+- **传播层**：`Report` 负责在传播过程中追加上下文、附件、事件、堆栈与 source 错误链
 - **呈现层**：统一渲染为 `Compact` / `Pretty` / `Json`，并可导出到 tracing / 观测系统
 
 ## 目录
@@ -249,24 +249,50 @@ pub enum MyError {
 }
 ```
 
-支持 `#[display("...")]`、`#[display(transparent)]`、`#[from]`、`#[source]`，并可直接接入 `diag()` / `diag_with::<C>()`。
+支持 `#[display("...")]`、`#[display(transparent)]`、`#[from]`、`#[source]`，并可直接接入 `diag()`。
 
 ## `Report` 与链式 API
 
 从 `Result<T, E>` 转换：
 
 - `diag()`
-- `diag_with::<Store>()`
 - `diag_context(key, value)`
 - `diag_note(message)`
 
-常用链式增强（`Result<T, Report<E, C>>`）：
+常用链式增强（`Result<T, Report<E>>`）：
 
 - `with_context`、`with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
-- `with_source`、`with_local_source`、`with_event`、`with_causes`
+- `with_display_cause`、`with_display_causes`、`with_source_error`
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
+
+`Report<E>` 的读取接口：
+
+- `attachments()`、`metadata()`、`stack_trace()`
+- `error_code()`、`severity()`、`category()`、`retryable()`
+- `display_causes()` / `display_causes_with(options)`
+- `source_errors()` / `source_errors_with(options)`
+
+`Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
+
+- `report_ref()`、`report_metadata()`、`report_attachments()`
+- `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`
+
+`ErrorCode` 设计：
+
+- 双表示：`Integer(i64)` 或 `String(Cow<'static, str>)`
+- 写入路径：`with_error_code(x)` 接收 `impl Into<ErrorCode>`
+- 整型输入若可放入 `i64` 则存为 `Integer`；超范围自动降级为十进制字符串 `String`
+- 读取路径：支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
+- 字符串路径：同时支持 `Into<String>` 与 `to_string()`
+- 整型解析失败错误：`ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
+
+原因语义说明：
+
+- `with_display_cause` / `with_display_causes` 接收 `impl Display`，并追加到展示原因字符串链（用于渲染与 IR）。
+- `with_source_error` 用于显式追加错误对象到 source 链元数据。
+- 真正的错误传播链由 `with_source_error`、`wrap` / `wrap_with` 与 `Error::source()` 共同维护。
 
 全局上下文注入（`std`）：
 
@@ -277,7 +303,7 @@ pub enum MyError {
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.push(("request_id".to_owned(), "req-001".into()));
+        ctx.context.push(("request_id".into(), "req-001".into()));
         Some(ctx)
     });
 }
@@ -372,7 +398,7 @@ tracing 导出：
 - 自定义构造器前缀
 - 自定义 `ReportRenderer`
 - 自定义 `TracingExporterTrait`
-- `EventOnlyStore` / `LocalCauseStore`
+- 统一的展示原因列表
 - 手动与自动堆栈追踪
 - 全局注入器实现上下文/trace 注入
 
@@ -397,9 +423,9 @@ cargo run -p diagweave-example
 ## Feature
 
 - `std`（默认）：标准库能力
-- `json`（默认）：`Json` 渲染器（`serde` / `serde_json`）
-- `trace`（默认）：trace 数据模型（`ReportTrace`、`TraceContext`、`TraceEvent`）
-- `tracing`：导出器 API（`TracingExporterTrait`、`emit_tracing*`）
+- `json`：`Json` 渲染器（`serde` / `serde_json`）
+- `trace`：trace 数据模型（`ReportTrace` 等）与可插拔导出器 Trait（`TracingExporterTrait`、`emit_tracing_with`）
+- `tracing`：默认 `tracing` 生态集成（`TracingExporter`、`emit_tracing`）
 
 ## 仓库结构
 
@@ -430,3 +456,4 @@ powershell -File diagweave/scripts/test-feature-matrix.ps1
 ## 许可证
 
 MIT 或 Apache-2.0 双许可证。
+

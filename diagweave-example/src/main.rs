@@ -9,8 +9,8 @@ use diagweave::prelude::{
 use diagweave::render::{
     DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION, ReportJsonDocument,
 };
-use diagweave::report::{EventOnlyStore, LocalCauseStore, StackTrace, StackTraceFormat};
-use diagweave::tracing_export::TracingExporterTrait;
+use diagweave::report::{StackTrace, StackTraceFormat};
+use diagweave::trace::TracingExporterTrait;
 
 // =============================================================================
 // Part 1: Error Definitions using diagweave macros
@@ -120,18 +120,26 @@ struct ConsoleExporter;
 
 impl TracingExporterTrait for ConsoleExporter {
     fn export_ir(&self, ir: &DiagnosticIr) {
-        let causes = ir.metadata.causes.as_ref();
-        let cause_count = causes.map(|c| c.items.len()).unwrap_or(0);
+        let display_causes = ir.metadata.display_causes.as_ref();
+        let source_errors = ir.metadata.source_errors.as_ref();
+        let display_cause_count = display_causes.map(|c| c.items.len()).unwrap_or(0);
+        let source_errors_count = source_errors.map(|c| c.items.len()).unwrap_or(0);
         println!(
-            "[Tracing Exporter] error={}, severity={:?}, causes={}, stack_trace={}",
+            "[Tracing Exporter] error={}, severity={:?}, display_causes={}, source_errors={}, stack_trace={}",
             ir.error.message,
             ir.metadata.severity,
-            cause_count,
+            display_cause_count,
+            source_errors_count,
             ir.metadata.stack_trace.is_some()
         );
-        if let Some(causes) = causes {
+        if let Some(causes) = display_causes {
             for (idx, cause) in causes.items.iter().enumerate() {
-                println!("  cause[{idx}] {}: {}", cause.kind, cause.message);
+                println!("  display_cause[{idx}] {}", cause);
+            }
+        }
+        if let Some(sources) = source_errors {
+            for (idx, source) in sources.items.iter().enumerate() {
+                println!("  source_errors[{idx}] {}", source.message);
             }
         }
     }
@@ -156,8 +164,9 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     db_operation()
         .diag_context("user_id", user_id)
         .with_note("failing over to secondary database")
-        .with_event("db operation failed")
-        .with_event("query plan fallback selected")
+        .with_display_cause("db operation failed")
+        .with_display_cause("query plan fallback selected")
+        .with_source_error(io::Error::other("replica lag detected"))
         .capture_stack_trace()
         .wrap_with(|db_err| match db_err {
             DatabaseError::ConnectionLost(io) => AppError::Io(io),
@@ -169,7 +178,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     Ok(())
 }
 
-fn api_handler(request_id: &str) -> Result<String, Report<ApiError>> {
+fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
     service_layer(1001)
         .with_context("request_id", request_id)
         .with_payload(
@@ -187,16 +196,16 @@ fn api_handler(request_id: &str) -> Result<String, Report<ApiError>> {
         .with_trace_state("service=api")
         .with_trace_flags(1)
         .with_trace_event(TraceEvent {
-            name: "api.handler".to_owned(),
+            name: "api.handler".into(),
             level: Some(TraceEventLevel::Error),
             timestamp_unix_nano: Some(1_713_337_000_000_000_000),
             attributes: vec![
                 TraceEventAttribute {
-                    key: "http.route".to_owned(),
+                    key: "http.route".into(),
                     value: AttachmentValue::from("/v1/session"),
                 },
                 TraceEventAttribute {
-                    key: "component".to_owned(),
+                    key: "component".into(),
                     value: AttachmentValue::from("gateway"),
                 },
             ],
@@ -206,10 +215,9 @@ fn api_handler(request_id: &str) -> Result<String, Report<ApiError>> {
     Ok("Success".into())
 }
 
-fn print_render_outputs<E, C>(report: &Report<E, C>)
+fn print_render_outputs<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
-    C: diagweave::report::CauseStore,
 {
     println!("--- Compact Rendering ---");
     println!("{}\n", report.render(Compact));
@@ -241,7 +249,7 @@ where
     println!(
         "JSON check: schema_version={}, causes_present={}\n",
         parsed.schema_version,
-        parsed.metadata.causes.is_some()
+        parsed.metadata.display_causes.is_some() || parsed.metadata.source_errors.is_some()
     );
 
     let lean_pretty_opts = ReportRenderOptions {
@@ -255,17 +263,32 @@ where
     println!("{}\n", report.render(Pretty::new(lean_pretty_opts)));
 }
 
-fn print_ir_and_adapters<E, C>(report: &Report<E, C>)
+fn print_ir_and_adapters<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
-    C: diagweave::report::CauseStore,
 {
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     println!("--- Diagnostic IR (Metadata) ---");
     println!("Error Code: {:?}", ir.metadata.error_code);
     println!("Severity: {:?}", ir.metadata.severity);
     println!("StackTrace Present: {}", ir.metadata.stack_trace.is_some());
-    println!("Causes: {:?}\n", ir.metadata.causes);
+    println!("Display Causes:");
+    if let Some(display_causes) = &ir.metadata.display_causes {
+        for (idx, cause) in display_causes.items.iter().enumerate() {
+            println!("  {}. {}", idx + 1, cause);
+        }
+    } else {
+        println!("  (none)");
+    }
+    println!("Error Causes (Source Errors Chain):");
+    if let Some(source_errors) = &ir.metadata.source_errors {
+        for (idx, source) in source_errors.items.iter().enumerate() {
+            println!("  {}. {}", idx + 1, source.message);
+        }
+    } else {
+        println!("  (none)");
+    }
+    println!();
 
     let tracing_fields = ir.to_tracing_fields();
     let otel = ir.to_otel_envelope();
@@ -281,22 +304,15 @@ where
 }
 
 fn demo_specialized_stores() {
-    println!("--- Specialized Cause Stores ---");
+    println!("--- Unified Display Causes ---");
 
-    let event_report: Report<BaseError, EventOnlyStore> =
-        Result::<(), _>::Err(BaseError::not_found("item_1".into()))
-            .diag_with::<EventOnlyStore>()
-            .with_event("cache invalidated")
-            .with_source(io::Error::other("hardware failure"))
-            .expect_err("demo");
-    println!("EventOnlyStore Report:\n{}\n", event_report.pretty());
-
-    let local_report: Report<BaseError, LocalCauseStore> =
-        Result::<(), _>::Err(BaseError::Timeout(3000))
-            .diag_with::<LocalCauseStore>()
-            .with_note("local processing delayed")
-            .expect_err("demo");
-    println!("LocalCauseStore Report:\n{}\n", local_report.pretty());
+    let report = Result::<(), _>::Err(BaseError::not_found("item_1".into()))
+        .diag()
+        .with_display_cause("cache invalidated")
+        .with_display_cause(io::Error::other("hardware failure"))
+        .with_note("local processing delayed")
+        .expect_err("demo");
+    println!("Report:\n{}\n", report.pretty());
 }
 
 fn demo_manual_stack_trace() {
@@ -345,9 +361,9 @@ fn init_global_context() {
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context
-            .push(("global_request_id".to_owned(), "req-global-001".into()));
-        ctx.trace_id = Some("trace-global-abc".to_owned());
-        ctx.span_id = Some("span-global-def".to_owned());
+            .push(("global_request_id".into(), "req-global-001".into()));
+        ctx.trace_id = Some("trace-global-abc".into());
+        ctx.span_id = Some("span-global-def".into());
         Some(ctx)
     });
 }

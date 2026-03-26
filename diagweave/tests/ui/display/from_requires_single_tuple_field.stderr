@@ -1,4 +1,4 @@
-error: #[from] requires exactly one tuple field variant, e.g. Variant(SourceError)
+error: #[from] requires exactly one tuple field variant, e.g. Variant(Source)
  --> tests/ui/display/from_requires_single_tuple_field.rs:5:9
   |
 5 | /         #[from]

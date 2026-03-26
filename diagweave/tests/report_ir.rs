@@ -11,17 +11,15 @@ fn cause_tree_supports_multiple_sources_and_events() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_source(AuthError::InvalidToken)
-        .with_event("request was retried")
-        .with_cause(CauseNode::group([
-            CauseNode::event("fallback cache missed"),
-            CauseNode::error(ApiError::Wrapped { code: 502 }),
-        ]));
+        .with_display_cause(AuthError::InvalidToken)
+        .with_display_cause("request was retried")
+        .with_display_cause("fallback cache missed")
+        .with_display_cause(ApiError::Wrapped { code: 502 });
 
     let pretty = report.pretty().to_string();
     assert!(pretty.contains("auth invalid token"));
-    assert!(pretty.contains("event: request was retried"));
-    assert!(pretty.contains("event: fallback cache missed"));
+    assert!(pretty.contains("request was retried"));
+    assert!(pretty.contains("fallback cache missed"));
     assert!(pretty.contains("api wrapped code=502"));
 }
 
@@ -31,36 +29,44 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_metadata(ReportMetadata {
-            error_code: Some("API.UNAUTHORIZED".to_owned()),
+            error_code: Some("API.UNAUTHORIZED".into()),
             severity: Some(Severity::Error),
-            category: Some("auth".to_owned()),
+            category: Some("auth".into()),
             retryable: Some(false),
             stack_trace: None,
-            causes: None,
+            display_causes: None,
+            source_errors: None,
         })
         .attach("request_id", "req-ir-1")
         .attach_printable("note")
         .attach_payload(
             "response",
             AttachmentValue::Redacted {
-                kind: Some("secret".to_owned()),
-                reason: Some("pii".to_owned()),
+                kind: Some("secret".into()),
+                reason: Some("pii".into()),
             },
-            Some("application/json".to_owned()),
+            "application/json".into(),
         )
-        .with_source(AuthError::InvalidToken)
-        .with_event("retry happened");
+        .with_display_cause(AuthError::InvalidToken)
+        .with_display_cause("retry happened");
 
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     assert_eq!(ir.error.message, "api unauthorized");
     assert!(!ir.error.r#type.is_empty());
-    assert_eq!(ir.metadata.error_code.as_deref(), Some("API.UNAUTHORIZED"));
+    assert_eq!(
+        ir.metadata.error_code.as_ref().map(|c| c.to_string()),
+        Some("API.UNAUTHORIZED".to_owned())
+    );
     assert_eq!(ir.context.len(), 1);
     assert_eq!(ir.attachments.len(), 2);
-    let causes = ir.metadata.causes.as_ref().expect("causes should exist");
-    assert_eq!(causes.items.len(), 2);
-    assert!(!causes.truncated);
-    assert!(!causes.cycle_detected);
+    let display_causes = ir
+        .metadata
+        .display_causes
+        .as_ref()
+        .expect("display causes should exist");
+    assert_eq!(display_causes.items.len(), 2);
+    assert!(!display_causes.truncated);
+    assert!(!display_causes.cycle_detected);
 }
 
 #[cfg(feature = "trace")]
@@ -78,19 +84,19 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .with_trace_state("vendor=blue")
         .with_trace_flags(1)
         .with_trace_event(TraceEvent {
-            name: "auth.lookup".to_owned(),
+            name: "auth.lookup".into(),
             level: Some(TraceEventLevel::Warn),
             timestamp_unix_nano: Some(1_713_337_000_000_000_000),
             attributes: vec![
                 TraceEventAttribute {
-                    key: "db.system".to_owned(),
+                    key: "db.system".into(),
                     value: AttachmentValue::from("postgres"),
                 },
                 TraceEventAttribute {
-                    key: "db.statement".to_owned(),
+                    key: "db.statement".into(),
                     value: AttachmentValue::Redacted {
-                        kind: Some("sql".to_owned()),
-                        reason: Some("sensitive".to_owned()),
+                        kind: Some("sql".into()),
+                        reason: Some("sensitive".into()),
                     },
                 },
             ],
@@ -100,13 +106,13 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .attach_payload(
             "payload",
             AttachmentValue::Object(BTreeMap::from([
-                ("path".to_owned(), AttachmentValue::from("/health")),
-                ("status".to_owned(), AttachmentValue::Unsigned(401)),
+                ("path".into(), AttachmentValue::from("/health")),
+                ("status".into(), AttachmentValue::Unsigned(401)),
             ])),
-            Some("application/json".to_owned()),
+            Some("application/json"),
         )
-        .with_source(AuthError::InvalidToken)
-        .with_event("fallback path");
+        .with_display_cause(AuthError::InvalidToken)
+        .with_display_cause("fallback path");
 
     let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
     let tracing_fields = ir.to_tracing_fields();
@@ -120,7 +126,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|f| f.key.starts_with("attachment.payload."))
     );
-    assert!(tracing_fields.iter().any(|f| f.key == "causes.present"));
+    assert!(
+        tracing_fields
+            .iter()
+            .any(|f| f.key == "display_causes.present")
+    );
 
     let otel = ir.to_otel_envelope();
     assert!(
@@ -128,7 +138,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|a| a.key == "stack_trace.present")
     );
-    assert!(otel.attributes.iter().any(|a| a.key == "causes.present"));
+    assert!(
+        otel.attributes
+            .iter()
+            .any(|a| a.key == "display_causes.present")
+    );
     assert!(otel.attributes.iter().any(|a| a.key == "trace.event_count"));
     assert!(otel.events.iter().any(|e| e.name == "trace.event"));
     assert!(
@@ -172,15 +186,15 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
     let report = Report::new(ApiError::Unauthorized)
         .with_trace_ids("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7")
         .with_trace_event(TraceEvent {
-            name: "db.query".to_owned(),
+            name: "db.query".into(),
             level: Some(TraceEventLevel::Info),
             timestamp_unix_nano: Some(1_713_337_100_000_000_000),
             attributes: vec![TraceEventAttribute {
-                key: "db.system".to_owned(),
+                key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
             }],
         })
-        .with_event("fallback path");
+        .with_display_cause("fallback path");
 
     report.emit_tracing_with(&exporter, ReportRenderOptions::default());
     assert_eq!(calls.get(), 1);

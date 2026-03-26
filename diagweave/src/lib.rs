@@ -8,8 +8,8 @@ mod render_impl;
 #[path = "report.rs"]
 mod report_impl;
 #[cfg(feature = "trace")]
-#[path = "tracing_export.rs"]
-mod tracing_export_impl;
+#[path = "trace.rs"]
+mod trace_impl;
 
 pub use diagweave_macros::{Error, set, union};
 
@@ -20,6 +20,14 @@ pub struct ReadmeDoctests;
 #[cfg(doctest)]
 #[doc = include_str!("../../README_CN.md")]
 pub struct ReadmeCnDoctests;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../docs/ai/ai_docs.md")]
+pub struct AiDoctests;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../docs/ai/ai_docs_cn.md")]
+pub struct AiCnDoctests;
 
 pub mod adapters {
     pub use crate::adapters_impl::*;
@@ -34,19 +42,18 @@ pub mod render {
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
         Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, ReportJsonAttachment,
-        ReportJsonCauseChain, ReportJsonCauseKind, ReportJsonCauseNode, ReportJsonContext,
-        ReportJsonDocument, ReportJsonError, ReportJsonMetadata, ReportJsonStackFrame,
-        ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
+        ReportJsonContext, ReportJsonDisplayCauseChain, ReportJsonDocument, ReportJsonError,
+        ReportJsonMetadata, ReportJsonSourceError, ReportJsonSourceErrorChain,
+        ReportJsonStackFrame, ReportJsonStackTrace, ReportJsonStackTraceFormat, report_json_schema,
     };
 }
 
 pub mod report {
     pub use crate::report_impl::{
-        Attachment, AttachmentValue, CauseChain, CauseCollectOptions, CauseCollection, CauseEntry,
-        CauseKind, CauseNode, CauseStore, DefaultCauseStore, Diagnostic, EventCauseStore,
-        EventOnlyStore, GlobalContext, LocalCause, LocalCauseStore, LocalErrorCauseStore, Report,
-        ReportMetadata, ReportResultCauseExt, ReportResultExt, Severity, StackFrame, StackTrace,
-        StackTraceFormat, StdCause, StdCauseStore, StdErrorCauseStore,
+        Attachment, AttachmentValue, CauseCollectOptions, CauseCollection, CauseKind, Diagnostic,
+        DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalContext, Report, ReportMetadata,
+        ReportResultExt, ReportResultInspectExt, Severity, SourceError, SourceErrorChain,
+        StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
@@ -57,16 +64,16 @@ pub mod report {
 }
 
 #[cfg(feature = "trace")]
-pub mod tracing_export {
+pub mod trace {
     #[cfg(feature = "tracing")]
-    pub use crate::tracing_export_impl::TracingExporter;
-    pub use crate::tracing_export_impl::TracingExporterTrait;
+    pub use crate::trace_impl::TracingExporter;
+    pub use crate::trace_impl::TracingExporterTrait;
 }
 
 pub mod prelude {
     pub use crate::render::{Compact, Pretty, ReportRenderOptions, ReportRenderer};
     pub use crate::report::{
-        AttachmentValue, Diagnostic, Report, ReportResultCauseExt, ReportResultExt, Severity,
+        AttachmentValue, Diagnostic, Report, ReportResultExt, ReportResultInspectExt, Severity,
     };
     #[cfg(feature = "std")]
     pub use crate::report::{GlobalContext, register_global_injector};

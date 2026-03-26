@@ -4,12 +4,10 @@ use core::fmt::{self, Debug, Display, Formatter};
 use crate::report::Attachment;
 
 use super::Report;
-use super::store::CauseStore;
 
-impl<E, C> Debug for Report<E, C>
+impl<E> Debug for Report<E>
 where
     E: Debug,
-    C: Debug + CauseStore,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         #[cfg(debug_assertions)]
@@ -28,12 +26,19 @@ where
                 }
                 #[cfg(feature = "trace")]
                 writeln!(f, "  - trace: {:?}", diag.trace)?;
-                writeln!(f, "  - cause_store: {:?}", diag.causes)?;
+                if diag.display_causes.is_empty() {
+                    writeln!(f, "  - display_causes: (none)")?;
+                } else {
+                    writeln!(f, "  - display_causes:")?;
+                    for cause in &diag.display_causes {
+                        writeln!(f, "    - {}", cause)?;
+                    }
+                }
             } else {
                 writeln!(f, "  - attachments: (none)")?;
                 #[cfg(feature = "trace")]
                 writeln!(f, "  - trace: (none)")?;
-                writeln!(f, "  - cause_store: (none)")?;
+                writeln!(f, "  - display_causes: (none)")?;
             }
             Ok(())
         }
@@ -47,10 +52,9 @@ where
     }
 }
 
-impl<E, C> Display for Report<E, C>
+impl<E> Display for Report<E>
 where
     E: Display,
-    C: CauseStore,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.inner())?;
@@ -60,7 +64,8 @@ where
             || metadata.category.is_some()
             || metadata.retryable.is_some()
             || metadata.stack_trace.is_some()
-            || metadata.causes.is_some();
+            || metadata.display_causes.is_some()
+            || metadata.source_errors.is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
             !diag.attachments.is_empty() || {
                 #[cfg(feature = "trace")]
@@ -84,10 +89,9 @@ where
     }
 }
 
-impl<E, C> Report<E, C>
+impl<E> Report<E>
 where
     E: Display,
-    C: CauseStore,
 {
     fn fmt_metadata_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
         let metadata = self.metadata();
@@ -114,8 +118,11 @@ where
         if metadata.stack_trace.is_some() {
             write_field("stack_trace", &"present")?;
         }
-        if let Some(causes) = &metadata.causes {
-            write_field("causes", &causes.items.len())?;
+        if let Some(display_causes) = &metadata.display_causes {
+            write_field("display_causes", &display_causes.items.len())?;
+        }
+        if let Some(source_errors) = &metadata.source_errors {
+            write_field("source_errors", &source_errors.items.len())?;
         }
         Ok(())
     }
@@ -164,14 +171,13 @@ where
     }
 }
 
-impl<E, C> Error for Report<E, C>
+impl<E> Error for Report<E>
 where
     E: Error + 'static,
-    C: CauseStore + core::fmt::Debug,
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
-            .and_then(|diag| diag.causes.first_error())
+            .and_then(|diag| diag.source_errors.first().map(|err| err.as_ref()))
             .or_else(|| self.inner().source())
     }
 }

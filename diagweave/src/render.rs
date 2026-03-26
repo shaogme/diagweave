@@ -4,9 +4,9 @@ mod json;
 #[path = "render/pretty.rs"]
 mod pretty;
 
+use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 use alloc::format;
-use alloc::string::String;
 use alloc::vec::Vec;
 use core::any;
 use core::error::Error;
@@ -86,8 +86,8 @@ pub trait ReportRenderer<E> {
 /// Error information in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticIrError {
-    pub message: String,
-    pub r#type: String,
+    pub message: Cow<'static, str>,
+    pub r#type: Cow<'static, str>,
 }
 
 /// Metadata information in the Diagnostic Intermediate Representation.
@@ -95,7 +95,7 @@ pub struct DiagnosticIrError {
 pub struct DiagnosticIrMetadata {
     pub error_code: Option<ErrorCode>,
     pub severity: Option<Severity>,
-    pub category: Option<String>,
+    pub category: Option<Cow<'static, str>>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<StackTrace>,
     pub display_causes: Option<DisplayCauseChain>,
@@ -105,7 +105,7 @@ pub struct DiagnosticIrMetadata {
 /// Context item in the Diagnostic Intermediate Representation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiagnosticIrContext {
-    pub key: String,
+    pub key: Cow<'static, str>,
     pub value: AttachmentValue,
 }
 
@@ -113,12 +113,12 @@ pub struct DiagnosticIrContext {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DiagnosticIrAttachment {
     Note {
-        message: String,
+        message: Cow<'static, str>,
     },
     Payload {
-        name: String,
+        name: Cow<'static, str>,
         value: AttachmentValue,
-        media_type: Option<String>,
+        media_type: Option<Cow<'static, str>>,
     },
 }
 
@@ -223,8 +223,8 @@ where
 
         DiagnosticIr {
             error: DiagnosticIrError {
-                message: format!("{}", self.inner()),
-                r#type: any::type_name::<E>().to_owned(),
+                message: format!("{}", self.inner()).into(),
+                r#type: Cow::Borrowed(any::type_name::<E>()),
             },
             metadata,
             #[cfg(feature = "trace")]
@@ -246,7 +246,7 @@ fn to_display_causes(collection: &CauseCollection) -> Option<DisplayCauseChain> 
         .map(|message| {
             message
                 .strip_prefix("event: ")
-                .unwrap_or(message.as_str())
+                .unwrap_or(message)
                 .to_owned()
         })
         .collect();
@@ -267,7 +267,7 @@ fn to_source_errors(collection: &CauseCollection) -> Option<SourceErrorChain> {
         .messages
         .iter()
         .map(|message| SourceError {
-            message: message.to_owned(),
+            message: message.clone(),
         })
         .collect();
 

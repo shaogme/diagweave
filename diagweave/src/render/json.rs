@@ -1,3 +1,4 @@
+use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -32,9 +33,9 @@ pub fn report_json_schema() -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonError {
     /// The formatted error message.
-    pub message: String,
+    pub message: Cow<'static, str>,
     /// The type name of the error.
-    pub r#type: String,
+    pub r#type: Cow<'static, str>,
 }
 
 /// JSON representation of error metadata.
@@ -45,7 +46,7 @@ pub struct ReportJsonMetadata {
     /// The severity of the error.
     pub severity: Option<Severity>,
     /// The category of the error.
-    pub category: Option<String>,
+    pub category: Option<Cow<'static, str>>,
     /// Whether the error is retryable.
     pub retryable: Option<bool>,
     /// The stack trace if available.
@@ -71,7 +72,7 @@ pub struct ReportJsonDisplayCauseChain {
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonSourceError {
     /// The formatted source message.
-    pub message: String,
+    pub message: Cow<'static, str>,
 }
 
 /// JSON representation of an error source chain.
@@ -123,7 +124,7 @@ pub struct ReportJsonStackTrace {
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ReportJsonContext {
     /// The key of the context item.
-    pub key: String,
+    pub key: Cow<'static, str>,
     /// The value of the context item.
     pub value: AttachmentValue,
 }
@@ -132,12 +133,12 @@ pub struct ReportJsonContext {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ReportJsonAttachment {
     Note {
-        message: String,
+        message: Cow<'static, str>,
     },
     Payload {
-        name: String,
+        name: Cow<'static, str>,
         value: AttachmentValue,
-        media_type: Option<String>,
+        media_type: Option<Cow<'static, str>>,
     },
 }
 

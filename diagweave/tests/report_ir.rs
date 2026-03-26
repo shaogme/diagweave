@@ -31,7 +31,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
         .with_metadata(ReportMetadata {
             error_code: Some("API.UNAUTHORIZED".into()),
             severity: Some(Severity::Error),
-            category: Some("auth".to_owned()),
+            category: Some("auth".into()),
             retryable: Some(false),
             stack_trace: None,
             display_causes: None,
@@ -42,10 +42,10 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
         .attach_payload(
             "response",
             AttachmentValue::Redacted {
-                kind: Some("secret".to_owned()),
-                reason: Some("pii".to_owned()),
+                kind: Some("secret".into()),
+                reason: Some("pii".into()),
             },
-            Some("application/json".to_owned()),
+            "application/json".into(),
         )
         .with_display_cause(AuthError::InvalidToken)
         .with_display_cause("retry happened");
@@ -84,19 +84,19 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .with_trace_state("vendor=blue")
         .with_trace_flags(1)
         .with_trace_event(TraceEvent {
-            name: "auth.lookup".to_owned(),
+            name: "auth.lookup".into(),
             level: Some(TraceEventLevel::Warn),
             timestamp_unix_nano: Some(1_713_337_000_000_000_000),
             attributes: vec![
                 TraceEventAttribute {
-                    key: "db.system".to_owned(),
+                    key: "db.system".into(),
                     value: AttachmentValue::from("postgres"),
                 },
                 TraceEventAttribute {
-                    key: "db.statement".to_owned(),
+                    key: "db.statement".into(),
                     value: AttachmentValue::Redacted {
-                        kind: Some("sql".to_owned()),
-                        reason: Some("sensitive".to_owned()),
+                        kind: Some("sql".into()),
+                        reason: Some("sensitive".into()),
                     },
                 },
             ],
@@ -106,10 +106,10 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .attach_payload(
             "payload",
             AttachmentValue::Object(BTreeMap::from([
-                ("path".to_owned(), AttachmentValue::from("/health")),
-                ("status".to_owned(), AttachmentValue::Unsigned(401)),
+                ("path".into(), AttachmentValue::from("/health")),
+                ("status".into(), AttachmentValue::Unsigned(401)),
             ])),
-            Some("application/json".to_owned()),
+            Some("application/json"),
         )
         .with_display_cause(AuthError::InvalidToken)
         .with_display_cause("fallback path");
@@ -186,11 +186,11 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
     let report = Report::new(ApiError::Unauthorized)
         .with_trace_ids("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7")
         .with_trace_event(TraceEvent {
-            name: "db.query".to_owned(),
+            name: "db.query".into(),
             level: Some(TraceEventLevel::Info),
             timestamp_unix_nano: Some(1_713_337_100_000_000_000),
             attributes: vec![TraceEventAttribute {
-                key: "db.system".to_owned(),
+                key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
             }],
         })

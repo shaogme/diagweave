@@ -178,7 +178,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     Ok(())
 }
 
-fn api_handler(request_id: &str) -> Result<String, Report<ApiError>> {
+fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
     service_layer(1001)
         .with_context("request_id", request_id)
         .with_payload(
@@ -196,16 +196,16 @@ fn api_handler(request_id: &str) -> Result<String, Report<ApiError>> {
         .with_trace_state("service=api")
         .with_trace_flags(1)
         .with_trace_event(TraceEvent {
-            name: "api.handler".to_owned(),
+            name: "api.handler".into(),
             level: Some(TraceEventLevel::Error),
             timestamp_unix_nano: Some(1_713_337_000_000_000_000),
             attributes: vec![
                 TraceEventAttribute {
-                    key: "http.route".to_owned(),
+                    key: "http.route".into(),
                     value: AttachmentValue::from("/v1/session"),
                 },
                 TraceEventAttribute {
-                    key: "component".to_owned(),
+                    key: "component".into(),
                     value: AttachmentValue::from("gateway"),
                 },
             ],
@@ -361,9 +361,9 @@ fn init_global_context() {
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context
-            .push(("global_request_id".to_owned(), "req-global-001".into()));
-        ctx.trace_id = Some("trace-global-abc".to_owned());
-        ctx.span_id = Some("span-global-def".to_owned());
+            .push(("global_request_id".into(), "req-global-001".into()));
+        ctx.trace_id = Some("trace-global-abc".into());
+        ctx.span_id = Some("span-global-def".into());
         Some(ctx)
     });
 }

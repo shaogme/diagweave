@@ -5,9 +5,9 @@ mod impls;
 #[path = "report/types.rs"]
 mod types;
 
+use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::collections::BTreeSet;
-use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::error::Error;
@@ -32,18 +32,18 @@ pub struct Report<E> {
     cold: Option<Box<ColdData>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct ColdData {
     metadata: ReportMetadata,
     diagnostics: DiagnosticBag,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct DiagnosticBag {
     #[cfg(feature = "trace")]
     trace: ReportTrace,
     attachments: Vec<Attachment>,
-    display_causes: Vec<String>,
+    display_causes: Vec<Box<dyn Display + 'static>>,
     source_errors: Vec<Box<dyn Error + 'static>>,
 }
 
@@ -61,16 +61,16 @@ const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
 #[derive(Debug, Clone, Default)]
 pub struct GlobalContext {
     /// Context key-value pairs.
-    pub context: Vec<(String, AttachmentValue)>,
+    pub context: Vec<(Cow<'static, str>, AttachmentValue)>,
     /// Global trace ID if available.
     #[cfg(feature = "trace")]
-    pub trace_id: Option<String>,
+    pub trace_id: Option<Cow<'static, str>>,
     /// Global span ID if available.
     #[cfg(feature = "trace")]
-    pub span_id: Option<String>,
+    pub span_id: Option<Cow<'static, str>>,
     /// Global parent span ID if available.
     #[cfg(feature = "trace")]
-    pub parent_span_id: Option<String>,
+    pub parent_span_id: Option<Cow<'static, str>>,
 }
 
 /// Context injector type alias for global context providers.
@@ -213,7 +213,7 @@ impl<E> Report<E> {
     /// Attaches a context key-value pair to the report.
     pub fn attach(
         mut self,
-        key: impl Into<alloc::string::String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Self {
         self.diagnostics_mut()
@@ -224,29 +224,31 @@ impl<E> Report<E> {
 
     /// Attaches a printable note to the report.
     pub fn attach_printable(mut self, message: impl Display) -> Self {
-        self.diagnostics_mut()
-            .attachments
-            .push(Attachment::note(message.to_string()));
+        self.diagnostics_mut().attachments.push(Attachment::Note {
+            message: Cow::Owned(message.to_string()),
+        });
         self
     }
 
     /// Attaches a payload with an optional media type to the report.
     pub fn attach_payload(
         mut self,
-        name: impl Into<alloc::string::String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<alloc::string::String>,
+        media_type: Option<impl Into<Cow<'static, str>>>,
     ) -> Self {
-        self.diagnostics_mut()
-            .attachments
-            .push(Attachment::payload(name, value, media_type));
+        self.diagnostics_mut().attachments.push(Attachment::payload(
+            name,
+            value,
+            media_type.map(|m| m.into()),
+        ));
         self
     }
 
     /// Adds context to the report (alias for `attach`).
     pub fn with_context(
         self,
-        key: impl Into<alloc::string::String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Self {
         self.attach(key, value)
@@ -260,9 +262,9 @@ impl<E> Report<E> {
     /// Adds a payload to the report (alias for `attach_payload`).
     pub fn with_payload(
         self,
-        name: impl Into<alloc::string::String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<alloc::string::String>,
+        media_type: Option<impl Into<Cow<'static, str>>>,
     ) -> Self {
         self.attach_payload(name, value, media_type)
     }
@@ -284,8 +286,8 @@ impl<E> Report<E> {
     #[cfg(feature = "trace")]
     pub fn with_trace_ids(
         mut self,
-        trace_id: impl Into<alloc::string::String>,
-        span_id: impl Into<alloc::string::String>,
+        trace_id: impl Into<Cow<'static, str>>,
+        span_id: impl Into<Cow<'static, str>>,
     ) -> Self {
         let trace = &mut self.diagnostics_mut().trace;
         trace.context.trace_id = Some(trace_id.into());
@@ -295,7 +297,7 @@ impl<E> Report<E> {
 
     /// Sets the parent span ID for the report.
     #[cfg(feature = "trace")]
-    pub fn with_parent_span_id(mut self, parent_span_id: impl Into<alloc::string::String>) -> Self {
+    pub fn with_parent_span_id(mut self, parent_span_id: impl Into<Cow<'static, str>>) -> Self {
         self.diagnostics_mut().trace.context.parent_span_id = Some(parent_span_id.into());
         self
     }
@@ -309,7 +311,7 @@ impl<E> Report<E> {
 
     /// Sets the trace state.
     #[cfg(feature = "trace")]
-    pub fn with_trace_state(mut self, trace_state: impl Into<alloc::string::String>) -> Self {
+    pub fn with_trace_state(mut self, trace_state: impl Into<Cow<'static, str>>) -> Self {
         self.diagnostics_mut().trace.context.trace_state = Some(trace_state.into());
         self
     }
@@ -330,7 +332,7 @@ impl<E> Report<E> {
 
     /// Pushes a trace event with the specified name.
     #[cfg(feature = "trace")]
-    pub fn push_trace_event(mut self, name: impl Into<alloc::string::String>) -> Self {
+    pub fn push_trace_event(mut self, name: impl Into<Cow<'static, str>>) -> Self {
         self.diagnostics_mut().trace.events.push(TraceEvent {
             name: name.into(),
             ..TraceEvent::default()
@@ -342,7 +344,7 @@ impl<E> Report<E> {
     #[cfg(feature = "trace")]
     pub fn push_trace_event_ext(
         mut self,
-        name: impl Into<alloc::string::String>,
+        name: impl Into<Cow<'static, str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
@@ -369,7 +371,7 @@ impl<E> Report<E> {
     }
 
     /// Sets the category for the report.
-    pub fn with_category(mut self, category: impl Into<alloc::string::String>) -> Self {
+    pub fn with_category(mut self, category: impl Into<Cow<'static, str>>) -> Self {
         self.ensure_cold().metadata.category = Some(category.into());
         self
     }
@@ -409,10 +411,8 @@ impl<E> Report<E> {
     }
 
     /// Adds a display cause to the report.
-    pub fn with_display_cause(mut self, cause: impl Display) -> Self {
-        self.diagnostics_mut()
-            .display_causes
-            .push(cause.to_string());
+    pub fn with_display_cause(mut self, cause: impl Display + 'static) -> Self {
+        self.diagnostics_mut().display_causes.push(Box::new(cause));
         self
     }
 
@@ -420,11 +420,13 @@ impl<E> Report<E> {
     pub fn with_display_causes<I, T>(mut self, causes: I) -> Self
     where
         I: IntoIterator<Item = T>,
-        T: Display,
+        T: Display + 'static,
     {
-        self.diagnostics_mut()
-            .display_causes
-            .extend(causes.into_iter().map(|cause| cause.to_string()));
+        self.diagnostics_mut().display_causes.extend(
+            causes
+                .into_iter()
+                .map(|cause| Box::new(cause) as Box<dyn Display + 'static>),
+        );
         self
     }
 
@@ -485,7 +487,7 @@ impl<E> Report<E> {
                 state.truncated = true;
                 break;
             }
-            state.messages.push(alloc::format!("event: {cause}"));
+            state.messages.push(alloc::format!("event: {cause}").into());
         }
         state
     }
@@ -552,7 +554,7 @@ fn collect_error_chain(
                 break;
             }
         }
-        state.messages.push(err.to_string());
+        state.messages.push(err.to_string().into());
         *depth += 1;
         current = err.source();
     }

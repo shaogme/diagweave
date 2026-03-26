@@ -21,6 +21,14 @@ pub struct ReadmeDoctests;
 #[doc = include_str!("../../README_CN.md")]
 pub struct ReadmeCnDoctests;
 
+#[cfg(doctest)]
+#[doc = include_str!("../../docs/ai/ai_docs.md")]
+pub struct AiDoctests;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../docs/ai/ai_docs_cn.md")]
+pub struct AiCnDoctests;
+
 pub mod adapters {
     pub use crate::adapters_impl::*;
 }

@@ -26,7 +26,14 @@ where
                 }
                 #[cfg(feature = "trace")]
                 writeln!(f, "  - trace: {:?}", diag.trace)?;
-                writeln!(f, "  - display_causes: {:?}", diag.display_causes)?;
+                if diag.display_causes.is_empty() {
+                    writeln!(f, "  - display_causes: (none)")?;
+                } else {
+                    writeln!(f, "  - display_causes:")?;
+                    for cause in &diag.display_causes {
+                        writeln!(f, "    - {}", cause)?;
+                    }
+                }
             } else {
                 writeln!(f, "  - attachments: (none)")?;
                 #[cfg(feature = "trace")]

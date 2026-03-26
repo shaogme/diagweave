@@ -1,3 +1,4 @@
+use alloc::borrow::Cow;
 use alloc::string::String;
 use core::fmt::Display;
 
@@ -17,7 +18,7 @@ pub trait Diagnostic {
 
     fn diag_context(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Result<Self::Value, Report<Self::Error>>
     where
@@ -47,7 +48,7 @@ impl<T, E> Diagnostic for Result<T, E> {
 pub trait ReportResultExt<T, E> {
     fn attach(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>>;
 
@@ -55,14 +56,14 @@ pub trait ReportResultExt<T, E> {
 
     fn attach_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
     ) -> Result<T, Report<E>>;
 
     fn with_context(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>>;
 
@@ -70,7 +71,7 @@ pub trait ReportResultExt<T, E> {
 
     fn with_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
     ) -> Result<T, Report<E>>;
@@ -83,18 +84,21 @@ pub trait ReportResultExt<T, E> {
     #[cfg(feature = "trace")]
     fn with_trace_ids(
         self,
-        trace_id: impl Into<String>,
-        span_id: impl Into<String>,
+        trace_id: impl Into<Cow<'static, str>>,
+        span_id: impl Into<Cow<'static, str>>,
     ) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_parent_span_id(self, parent_span_id: impl Into<String>) -> Result<T, Report<E>>;
+    fn with_parent_span_id(
+        self,
+        parent_span_id: impl Into<Cow<'static, str>>,
+    ) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn with_trace_sampled(self, sampled: bool) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_state(self, trace_state: impl Into<String>) -> Result<T, Report<E>>;
+    fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn with_trace_flags(self, flags: u32) -> Result<T, Report<E>>;
@@ -103,12 +107,12 @@ pub trait ReportResultExt<T, E> {
     fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn push_trace_event(self, name: impl Into<String>) -> Result<T, Report<E>>;
+    fn push_trace_event(self, name: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn push_trace_event_with(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
@@ -118,7 +122,7 @@ pub trait ReportResultExt<T, E> {
 
     fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E>>;
 
-    fn with_category(self, category: impl Into<String>) -> Result<T, Report<E>>;
+    fn with_category(self, category: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
     fn with_retryable(self, retryable: bool) -> Result<T, Report<E>>;
 
@@ -129,18 +133,18 @@ pub trait ReportResultExt<T, E> {
     #[cfg(feature = "std")]
     fn capture_stack_trace(self) -> Result<T, Report<E>>;
 
-    fn with_display_cause(self, cause: impl Display) -> Result<T, Report<E>>;
+    fn with_display_cause(self, cause: impl Display + 'static) -> Result<T, Report<E>>;
 
     fn with_display_causes<I, TCause>(self, causes: I) -> Result<T, Report<E>>
     where
         I: IntoIterator<Item = TCause>,
-        TCause: Display;
+        TCause: Display + 'static;
 
     fn with_source_error(self, err: impl Error + 'static) -> Result<T, Report<E>>;
 
     fn context_lazy(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         make_value: impl FnOnce() -> AttachmentValue,
     ) -> Result<T, Report<E>>;
 
@@ -173,7 +177,7 @@ pub trait ReportResultInspectExt<T, E> {
 impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     fn attach(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>> {
         let key = key.into();
@@ -186,17 +190,16 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
 
     fn attach_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
     ) -> Result<T, Report<E>> {
-        let name = name.into();
         self.map_err(|report| report.attach_payload(name, value, media_type))
     }
 
     fn with_context(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>> {
         self.attach(key, value)
@@ -208,7 +211,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
 
     fn with_payload(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
         media_type: Option<String>,
     ) -> Result<T, Report<E>> {
@@ -227,17 +230,17 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     #[cfg(feature = "trace")]
     fn with_trace_ids(
         self,
-        trace_id: impl Into<String>,
-        span_id: impl Into<String>,
+        trace_id: impl Into<Cow<'static, str>>,
+        span_id: impl Into<Cow<'static, str>>,
     ) -> Result<T, Report<E>> {
-        let trace_id = trace_id.into();
-        let span_id = span_id.into();
         self.map_err(|report| report.with_trace_ids(trace_id, span_id))
     }
 
     #[cfg(feature = "trace")]
-    fn with_parent_span_id(self, parent_span_id: impl Into<String>) -> Result<T, Report<E>> {
-        let parent_span_id = parent_span_id.into();
+    fn with_parent_span_id(
+        self,
+        parent_span_id: impl Into<Cow<'static, str>>,
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_parent_span_id(parent_span_id))
     }
 
@@ -247,8 +250,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_state(self, trace_state: impl Into<String>) -> Result<T, Report<E>> {
-        let trace_state = trace_state.into();
+    fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_state(trace_state))
     }
 
@@ -263,27 +265,24 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     }
 
     #[cfg(feature = "trace")]
-    fn push_trace_event(self, name: impl Into<String>) -> Result<T, Report<E>> {
-        let name = name.into();
+    fn push_trace_event(self, name: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.push_trace_event(name))
     }
 
     #[cfg(feature = "trace")]
     fn push_trace_event_with(
         self,
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
     ) -> Result<T, Report<E>> {
-        let name = name.into();
         self.map_err(|report| {
             report.push_trace_event_ext(name, level, timestamp_unix_nano, attributes)
         })
     }
 
     fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E>> {
-        let error_code = error_code.into();
         self.map_err(|report| report.with_error_code(error_code))
     }
 
@@ -292,8 +291,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.with_severity(severity))
     }
 
-    fn with_category(self, category: impl Into<String>) -> Result<T, Report<E>> {
-        let category = category.into();
+    fn with_category(self, category: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_category(category))
     }
 
@@ -314,14 +312,14 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.capture_stack_trace())
     }
 
-    fn with_display_cause(self, cause: impl Display) -> Result<T, Report<E>> {
+    fn with_display_cause(self, cause: impl Display + 'static) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_display_cause(cause))
     }
 
     fn with_display_causes<I, TCause>(self, causes: I) -> Result<T, Report<E>>
     where
         I: IntoIterator<Item = TCause>,
-        TCause: Display,
+        TCause: Display + 'static,
     {
         self.map_err(|report| report.with_display_causes(causes))
     }
@@ -332,10 +330,9 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
 
     fn context_lazy(
         self,
-        key: impl Into<String>,
+        key: impl Into<Cow<'static, str>>,
         make_value: impl FnOnce() -> AttachmentValue,
     ) -> Result<T, Report<E>> {
-        let key = key.into();
         self.map_err(|report| report.attach(key, make_value()))
     }
 

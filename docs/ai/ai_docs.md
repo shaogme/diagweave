@@ -6,7 +6,7 @@
 Used to define a series of structured error enums (Error Sets). It automatically implements composition logic between sets, `From` conversions, snake_case named constructors, and report semantics.
 
 ### Syntax Definition
-```rust
+```text
 set! {
     [#[diagweave(Meta)]]
     Ident = { [VariantDecls] } [ | OtherSet ]
@@ -29,6 +29,8 @@ set! {
 
 ### Core Usage
 ```rust
+use diagweave::set;
+
 set! {
     AuthError = {
         #[display("user {id} not found")]
@@ -61,7 +63,7 @@ set! {
 Used at architecture boundaries to combine unrelated error types, other error sets, or inline-defined variants.
 
 ### Syntax Definition
-```rust
+```text
 union! {
     [Attributes]
     [vis] enum Ident = Item1 | Item2 | ...
@@ -77,8 +79,21 @@ union! {
 
 ### Core Usage
 ```rust
+use diagweave::union;
+use std::fmt;
+
+#[derive(Debug)]
+struct AuthError;
+
+impl fmt::Display for AuthError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "auth error")
+    }
+}
+
+impl std::error::Error for AuthError {}
+
 union! {
-    #[derive(Clone)]
     pub enum AppError = 
         AuthError |                     // Uses AuthError as variant name automatically
         std::io::Error as Io |          // Explicitly named as Io
@@ -142,6 +157,8 @@ The core diagnostic container, wrapping the original error `E` and holding optio
 
 ### Declaration and Definition
 ```rust
+struct ColdData;
+
 pub struct Report<E> {
     inner: E,
     cold: Option<Box<ColdData>>,
@@ -172,7 +189,7 @@ pub struct Report<E> {
 ### `ErrorCode` Design and Conversions
 - Internal model:
   - `ErrorCode::Integer(i64)` for compact numeric codes
-  - `ErrorCode::String(String)` for symbolic or oversized numeric codes
+  - `ErrorCode::String(Cow<'static, str>)` for symbolic or oversized numeric codes
 - Input conversion (`impl Into<ErrorCode>`):
   - Integer inputs (`i8..i128`, `u8..u128`, `isize`, `usize`) attempt `TryInto<i64>`
   - On success: stored as `Integer`
@@ -192,19 +209,19 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 
 | GlobalContext Field | Description |
 | :--- | :--- |
-| `context` | `Vec<(String, AttachmentValue)>` globally associated key-value pairs |
-| `trace_id` | `Option<String>` Automatically bound Trace ID |
-| `span_id` | `Option<String>` Automatically bound Span ID |
+| `context` | `Vec<(Cow<'static, str>, AttachmentValue)>` globally associated key-value pairs |
+| `trace_id` | `Option<Cow<'static, str>>` Automatically bound Trace ID |
+| `span_id` | `Option<Cow<'static, str>>` Automatically bound Span ID |
 
 ### Chained Configuration Methods
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | Add context key-value pairs |
 | `with_note` / `attach_printable` | `impl Display` | Add remarks or resolution suggestions |
-| `with_payload` / `attach_payload` | `(Ident, Value, Option<String>)` | Attach named payload (supports media types) |
+| `with_payload` / `attach_payload` | `(Ident, Value, Option<impl Into<Cow<'static, str>>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
-| `with_category` | `impl Into<String>` | Set error category (for monitoring metrics) |
+| `with_category` | `impl Into<Cow<'static, str>>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |
@@ -224,13 +241,30 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 
 ### Usage Example
 ```rust
+use diagweave::prelude::*;
+use std::fmt;
+
+#[derive(Debug)]
+enum MyError {
+    Timeout,
+}
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "timeout")
+    }
+}
+
+impl std::error::Error for MyError {}
+
 let report = Report::new(MyError::Timeout)
     .with_severity(Severity::Fatal)
     .with_context("request_id", "req-123")
     .with_note("please check the network connection")
     .with_retryable(true)
-    .with_payload("data", vec![1, 2, 3], Some("application/octet-stream".to_owned()))
-    .capture_stack_trace();
+    .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
+#[cfg(feature = "std")]
+let report = report.capture_stack_trace();
 ```
 
 ---
@@ -265,13 +299,15 @@ Read-only helpers for error-path inspection without manually matching `Err`:
 ### Usage Example
 ```rust
 use diagweave::prelude::*;
+use std::{fs, io};
+use std::time::SystemTime;
 
 fn process() -> Result<(), Report<io::Error>> {
     fs::read_to_string("config.toml")
         .diag_context("file", "config.toml") // Converts and attaches context
         .with_severity(Severity::Warn)
-        .context_lazy("timestamp", || chrono::Utc::now().to_rfc3339())
-        .attach_printable("failed to load system config")? 
+        .context_lazy("timestamp", || format!("{:?}", SystemTime::now()).into())
+        .attach_printable("failed to load system config")?;
         
     Ok(())
 }
@@ -287,7 +323,7 @@ Manages the chain of triggers for a diagnostic. `diagweave` supports not only `s
 ### Display Cause Data
 | Type Name | Description |
 | :--- | :--- |
-| `Vec<String>` | Stores display-cause messages directly; converted into display-cause chain metadata during rendering. |
+| `Vec<Cow<'static, str>>` | Stores display-cause messages directly; converted into display-cause chain metadata during rendering. |
 
 ### Core Data Conversion: `AttachmentValue`
 Strongly typed values supported by `Report` attachments, converted automatically from base types:
@@ -330,6 +366,13 @@ Converts `Report` with rich metadata into displayable strings or structured data
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
 Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure.
 ```rust
+use diagweave::render::{
+    DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError, DiagnosticIrMetadata,
+};
+#[cfg(feature = "trace")]
+use diagweave::report::ReportTrace;
+
+#[cfg(feature = "trace")]
 pub struct DiagnosticIr {
     pub error: DiagnosticIrError,       // { message, type }
     pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
@@ -337,10 +380,21 @@ pub struct DiagnosticIr {
     pub context: Vec<DiagnosticIrContext>,
     pub attachments: Vec<DiagnosticIrAttachment>,
 }
+#[cfg(not(feature = "trace"))]
+pub struct DiagnosticIr {
+    pub error: DiagnosticIrError,       // { message, type }
+    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
+    pub context: Vec<DiagnosticIrContext>,
+    pub attachments: Vec<DiagnosticIrAttachment>,
+}
 ```
 
 ### Usage Example
 ```rust
+use diagweave::prelude::{Pretty, Report, ReportRenderOptions};
+use diagweave::render::PrettyIndent;
+
+let inner = std::io::Error::new(std::io::ErrorKind::Other, "oops");
 let report = Report::new(inner);
 
 // 1. Print Pretty format directly (Stdout)
@@ -356,6 +410,7 @@ println!("{}", report.render(Pretty {
 }));
 
 // 3. Generate JSON
+#[cfg(feature = "json")]
 let json_str = report.json().to_string();
 ```
 
@@ -381,10 +436,40 @@ Exports diagnostic reports to monitoring systems or log streams.
 
 ### Usage Example
 ```rust
+use diagweave::prelude::{Report, ReportRenderOptions};
+use std::fmt;
+
+#[cfg(feature = "trace")]
+use diagweave::trace::TracingExporterTrait;
+
+#[derive(Debug)]
+struct MyError;
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error")
+    }
+}
+
+impl std::error::Error for MyError {}
+
+#[cfg(feature = "trace")]
+struct MyCustomExporter;
+
+#[cfg(feature = "trace")]
+impl TracingExporterTrait for MyCustomExporter {
+    fn export_ir(&self, _ir: &diagweave::render::DiagnosticIr) {}
+}
+
+let report = Report::new(MyError);
+let options = ReportRenderOptions::default();
+
 // Export to current tracing span with default options
+#[cfg(feature = "tracing")]
 report.emit_tracing(ReportRenderOptions::default());
 
 // Use a custom exporter
+#[cfg(feature = "trace")]
 report.emit_tracing_with(&MyCustomExporter, options);
 ```
 
@@ -413,16 +498,67 @@ report.emit_tracing_with(&MyCustomExporter, options);
 ### 1. Complex Attachments: Structured JSON Correlation
 Leverage `serde_json` macro to inject structured data directly.
 ```rust
-report.with_payload(
+use diagweave::prelude::*;
+use std::fmt;
+
+#[cfg(feature = "json")]
+use serde_json::json;
+
+#[derive(Debug)]
+struct MyError;
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error")
+    }
+}
+
+impl std::error::Error for MyError {}
+
+#[cfg(feature = "json")]
+let _report = Report::new(MyError).with_payload(
     "request_meta",
-    serde_json::json!({ "version": "v1", "retry": 3 }),
-    Some("application/json".to_owned())
+    json!({ "version": "v1", "retry": 3 }),
+    Some("application/json")
 );
 ```
 
 ### 2. Multi-Level Wrapping Across Layers
 Preserve the full error source chain when passing through architectural layers.
 ```rust
+use diagweave::prelude::*;
+use std::fmt;
+
+#[derive(Debug)]
+struct DatabaseError;
+
+impl fmt::Display for DatabaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "db error")
+    }
+}
+
+impl std::error::Error for DatabaseError {}
+
+#[derive(Debug)]
+enum AppError {
+    Db(DatabaseError),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::Db(_) => write!(f, "app db error"),
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
+
+fn db_operation() -> Result<(), DatabaseError> {
+    Err(DatabaseError)
+}
+
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()
         .diag_context("db", "primary")
@@ -434,11 +570,16 @@ fn service_layer() -> Result<(), Report<AppError>> {
 ### 3. Custom Renderer Implementation
 Customize output format (e.g., output to HTML or Web UI) by implementing the `ReportRenderer` trait.
 ```rust
+use diagweave::prelude::*;
+use std::fmt::{self, Display, Formatter};
+
 struct MyHtmlRenderer;
-impl<E: Display> ReportRenderer<E> for MyHtmlRenderer {
+impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRenderer {
     fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", report.pretty())
     }
 }
+```
 
 ---
 
@@ -456,4 +597,8 @@ impl<E: Display> ReportRenderer<E> for MyHtmlRenderer {
 - **`json`**: Requires `serde` with `derive` and `alloc` features, plus `serde_json` with `alloc`.
 - **`trace`**: Zero-dependency trace data structures.
 - **`tracing`**: Requires `tracing` crate.
-```
+
+
+
+
+

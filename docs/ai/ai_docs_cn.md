@@ -6,7 +6,7 @@
 用于定义一系列结构化的错误枚举（Error Set），自动实现集合间的组合逻辑、`From` 转换、蛇形命名构造器及报告语义。
 
 ### 语法定义
-```rust
+```text
 set! {
     [#[diagweave(Meta)]]
     Ident = { [VariantDecls] } [ | OtherSet ]
@@ -29,6 +29,8 @@ set! {
 
 ### 核心用法
 ```rust
+use diagweave::set;
+
 set! {
     AuthError = {
         #[display("user {id} not found")]
@@ -61,7 +63,7 @@ set! {
 用于在架构边界组合多个不相关的错误类型、其他错误集合或内联定义的变体。
 
 ### 语法定义
-```rust
+```text
 union! {
     [Attributes]
     [vis] enum Ident = Item1 | Item2 | ...
@@ -77,8 +79,21 @@ union! {
 
 ### 核心用法
 ```rust
+use diagweave::union;
+use std::fmt;
+
+#[derive(Debug)]
+struct AuthError;
+
+impl fmt::Display for AuthError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "auth error")
+    }
+}
+
+impl std::error::Error for AuthError {}
+
 union! {
-    #[derive(Clone)]
     pub enum AppError = 
         AuthError |                     // 自动使用 AuthError 作为变体名
         std::io::Error as Io |          // 显式起名为 Io
@@ -142,6 +157,8 @@ enum FileError {
 
 ### 声明定义
 ```rust
+struct ColdData;
+
 pub struct Report<E> {
     inner: E,
     cold: Option<Box<ColdData>>,
@@ -172,7 +189,7 @@ pub struct Report<E> {
 ### `ErrorCode` 设计与转换规则
 - 内部模型：
   - `ErrorCode::Integer(i64)`：紧凑数值错误码
-  - `ErrorCode::String(String)`：符号型错误码或超范围数值错误码
+  - `ErrorCode::String(Cow<'static, str>)`：符号型错误码或超范围数值错误码
 - 输入转换（`impl Into<ErrorCode>`）：
   - 整型输入（`i8..i128`、`u8..u128`、`isize`、`usize`）先尝试 `TryInto<i64>`
   - 成功则存为 `Integer`
@@ -192,19 +209,19 @@ pub struct Report<E> {
 
 | GlobalContext 字段 | 说明 |
 | :--- | :--- |
-| `context` | `Vec<(String, AttachmentValue)>` 全局关联的键值对 |
-| `trace_id` | `Option<String>` 自动绑定的 Trace ID |
-| `span_id` | `Option<String>` 自动绑定的 Span ID |
+| `context` | `Vec<(Cow<'static, str>, AttachmentValue)>` 全局关联的键值对 |
+| `trace_id` | `Option<Cow<'static, str>>` 自动绑定的 Trace ID |
+| `span_id` | `Option<Cow<'static, str>>` 自动绑定的 Span ID |
 
 ### 链式配置方法
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | 添加上下文键值对 |
 | `with_note` / `attach_printable` | `impl Display` | 添加备注或解决建议 |
-| `with_payload` / `attach_payload` | `(Ident, Value, Option<String>)` | 附加命名负载 (支持媒体类型) |
+| `with_payload` / `attach_payload` | `(Ident, Value, Option<Cow<'static, str>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
-| `with_category` | `impl Into<String>` | 设置错误分类 (用于监控指标) |
+| `with_category` | `impl Into<Cow<'static, str>>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
 | `with_display_cause` | `impl Display` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因字符串 |
@@ -224,13 +241,30 @@ pub struct Report<E> {
 
 ### 用法示例
 ```rust
+use diagweave::prelude::*;
+use std::fmt;
+
+#[derive(Debug)]
+enum MyError {
+    Timeout,
+}
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "timeout")
+    }
+}
+
+impl std::error::Error for MyError {}
+
 let report = Report::new(MyError::Timeout)
     .with_severity(Severity::Fatal)
     .with_context("request_id", "req-123")
     .with_note("please check the network connection")
     .with_retryable(true)
-    .with_payload("data", vec![1, 2, 3], Some("application/octet-stream".to_owned()))
-    .capture_stack_trace();
+    .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
+#[cfg(feature = "std")]
+let report = report.capture_stack_trace();
 ```
 
 ---
@@ -265,13 +299,15 @@ let report = Report::new(MyError::Timeout)
 ### 用法示例
 ```rust
 use diagweave::prelude::*;
+use std::{fs, io};
+use std::time::SystemTime;
 
 fn process() -> Result<(), Report<io::Error>> {
     fs::read_to_string("config.toml")
         .diag_context("file", "config.toml") // 转换并附加 context
         .with_severity(Severity::Warn)
-        .context_lazy("timestamp", || chrono::Utc::now().to_rfc3339())
-        .attach_printable("failed to load system config")? 
+        .context_lazy("timestamp", || format!("{:?}", SystemTime::now()).into())
+        .attach_printable("failed to load system config")?;
         
     Ok(())
 }
@@ -287,7 +323,7 @@ fn process() -> Result<(), Report<io::Error>> {
 ### 展示原因数据
 | 类型名 | 说明 |
 | :--- | :--- |
-| `Vec<String>` | 直接存储展示原因字符串，在渲染阶段转换为展示原因链元数据。 |
+| `Vec<Cow<'static, str>>` | 直接存储展示原因字符串，在渲染阶段转换为展示原因链元数据。 |
 
 ### 核心数据转换：`AttachmentValue`
 `Report` 附件支持的强类型值，支持自动从基础类型转换：
@@ -330,6 +366,13 @@ fn process() -> Result<(), Report<io::Error>> {
 ### 诊断中间表示 (`DiagnosticIr`)
 渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。
 ```rust
+use diagweave::render::{
+    DiagnosticIrAttachment, DiagnosticIrContext, DiagnosticIrError, DiagnosticIrMetadata,
+};
+#[cfg(feature = "trace")]
+use diagweave::report::ReportTrace;
+
+#[cfg(feature = "trace")]
 pub struct DiagnosticIr {
     pub error: DiagnosticIrError,       // { message, type }
     pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
@@ -337,10 +380,21 @@ pub struct DiagnosticIr {
     pub context: Vec<DiagnosticIrContext>,
     pub attachments: Vec<DiagnosticIrAttachment>,
 }
+#[cfg(not(feature = "trace"))]
+pub struct DiagnosticIr {
+    pub error: DiagnosticIrError,       // { message, type }
+    pub metadata: DiagnosticIrMetadata, // { code, severity, category, retryable, stack_trace, display_causes, source_errors }
+    pub context: Vec<DiagnosticIrContext>,
+    pub attachments: Vec<DiagnosticIrAttachment>,
+}
 ```
 
 ### 用法示例
 ```rust
+use diagweave::prelude::{Pretty, Report, ReportRenderOptions};
+use diagweave::render::PrettyIndent;
+
+let inner = std::io::Error::new(std::io::ErrorKind::Other, "oops");
 let report = Report::new(inner);
 
 // 1. 直接打印 Pretty 格式 (Stdout)
@@ -356,6 +410,7 @@ println!("{}", report.render(Pretty {
 }));
 
 // 3. 生成 JSON
+#[cfg(feature = "json")]
 let json_str = report.json().to_string();
 ```
 
@@ -381,10 +436,40 @@ let json_str = report.json().to_string();
 
 ### 用法示例
 ```rust
+use diagweave::prelude::{Report, ReportRenderOptions};
+use std::fmt;
+
+#[cfg(feature = "trace")]
+use diagweave::trace::TracingExporterTrait;
+
+#[derive(Debug)]
+struct MyError;
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error")
+    }
+}
+
+impl std::error::Error for MyError {}
+
+#[cfg(feature = "trace")]
+struct MyCustomExporter;
+
+#[cfg(feature = "trace")]
+impl TracingExporterTrait for MyCustomExporter {
+    fn export_ir(&self, _ir: &diagweave::render::DiagnosticIr) {}
+}
+
+let report = Report::new(MyError);
+let options = ReportRenderOptions::default();
+
 // 使用默认选项导出到当前 tracing span
+#[cfg(feature = "tracing")]
 report.emit_tracing(ReportRenderOptions::default());
 
 // 使用自定义导出器
+#[cfg(feature = "trace")]
 report.emit_tracing_with(&MyCustomExporter, options);
 ```
 
@@ -413,16 +498,67 @@ report.emit_tracing_with(&MyCustomExporter, options);
 ### 1. 复杂附件：结构化 JSON 关联
 利用 `serde_json` 宏直接注入结构化数据。
 ```rust
-report.with_payload(
+use diagweave::prelude::*;
+use std::fmt;
+
+#[cfg(feature = "json")]
+use serde_json::json;
+
+#[derive(Debug)]
+struct MyError;
+
+impl fmt::Display for MyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "error")
+    }
+}
+
+impl std::error::Error for MyError {}
+
+#[cfg(feature = "json")]
+let _report = Report::new(MyError).with_payload(
     "request_meta",
-    serde_json::json!({ "version": "v1", "retry": 3 }),
-    Some("application/json".to_owned())
+    json!({ "version": "v1", "retry": 3 }),
+    Some("application/json")
 );
 ```
 
 ### 2. 多层包装与错误链透传 (Wrap)
 在架构各层之间传递时保留完整的 `source` 错误链。
 ```rust
+use diagweave::prelude::*;
+use std::fmt;
+
+#[derive(Debug)]
+struct DatabaseError;
+
+impl fmt::Display for DatabaseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "db error")
+    }
+}
+
+impl std::error::Error for DatabaseError {}
+
+#[derive(Debug)]
+enum AppError {
+    Db(DatabaseError),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::Db(_) => write!(f, "app db error"),
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
+
+fn db_operation() -> Result<(), DatabaseError> {
+    Err(DatabaseError)
+}
+
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()
         .diag_context("db", "primary")
@@ -434,12 +570,16 @@ fn service_layer() -> Result<(), Report<AppError>> {
 ### 3. 自定义渲染器实现
 通过实现 `ReportRenderer` 特质来自定义输出格式（如输出到 HTML 或 Web UI）。
 ```rust
+use diagweave::prelude::*;
+use std::fmt::{self, Display, Formatter};
+
 struct MyHtmlRenderer;
-impl<E: Display> ReportRenderer<E> for MyHtmlRenderer {
+impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRenderer {
     fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "<div>{}</div>", report.inner())
+        write!(f, "<div>{}</div>", report.pretty())
     }
 }
+```
 
 ---
 
@@ -457,4 +597,4 @@ impl<E: Display> ReportRenderer<E> for MyHtmlRenderer {
 - **`json`**: 需要 `serde` (含 `derive` 和 `alloc` 特性) 以及 `serde_json` (含 `alloc` 特性)。
 - **`trace`**: 无额外外部依赖的 Trace 数据结构。
 - **`tracing`**: 依赖 `tracing` crate。
-```
+

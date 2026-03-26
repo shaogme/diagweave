@@ -36,7 +36,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     ));
     assert_eq!(
         report.attachments()[0].as_context(),
-        Some(("request_id", &AttachmentValue::String("tx-100".to_owned())))
+        Some(("request_id", &AttachmentValue::String("tx-100".into())))
     );
     assert_eq!(
         report.attachments()[1].as_note(),
@@ -441,7 +441,7 @@ fn error_code_accepts_try_into_integers_and_falls_back_to_string() {
 
     let too_large = u128::MAX;
     let code = ErrorCode::from(too_large);
-    assert_eq!(code, ErrorCode::String(too_large.to_string()));
+    assert_eq!(code, ErrorCode::String(too_large.to_string().into()));
     assert_eq!(code.to_string(), too_large.to_string());
 }
 

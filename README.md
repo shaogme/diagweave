@@ -281,7 +281,7 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
 `ErrorCode` design:
 
-- dual representation: `Integer(i64)` or `String(String)`
+- dual representation: `Integer(i64)` or `String(Cow<'static, str>)`
 - write path: `with_error_code(x)` accepts `impl Into<ErrorCode>`
 - integer inputs that fit in `i64` are stored as `Integer`; overflow falls back to decimal `String`
 - read path: `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` to integer types (`i8..i128`, `u8..u128`, `isize`, `usize`)
@@ -303,7 +303,7 @@ Global context injector (`std`):
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.push(("request_id".to_owned(), "req-001".into()));
+        ctx.context.push(("request_id".into(), "req-001".into()));
         Some(ctx)
     });
 }
@@ -456,3 +456,5 @@ If you only need minimal display derivation or quick app-level propagation, a li
 ## License
 
 Dual-licensed under MIT OR Apache-2.0.
+
+

@@ -109,11 +109,11 @@ pub fn ensure_global_injector_installed() {
             let mut context = GlobalContext::default();
             context
                 .context
-                .push(("request_id".to_owned(), AttachmentValue::from("req-42")));
+                .push(("request_id".into(), AttachmentValue::from("req-42")));
             #[cfg(feature = "trace")]
             {
-                context.trace_id = Some("trace-42".to_owned());
-                context.span_id = Some("span-42".to_owned());
+                context.trace_id = Some("trace-42".into());
+                context.span_id = Some("span-42".into());
             }
             Some(context)
         });

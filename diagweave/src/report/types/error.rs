@@ -1,4 +1,4 @@
-use alloc::borrow::ToOwned;
+use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use core::convert::TryFrom;
 use core::fmt::{self, Display, Formatter};
@@ -46,6 +46,31 @@ impl From<String> for Severity {
     }
 }
 
+impl From<Cow<'static, str>> for Severity {
+    fn from(value: Cow<'static, str>) -> Self {
+        match value.to_lowercase().as_str() {
+            "debug" => Self::Debug,
+            "info" => Self::Info,
+            "warn" | "warning" => Self::Warn,
+            "error" => Self::Error,
+            "fatal" | "critical" => Self::Fatal,
+            _ => Self::Error,
+        }
+    }
+}
+
+impl From<Severity> for Cow<'static, str> {
+    fn from(value: Severity) -> Self {
+        match value {
+            Severity::Debug => "debug".into(),
+            Severity::Info => "info".into(),
+            Severity::Warn => "warn".into(),
+            Severity::Error => "error".into(),
+            Severity::Fatal => "fatal".into(),
+        }
+    }
+}
+
 /// An error code that can be either an integer or a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
@@ -54,7 +79,7 @@ pub enum ErrorCode {
     /// An integer error code.
     Integer(i64),
     /// A string error code.
-    String(String),
+    String(Cow<'static, str>),
 }
 
 /// Error type for converting an [`ErrorCode`] to an integer.
@@ -79,7 +104,7 @@ impl From<ErrorCode> for String {
     fn from(value: ErrorCode) -> Self {
         match value {
             ErrorCode::Integer(v) => v.to_string(),
-            ErrorCode::String(v) => v,
+            ErrorCode::String(v) => v.to_string(),
         }
     }
 }
@@ -97,7 +122,7 @@ macro_rules! impl_error_code_from_integer_try_into_i64 {
                 fn from(v: $ty) -> Self {
                     match i64::try_from(v) {
                         Ok(value) => Self::Integer(value),
-                        Err(_) => Self::String(v.to_string()),
+                        Err(_) => Self::String(v.to_string().into()),
                     }
                 }
             }
@@ -190,12 +215,12 @@ impl_try_from_error_code_for_unsigned_int!(u8, u16, u32, u64, usize, u128);
 
 impl From<String> for ErrorCode {
     fn from(v: String) -> Self {
-        Self::String(v)
+        Self::String(v.into())
     }
 }
 
-impl From<&str> for ErrorCode {
-    fn from(v: &str) -> Self {
-        Self::String(v.to_owned())
+impl From<&'static str> for ErrorCode {
+    fn from(v: &'static str) -> Self {
+        Self::String(v.into())
     }
 }

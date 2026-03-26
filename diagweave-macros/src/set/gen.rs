@@ -91,6 +91,9 @@ pub(crate) fn generate_all_from_impls(
 fn sanitize_variant(variant: &Variant) -> Variant {
     let mut sanitized = variant.clone();
     sanitized.attrs = sanitize_attrs(&sanitized.attrs);
+    for field in sanitized.fields.iter_mut() {
+        field.attrs = sanitize_attrs(&field.attrs);
+    }
     sanitized
 }
 
@@ -384,7 +387,7 @@ fn from_impls_for_variants(
     let mut impls = Vec::new();
     for resolved in variants {
         let variant = &resolved.variant;
-        if !has_from_attr(&variant.attrs)? {
+        if !is_from_variant(variant)? {
             continue;
         }
         let (source_ty, ctor) = from_variant_source(enum_ident, variant)?;
@@ -408,6 +411,25 @@ fn from_impls_for_variants(
         });
     }
     Ok(impls)
+}
+
+fn is_from_variant(variant: &Variant) -> Result<bool> {
+    let mut count = 0;
+    if has_from_attr(&variant.attrs)? {
+        count += 1;
+    }
+    for field in variant.fields.iter() {
+        if has_from_attr(&field.attrs)? {
+            count += 1;
+        }
+    }
+    if count > 1 {
+        return Err(Error::new_spanned(
+            variant,
+            "duplicate #[from] on variant or its fields",
+        ));
+    }
+    Ok(count == 1)
 }
 
 fn has_from_attr(attrs: &[Attribute]) -> Result<bool> {

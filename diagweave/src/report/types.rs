@@ -3,6 +3,7 @@ pub mod attachment;
 #[path = "types/error.rs"]
 pub mod error;
 
+use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
@@ -15,7 +16,7 @@ pub use error::*;
 pub struct ReportMetadata {
     pub error_code: Option<ErrorCode>,
     pub severity: Option<Severity>,
-    pub category: Option<String>,
+    pub category: Option<Cow<'static, str>>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<StackTrace>,
     pub display_causes: Option<DisplayCauseChain>,
@@ -120,7 +121,7 @@ pub struct DisplayCauseChain {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct SourceError {
-    pub message: String,
+    pub message: Cow<'static, str>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -158,10 +159,23 @@ impl Display for TraceEventLevel {
 }
 
 #[cfg(feature = "trace")]
+impl From<TraceEventLevel> for Cow<'static, str> {
+    fn from(value: TraceEventLevel) -> Self {
+        match value {
+            TraceEventLevel::Trace => "trace".into(),
+            TraceEventLevel::Debug => "debug".into(),
+            TraceEventLevel::Info => "info".into(),
+            TraceEventLevel::Warn => "warn".into(),
+            TraceEventLevel::Error => "error".into(),
+        }
+    }
+}
+
+#[cfg(feature = "trace")]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEventAttribute {
-    pub key: String,
+    pub key: Cow<'static, str>,
     pub value: AttachmentValue,
 }
 
@@ -169,7 +183,7 @@ pub struct TraceEventAttribute {
 impl Default for TraceEventAttribute {
     fn default() -> Self {
         Self {
-            key: String::new(),
+            key: "".into(),
             value: AttachmentValue::Null,
         }
     }
@@ -179,7 +193,7 @@ impl Default for TraceEventAttribute {
 #[derive(Debug, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEvent {
-    pub name: String,
+    pub name: Cow<'static, str>,
     pub level: Option<TraceEventLevel>,
     pub timestamp_unix_nano: Option<u64>,
     pub attributes: Vec<TraceEventAttribute>,
@@ -189,11 +203,11 @@ pub struct TraceEvent {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceContext {
-    pub trace_id: Option<String>,
-    pub span_id: Option<String>,
-    pub parent_span_id: Option<String>,
+    pub trace_id: Option<Cow<'static, str>>,
+    pub span_id: Option<Cow<'static, str>>,
+    pub parent_span_id: Option<Cow<'static, str>>,
     pub sampled: Option<bool>,
-    pub trace_state: Option<String>,
+    pub trace_state: Option<Cow<'static, str>>,
     pub flags: Option<u32>,
 }
 
@@ -262,7 +276,7 @@ impl CauseCollectOptions {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CauseCollection {
     /// The collected cause message strings.
-    pub messages: Vec<String>,
+    pub messages: Vec<Cow<'static, str>>,
     /// Whether the collection was truncated due to depth limits.
     pub truncated: bool,
     /// Whether a circular reference was detected.

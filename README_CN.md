@@ -281,7 +281,7 @@ pub enum MyError {
 
 `ErrorCode` 设计：
 
-- 双表示：`Integer(i64)` 或 `String(String)`
+- 双表示：`Integer(i64)` 或 `String(Cow<'static, str>)`
 - 写入路径：`with_error_code(x)` 接收 `impl Into<ErrorCode>`
 - 整型输入若可放入 `i64` 则存为 `Integer`；超范围自动降级为十进制字符串 `String`
 - 读取路径：支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
@@ -303,7 +303,7 @@ pub enum MyError {
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.push(("request_id".to_owned(), "req-001".into()));
+        ctx.context.push(("request_id".into(), "req-001".into()));
         Some(ctx)
     });
 }
@@ -456,3 +456,4 @@ powershell -File diagweave/scripts/test-feature-matrix.ps1
 ## 许可证
 
 MIT 或 Apache-2.0 双许可证。
+

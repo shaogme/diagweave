@@ -1,4 +1,4 @@
-use alloc::borrow::ToOwned;
+use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -13,7 +13,7 @@ use core::fmt::{self, Display, Formatter};
 pub enum AttachmentValue {
     #[default]
     Null,
-    String(String),
+    String(Cow<'static, str>),
     Integer(i64),
     Unsigned(u64),
     Float(f64),
@@ -22,8 +22,8 @@ pub enum AttachmentValue {
     Object(BTreeMap<String, AttachmentValue>),
     Bytes(Vec<u8>),
     Redacted {
-        kind: Option<String>,
-        reason: Option<String>,
+        kind: Option<Cow<'static, str>>,
+        reason: Option<Cow<'static, str>>,
     },
 }
 
@@ -69,13 +69,13 @@ impl Display for AttachmentValue {
 
 impl From<String> for AttachmentValue {
     fn from(value: String) -> Self {
-        Self::String(value)
+        Self::String(Cow::Owned(value))
     }
 }
 
-impl From<&str> for AttachmentValue {
-    fn from(value: &str) -> Self {
-        Self::String(value.to_owned())
+impl From<&'static str> for AttachmentValue {
+    fn from(value: &'static str) -> Self {
+        Self::String(Cow::Borrowed(value))
     }
 }
 
@@ -147,16 +147,21 @@ impl From<f64> for AttachmentValue {
 
 impl From<Vec<String>> for AttachmentValue {
     fn from(value: Vec<String>) -> Self {
-        Self::Array(value.into_iter().map(Self::String).collect())
-    }
-}
-
-impl From<Vec<&str>> for AttachmentValue {
-    fn from(value: Vec<&str>) -> Self {
         Self::Array(
             value
                 .into_iter()
-                .map(|s| Self::String(s.to_owned()))
+                .map(|s| Self::String(Cow::Owned(s)))
+                .collect(),
+        )
+    }
+}
+
+impl From<Vec<&'static str>> for AttachmentValue {
+    fn from(value: Vec<&'static str>) -> Self {
+        Self::Array(
+            value
+                .into_iter()
+                .map(|s| Self::String(Cow::Borrowed(s)))
                 .collect(),
         )
     }
@@ -204,7 +209,7 @@ impl From<serde_json::Value> for AttachmentValue {
                     Self::Float(n.as_f64().unwrap_or(0.0))
                 }
             }
-            serde_json::Value::String(s) => Self::String(s),
+            serde_json::Value::String(s) => Self::String(Cow::Owned(s)),
             serde_json::Value::Array(arr) => {
                 Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
             }
@@ -224,22 +229,22 @@ impl From<serde_json::Value> for AttachmentValue {
 #[cfg_attr(feature = "json", serde(tag = "kind", rename_all = "snake_case"))]
 pub enum Attachment {
     Context {
-        key: String,
+        key: Cow<'static, str>,
         value: AttachmentValue,
     },
     Note {
-        message: String,
+        message: Cow<'static, str>,
     },
     Payload {
-        name: String,
+        name: Cow<'static, str>,
         value: AttachmentValue,
-        media_type: Option<String>,
+        media_type: Option<Cow<'static, str>>,
     },
 }
 
 impl Attachment {
     /// Creates a new context attachment with a key and value.
-    pub fn context(key: impl Into<String>, value: impl Into<AttachmentValue>) -> Self {
+    pub fn context(key: impl Into<Cow<'static, str>>, value: impl Into<AttachmentValue>) -> Self {
         Self::Context {
             key: key.into(),
             value: value.into(),
@@ -247,7 +252,7 @@ impl Attachment {
     }
 
     /// Creates a new note attachment with a message.
-    pub fn note(message: impl Into<String>) -> Self {
+    pub fn note(message: impl Into<Cow<'static, str>>) -> Self {
         Self::Note {
             message: message.into(),
         }
@@ -255,21 +260,21 @@ impl Attachment {
 
     /// Creates a new payload attachment with a name, value, and optional media type.
     pub fn payload(
-        name: impl Into<String>,
+        name: impl Into<Cow<'static, str>>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<String>,
+        media_type: Option<impl Into<Cow<'static, str>>>,
     ) -> Self {
         Self::Payload {
             name: name.into(),
             value: value.into(),
-            media_type,
+            media_type: media_type.map(|m| m.into()),
         }
     }
 
     /// Attempts to interpret the attachment as a context entry.
     pub fn as_context(&self) -> Option<(&str, &AttachmentValue)> {
         match self {
-            Self::Context { key, value } => Some((key.as_str(), value)),
+            Self::Context { key, value } => Some((key.as_ref(), value)),
             Self::Note { .. } | Self::Payload { .. } => None,
         }
     }
@@ -277,7 +282,7 @@ impl Attachment {
     /// Attempts to interpret the attachment as a note message.
     pub fn as_note(&self) -> Option<&str> {
         match self {
-            Self::Note { message } => Some(message.as_str()),
+            Self::Note { message } => Some(message.as_ref()),
             Self::Context { .. } | Self::Payload { .. } => None,
         }
     }
@@ -289,7 +294,7 @@ impl Attachment {
                 name,
                 value,
                 media_type,
-            } => Some((name.as_str(), value, media_type.as_deref())),
+            } => Some((name.as_ref(), value, media_type.as_deref())),
             Self::Context { .. } | Self::Note { .. } => None,
         }
     }

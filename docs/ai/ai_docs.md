@@ -371,7 +371,7 @@ Converts `Report` with rich metadata into displayable strings or structured data
 
 
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
-Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir(options)` to a stable IR structure. The IR keeps header/metadata plus aggregate counters for attachment-related sections.
+Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir()` to a stable IR structure. The IR keeps header/metadata plus aggregate counters for attachment-related sections.
 ```rust
 use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
@@ -415,7 +415,7 @@ use diagweave::render::ReportRenderOptions;
 #     .with_display_cause("retry later")
 #     .with_source_error(std::io::Error::other("upstream"));
 
-let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+let ir = report.to_diagnostic_ir();
 
 let context_count = ir.context_count;
 let attachment_count = ir.attachment_count;
@@ -461,7 +461,7 @@ Exports diagnostic reports to monitoring systems or log streams.
 ### Core API
 | Method | Description |
 | :--- | :--- |
-| `emit_tracing(&self, options)` | Triggers an `info` level event under current Span, carrying all Report fields as attributes |
+| `emit_tracing(&self)` | Triggers an `info` level event under current Span, carrying all Report fields as attributes |
 | `with_trace_ids(tid, sid)` | Manually binds tracing context (Trace ID / Span ID) |
 
 ### Export Behavior
@@ -501,11 +501,11 @@ let options = ReportRenderOptions::default();
 
 // Export to current tracing span with default options
 #[cfg(feature = "tracing")]
-report.emit_tracing(ReportRenderOptions::default());
+report.emit_tracing();
 
 // Use a custom exporter
 #[cfg(feature = "trace")]
-report.emit_tracing_with(&MyCustomExporter, options);
+report.emit_tracing_with(&MyCustomExporter);
 ```
 
 ---

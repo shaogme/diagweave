@@ -47,7 +47,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
         .with_display_cause(AuthError::InvalidToken)
         .with_display_cause("retry happened");
 
-    let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+    let ir = report.to_diagnostic_ir();
     assert_eq!(ir.error.message, "api unauthorized");
     assert!(!ir.error.r#type.is_empty());
     assert_eq!(
@@ -103,7 +103,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .with_display_cause(AuthError::InvalidToken)
         .with_display_cause("fallback path");
 
-    let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+    let ir = report.to_diagnostic_ir();
     let tracing_fields = ir.to_tracing_fields();
     assert!(tracing_fields.iter().any(|f| f.key == "error.message"));
     assert!(tracing_fields.iter().any(|f| f.key == "error.code"));
@@ -174,7 +174,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
         })
         .with_display_cause("fallback path");
 
-    report.emit_tracing_with(&exporter, ReportRenderOptions::default());
+    report.emit_tracing_with(&exporter);
     assert_eq!(calls.get(), 1);
     assert!(!stack_trace_present.get());
     assert_eq!(trace_events.get(), 1);

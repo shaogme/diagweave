@@ -6,14 +6,18 @@ mod pretty;
 
 use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
+use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
-use crate::report::{AttachmentVisit, ErrorCode, Report, Severity, StackTrace};
+use crate::report::{
+    Attachment, AttachmentValue, AttachmentVisit, ErrorCode, Report, Severity, StackFrame, StackTrace,
+};
 
 pub use pretty::Pretty;
 
@@ -165,6 +169,9 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
+    pub attachments: &'a [Attachment],
+    pub display_causes: &'a [Box<dyn Display + 'static>],
+    pub source_errors: &'a [Box<dyn Error + 'static>],
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -204,7 +211,7 @@ where
     E: Error + Display + 'static,
 {
     /// Converts the report to a platform-agnostic intermediate representation.
-    pub fn to_diagnostic_ir(&self, _options: ReportRenderOptions) -> DiagnosticIr<'_> {
+    pub fn to_diagnostic_ir(&self) -> DiagnosticIr<'_> {
         let metadata = self.metadata();
         let (context_count, attachment_count) = count_attachments(self);
 
@@ -224,6 +231,9 @@ where
             },
             #[cfg(feature = "trace")]
             trace: self.trace(),
+            attachments: self.attachments(),
+            display_causes: self.display_causes(),
+            source_errors: self.source_errors(),
             context_count,
             attachment_count,
         }
@@ -243,6 +253,155 @@ fn count_attachments(report: &Report<impl Error + 'static>) -> (usize, usize) {
         Ok(()) => (context, attachments),
         Err(_) => (0, 0),
     }
+}
+
+pub(crate) fn build_context_and_attachments(
+    attachments: &[Attachment],
+) -> (Vec<AttachmentValue>, Vec<AttachmentValue>) {
+    let mut context_items = Vec::new();
+    let mut attachment_items = Vec::new();
+
+    for attachment in attachments {
+        match attachment {
+            Attachment::Context { key, value } => {
+                let mut map = BTreeMap::new();
+                map.insert("key".to_string(), AttachmentValue::String(key.clone()));
+                map.insert("value".to_string(), value.clone());
+                context_items.push(AttachmentValue::Object(map));
+            }
+            Attachment::Note { message } => {
+                let mut map = BTreeMap::new();
+                map.insert(
+                    "kind".to_string(),
+                    AttachmentValue::String("note".into()),
+                );
+                map.insert(
+                    "message".to_string(),
+                    AttachmentValue::String(message.to_string().into()),
+                );
+                attachment_items.push(AttachmentValue::Object(map));
+            }
+            Attachment::Payload {
+                name,
+                value,
+                media_type,
+            } => {
+                let mut map = BTreeMap::new();
+                map.insert(
+                    "kind".to_string(),
+                    AttachmentValue::String("payload".into()),
+                );
+                map.insert("name".to_string(), AttachmentValue::String(name.clone()));
+                map.insert("value".to_string(), value.clone());
+                map.insert(
+                    "media_type".to_string(),
+                    media_type
+                        .as_ref()
+                        .map(|v| AttachmentValue::String(v.clone()))
+                        .unwrap_or(AttachmentValue::Null),
+                );
+                attachment_items.push(AttachmentValue::Object(map));
+            }
+        }
+    }
+
+    (context_items, attachment_items)
+}
+
+pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentValue {
+    let mut map = BTreeMap::new();
+    let format = match stack_trace.format {
+        crate::report::StackTraceFormat::Native => "native",
+        crate::report::StackTraceFormat::Raw => "raw",
+    };
+    map.insert(
+        "format".to_string(),
+        AttachmentValue::String(format.into()),
+    );
+    map.insert(
+        "frames".to_string(),
+        AttachmentValue::Array(
+            stack_trace
+                .frames
+                .iter()
+                .map(build_stack_frame_value)
+                .collect(),
+        ),
+    );
+    map.insert(
+        "raw".to_string(),
+        stack_trace
+            .raw
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.clone().into()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    AttachmentValue::Object(map)
+}
+
+fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
+    let mut map = BTreeMap::new();
+    map.insert(
+        "symbol".to_string(),
+        frame
+            .symbol
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.clone().into()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    map.insert(
+        "module_path".to_string(),
+        frame
+            .module_path
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.clone().into()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    map.insert(
+        "file".to_string(),
+        frame
+            .file
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.clone().into()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    map.insert(
+        "line".to_string(),
+        frame
+            .line
+            .map(|v| AttachmentValue::Unsigned(v as u64))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    map.insert(
+        "column".to_string(),
+        frame
+            .column
+            .map(|v| AttachmentValue::Unsigned(v as u64))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    AttachmentValue::Object(map)
+}
+
+pub(crate) fn build_display_causes_value(
+    display_causes: &[Box<dyn Display + 'static>],
+) -> AttachmentValue {
+    AttachmentValue::Array(
+        display_causes
+            .iter()
+            .map(|v| AttachmentValue::String(v.to_string().into()))
+            .collect(),
+    )
+}
+
+pub(crate) fn build_source_errors_value(
+    source_errors: &[Box<dyn Error + 'static>],
+) -> AttachmentValue {
+    AttachmentValue::Array(
+        source_errors
+            .iter()
+            .map(|v| AttachmentValue::String(v.to_string().into()))
+            .collect(),
+    )
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.

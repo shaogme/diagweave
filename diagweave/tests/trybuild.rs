@@ -5,5 +5,6 @@ fn macro_compile_failures() {
     t.compile_fail("tests/ui/display/*.rs");
     t.compile_fail("tests/ui/derive/*.rs");
     t.compile_fail("tests/ui/set-algebra/*.rs");
+    t.compile_fail("tests/ui/union/*.rs");
     t.pass("tests/ui-pass/*.rs");
 }

@@ -371,7 +371,7 @@ Note 附件读取：
 
 
 ### 诊断中间表示 (`DiagnosticIr`)
-渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir(options)` 转换为稳定的 IR 结构。该 IR 保留头部/元数据，并提供附件相关部分的聚合计数。
+渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir()` 转换为稳定的 IR 结构。该 IR 保留头部/元数据，并提供附件相关部分的聚合计数。
 ```rust
 use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
@@ -415,7 +415,7 @@ use diagweave::render::ReportRenderOptions;
 #     .with_display_cause("retry later")
 #     .with_source_error(std::io::Error::other("upstream"));
 
-let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+let ir = report.to_diagnostic_ir();
 
 let context_count = ir.context_count;
 let attachment_count = ir.attachment_count;
@@ -461,7 +461,7 @@ let json_str = report.json().to_string();
 ### 核心 API
 | 方法 | 说明 |
 | :--- | :--- |
-| `emit_tracing(&self, options)` | 在当前 Span 下触发一个 `info` 级别的事件，携带所有 Report 字段作为属性 |
+| `emit_tracing(&self)` | 在当前 Span 下触发一个 `info` 级别的事件，携带所有 Report 字段作为属性 |
 | `with_trace_ids(tid, sid)` | 手动绑定追踪上下文 (Trace ID / Span ID) |
 
 ### 导出行为
@@ -501,11 +501,11 @@ let options = ReportRenderOptions::default();
 
 // 使用默认选项导出到当前 tracing span
 #[cfg(feature = "tracing")]
-report.emit_tracing(ReportRenderOptions::default());
+report.emit_tracing();
 
 // 使用自定义导出器
 #[cfg(feature = "trace")]
-report.emit_tracing_with(&MyCustomExporter, options);
+report.emit_tracing_with(&MyCustomExporter);
 ```
 
 ---

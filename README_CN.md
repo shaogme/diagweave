@@ -349,7 +349,7 @@ IR 与适配器：
 # }
 # let report = Report::new(AuthError::invalid_token());
 
-let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+let ir = report.to_diagnostic_ir();
 let tracing_fields = ir.to_tracing_fields();
 let otel = ir.to_otel_envelope();
 ```
@@ -375,7 +375,7 @@ use diagweave::render::ReportRenderOptions;
 #     .with_display_cause("retry later")
 #     .with_source_error(std::io::Error::other("upstream"));
 
-let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+let ir = report.to_diagnostic_ir();
 
 let context_count = ir.context_count;
 let attachment_count = ir.attachment_count;
@@ -422,7 +422,7 @@ tracing 导出：
 #        }
 #    }
 #    let report = Report::new(AuthError::invalid_token());
-    report.emit_tracing(diagweave::render::ReportRenderOptions::default());
+    report.emit_tracing();
 }
 ```
 

@@ -56,9 +56,7 @@ fn wraps_external_error_types() {
 
 #[test]
 fn keeps_inline_variants() {
-    let api = ApiError::RateLimited {
-        retry_after_secs: 10,
-    };
+    let api = ApiError::rate_limited(10);
     match api {
         ApiError::RateLimited { retry_after_secs } => assert_eq!(retry_after_secs, 10),
         _ => panic!("unexpected variant"),
@@ -91,13 +89,32 @@ fn supports_alias_for_external_types() {
 #[test]
 fn union_display_works_for_wrapped_and_inline_variants() {
     let wrapped: ApiError = AuthError::InvalidToken.into();
-    let inline = ApiError::RateLimited {
-        retry_after_secs: 12,
-    };
+    let inline = ApiError::rate_limited(12);
     let escaped = ApiError::TupleEscaped(88);
     assert_eq!(wrapped.to_string(), "auth token invalid");
     assert_eq!(inline.to_string(), "Rate limited for 12s");
     assert_eq!(escaped.to_string(), "Escaped braces {db} code=88");
     let dbg = format!("{:?}", inline);
     assert!(dbg.contains("RateLimited"));
+}
+
+#[test]
+fn generates_constructors_for_external_and_inline_variants() {
+    let wrapped = ApiError::auth_error(AuthError::InvalidToken);
+    match wrapped {
+        ApiError::AuthError(inner) => assert_eq!(inner, AuthError::InvalidToken),
+        _ => panic!("unexpected variant"),
+    }
+
+    let inline = ApiError::rate_limited(30);
+    match inline {
+        ApiError::RateLimited { retry_after_secs } => assert_eq!(retry_after_secs, 30),
+        _ => panic!("unexpected variant"),
+    }
+}
+
+#[test]
+fn generates_report_constructors() {
+    let report = ApiError::rate_limited_report(45);
+    assert_eq!(report.inner().to_string(), "Rate limited for 45s");
 }

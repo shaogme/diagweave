@@ -5,7 +5,7 @@ mod tracing;
 use core::error::Error;
 use core::fmt::Display;
 
-use crate::render::{DiagnosticIr, ReportRenderOptions};
+use crate::render::DiagnosticIr;
 use crate::report::Report;
 
 #[cfg(feature = "tracing")]
@@ -36,8 +36,8 @@ where
 {
     /// Emits the report using the default tracing exporter.
     #[cfg(feature = "tracing")]
-    pub fn emit_tracing(&self, options: ReportRenderOptions) {
-        let ir = self.to_diagnostic_ir(options);
+    pub fn emit_tracing(&self) {
+        let ir = self.to_diagnostic_ir();
         TracingExporter.export_ir(&ir);
     }
 
@@ -45,9 +45,8 @@ where
     pub fn emit_tracing_with(
         &self,
         exporter: &impl TracingExporterTrait,
-        options: ReportRenderOptions,
     ) {
-        let ir = self.to_diagnostic_ir(options);
+        let ir = self.to_diagnostic_ir();
         exporter.export_ir(&ir);
     }
 }

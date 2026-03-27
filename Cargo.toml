@@ -1,6 +1,9 @@
 [workspace]
 members = [
-    "diagweave", "examples/showcase", "diagweave-macros",
+    "diagweave",
+    "examples/showcase",
+    "examples/cloud-native-stack",
+    "diagweave-macros",
 ]
 resolver = "3"
 

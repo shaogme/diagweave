@@ -306,7 +306,7 @@ fn print_ir_and_adapters<E>(report: &Report<E>)
 where
     E: std::error::Error + Display + 'static,
 {
-    let ir = report.to_diagnostic_ir(ReportRenderOptions::default());
+    let ir = report.to_diagnostic_ir();
     println!("--- Diagnostic IR (Metadata) ---");
     println!("Error Code: {:?}", ir.metadata.error_code);
     println!("Severity: {:?}", ir.metadata.severity);
@@ -325,7 +325,7 @@ where
         otel.events.len()
     );
 
-    report.emit_tracing_with(&ConsoleExporter, ReportRenderOptions::default());
+    report.emit_tracing_with(&ConsoleExporter);
     println!();
 }
 

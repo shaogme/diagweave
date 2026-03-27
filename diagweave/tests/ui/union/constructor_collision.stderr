@@ -1,0 +1,5 @@
+error: constructor name collision `url` in `CollisionError`
+ --> tests/ui/union/constructor_collision.rs:6:9
+  |
+6 |         Url,
+  |         ^^^

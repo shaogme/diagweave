@@ -24,7 +24,9 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
     let mut generated_variants = Vec::new();
     let mut from_impls = Vec::new();
     let mut display_arms = Vec::new();
+    let mut constructors = Vec::new();
     let mut used_variant_names = BTreeMap::<String, Span>::new();
+    let mut used_constructor_names = BTreeMap::<String, Span>::new();
     let enum_name = &input.name;
     let vis = input.vis;
 
@@ -33,7 +35,9 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
             &mut generated_variants,
             &mut from_impls,
             &mut display_arms,
+            &mut constructors,
             &mut used_variant_names,
+            &mut used_constructor_names,
             enum_name,
             term,
         )?;
@@ -44,6 +48,10 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
         #(#merged_attrs)*
         #vis enum #enum_name {
             #(#generated_variants),*
+        }
+
+        impl #enum_name {
+            #(#constructors)*
         }
 
         impl ::core::fmt::Display for #enum_name {
@@ -313,7 +321,9 @@ fn expand_term(
     generated_variants: &mut Vec<proc_macro2::TokenStream>,
     from_impls: &mut Vec<proc_macro2::TokenStream>,
     display_arms: &mut Vec<proc_macro2::TokenStream>,
+    constructors: &mut Vec<proc_macro2::TokenStream>,
     used_variant_names: &mut BTreeMap<String, Span>,
+    used_constructor_names: &mut BTreeMap<String, Span>,
     enum_name: &Ident,
     term: UnionItem,
 ) -> Result<()> {
@@ -322,7 +332,9 @@ fn expand_term(
             generated_variants,
             from_impls,
             display_arms,
+            constructors,
             used_variant_names,
+            used_constructor_names,
             enum_name,
             ty,
             alias,
@@ -330,7 +342,9 @@ fn expand_term(
         UnionItem::Inline(inline) => expand_inline_item(
             generated_variants,
             display_arms,
+            constructors,
             used_variant_names,
+            used_constructor_names,
             enum_name,
             inline,
         ),
@@ -341,7 +355,9 @@ fn expand_external(
     generated_variants: &mut Vec<proc_macro2::TokenStream>,
     from_impls: &mut Vec<proc_macro2::TokenStream>,
     display_arms: &mut Vec<proc_macro2::TokenStream>,
+    constructors: &mut Vec<proc_macro2::TokenStream>,
     used_variant_names: &mut BTreeMap<String, Span>,
+    used_constructor_names: &mut BTreeMap<String, Span>,
     enum_name: &Ident,
     ty: syn::TypePath,
     alias: Option<Ident>,
@@ -358,6 +374,12 @@ fn expand_external(
     display_arms.push(quote! {
         #enum_name::#variant_ident(inner) => write!(f, "{}", inner)
     });
+    constructors.push(generate_constructor(
+        enum_name,
+        &variant_ident,
+        &syn::Fields::Unnamed(syn::parse_quote!((#ty))),
+        used_constructor_names,
+    )?);
     from_impls.push(quote! {
         impl ::core::convert::From<#ty> for #enum_name {
             fn from(value: #ty) -> Self { Self::#variant_ident(value) }
@@ -369,17 +391,135 @@ fn expand_external(
 fn expand_inline_item(
     generated_variants: &mut Vec<proc_macro2::TokenStream>,
     display_arms: &mut Vec<proc_macro2::TokenStream>,
+    constructors: &mut Vec<proc_macro2::TokenStream>,
     used_variant_names: &mut BTreeMap<String, Span>,
+    used_constructor_names: &mut BTreeMap<String, Span>,
     enum_name: &Ident,
     inline: InlineVariants,
 ) -> Result<()> {
     for variant in inline.variants {
         check_unique_variant(&variant.ident, used_variant_names, variant.ident.span())?;
         display_arms.push(display_arm(enum_name, &variant)?);
+        constructors.push(generate_constructor(
+            enum_name,
+            &variant.ident,
+            &variant.fields,
+            used_constructor_names,
+        )?);
         let variant = sanitize_variant(&variant);
         generated_variants.push(quote! { #variant });
     }
     Ok(())
+}
+
+fn generate_constructor(
+    enum_name: &Ident,
+    variant_ident: &Ident,
+    fields: &Fields,
+    used_constructor_names: &mut BTreeMap<String, Span>,
+) -> Result<proc_macro2::TokenStream> {
+    let ctor_name = to_snake_case(&variant_ident.to_string());
+    check_unique_constructor_name(
+        enum_name,
+        &ctor_name,
+        variant_ident.span(),
+        used_constructor_names,
+    )?;
+    let ctor_ident = Ident::new(&ctor_name, variant_ident.span());
+    let ctor_report_ident = Ident::new(&format!("{ctor_name}_report"), variant_ident.span());
+    let (params, fields_gen) = expand_constructor_fields(fields)?;
+    Ok(quote! {
+        pub fn #ctor_ident(#(#params),*) -> Self {
+            Self::#variant_ident #fields_gen
+        }
+        pub fn #ctor_report_ident(#(#params),*) -> ::diagweave::report::Report<Self> {
+            ::diagweave::report::Report::new(Self::#variant_ident #fields_gen)
+        }
+    })
+}
+
+fn check_unique_constructor_name(
+    enum_name: &Ident,
+    constructor_name: &str,
+    span: Span,
+    used_constructor_names: &mut BTreeMap<String, Span>,
+) -> Result<()> {
+    if let Some(_previous) = used_constructor_names.get(constructor_name) {
+        return Err(Error::new(
+            span,
+            format!("constructor name collision `{}` in `{}`", constructor_name, enum_name),
+        ));
+    }
+    used_constructor_names.insert(constructor_name.to_owned(), span);
+    Ok(())
+}
+
+fn expand_constructor_fields(fields: &Fields) -> Result<(Vec<proc_macro2::TokenStream>, proc_macro2::TokenStream)> {
+    match fields {
+        Fields::Unit => Ok((vec![], quote! {})),
+        Fields::Named(fields_named) => {
+            let params = fields_named
+                .named
+                .iter()
+                .map(|field| {
+                    let ident = field.ident.as_ref().ok_or_else(|| {
+                        Error::new_spanned(field, "named field should have ident")
+                    })?;
+                    let ty = &field.ty;
+                    Ok(quote! { #ident: #ty })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let idents = fields_named
+                .named
+                .iter()
+                .map(|field| {
+                    field
+                        .ident
+                        .as_ref()
+                        .ok_or_else(|| Error::new_spanned(field, "named field should have ident"))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            Ok((params, quote! { { #(#idents),* } }))
+        }
+        Fields::Unnamed(fields_unnamed) => {
+            let params = fields_unnamed
+                .unnamed
+                .iter()
+                .enumerate()
+                .map(|(idx, field)| {
+                    let ident = quote::format_ident!("arg{idx}");
+                    let ty = &field.ty;
+                    quote! { #ident: #ty }
+                })
+                .collect::<Vec<_>>();
+            let idents = (0..fields_unnamed.unnamed.len()).map(|idx| quote::format_ident!("arg{idx}"));
+            Ok((params, quote! { (#(#idents),*) }))
+        }
+    }
+}
+
+fn to_snake_case(input: &str) -> String {
+    let mut out = String::new();
+    let chars: Vec<char> = input.chars().collect();
+    for (idx, ch) in chars.iter().enumerate() {
+        let is_upper = ch.is_ascii_uppercase();
+        if is_upper {
+            if idx > 0 {
+                let prev = chars[idx - 1];
+                let next_is_lower = chars
+                    .get(idx + 1)
+                    .map(|next| next.is_ascii_lowercase())
+                    .unwrap_or(false);
+                if prev.is_ascii_lowercase() || next_is_lower {
+                    out.push('_');
+                }
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(*ch);
+        }
+    }
+    out
 }
 
 fn parse_brace_open(

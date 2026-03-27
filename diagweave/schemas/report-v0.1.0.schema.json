@@ -182,6 +182,124 @@
         }
       ]
     },
+    "trace_value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "string" },
+            "value": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "integer" },
+            "value": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "unsigned" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "float" },
+            "value": { "type": "number" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bool" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "array" },
+            "value": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/trace_value" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "object" },
+            "value": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/trace_value" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bytes" },
+            "value": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "redacted" },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "type": ["string", "null"] },
+                "reason": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "trace_attribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "value"],
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "$ref": "#/$defs/trace_value" }
+      }
+    },
     "trace_context": {
       "type": "object",
       "additionalProperties": false,
@@ -199,7 +317,7 @@
         "parent_span_id": { "type": ["string", "null"] },
         "sampled": { "type": ["boolean", "null"] },
         "trace_state": { "type": ["string", "null"] },
-        "flags": { "type": ["integer", "null"], "minimum": 0 }
+        "flags": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 }
       }
     },
     "trace_event": {
@@ -217,15 +335,7 @@
         "timestamp_unix_nano": { "type": ["integer", "null"], "minimum": 0 },
         "attributes": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["key", "value"],
-            "properties": {
-              "key": { "type": "string" },
-              "value": { "$ref": "#/$defs/attachment_value" }
-            }
-          }
+          "items": { "$ref": "#/$defs/trace_attribute" }
         }
       }
     }

@@ -312,6 +312,50 @@ fn hex_ids_reject_all_zero_values() {
     assert!(ParentSpanId::new("0000000000000000").is_err());
 }
 
+#[cfg(all(feature = "json", feature = "trace"))]
+#[test]
+fn otel_envelope_serializes_with_expected_serde_shape() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_severity(Severity::Error)
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
+        .with_trace_event(TraceEvent {
+            name: "db.query".into(),
+            level: Some(TraceEventLevel::Info),
+            timestamp_unix_nano: Some(1_713_337_100_000_000_000),
+            attributes: vec![TraceEventAttribute {
+                key: "db.system".into(),
+                value: AttachmentValue::from("postgres"),
+            }],
+        });
+
+    let otel = report.to_diagnostic_ir().to_otel_envelope();
+    let json = serde_json::to_value(&otel).expect("otel envelope should serialize");
+
+    assert_eq!(
+        serde_json::to_value(OtelValue::Null).expect("null value should serialize"),
+        serde_json::json!("Null")
+    );
+
+    let records = json["records"].as_array().expect("records should be array");
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0]["name"], "exception");
+    assert_eq!(records[0]["severity_text"], "error");
+    assert_eq!(records[0]["severity_number"], 17);
+    assert_eq!(
+        records[0]["body"],
+        serde_json::json!({"String": "api unauthorized"})
+    );
+    assert_eq!(records[1]["name"], "db.query");
+    assert_eq!(records[1]["severity_text"], "info");
+    assert_eq!(records[1]["severity_number"], 9);
+    assert!(records[1]["body"].is_null());
+}
+
 #[cfg(feature = "tracing")]
 #[test]
 fn tracing_exporter_trait_receives_diagnostic_ir() {

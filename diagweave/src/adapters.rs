@@ -4,8 +4,10 @@ use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
+#[cfg(feature = "trace")]
+use crate::render_impl::build_trace_value;
 use crate::render_impl::{
-    DiagnosticIr, DiagnosticIrError, build_context_and_attachments, build_display_causes_value,
+    DiagnosticIr, build_context_and_attachments, build_display_causes_value, build_error_value,
     build_source_errors_value, build_stack_trace_value,
 };
 use crate::report::{Attachment, AttachmentValue, ErrorCode};
@@ -150,6 +152,15 @@ impl From<&AttachmentValue> for OtelValue {
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelEnvelope {
     pub records: Vec<OtelEvent>,
+}
+
+pub const REPORT_OTEL_SCHEMA_VERSION: &str = "v0.1.0";
+
+pub const REPORT_OTEL_SCHEMA_DRAFT: &str = "https://json-schema.org/draft/2020-12/schema";
+
+/// Returns the OTEL schema for the diagnostic envelope.
+pub fn report_otel_schema() -> &'static str {
+    include_str!("../schemas/report-otel-v0.1.0.schema.json")
 }
 
 impl DiagnosticIr<'_> {
@@ -492,121 +503,4 @@ fn severity_for_trace_level(level: crate::report::TraceEventLevel) -> (Cow<'stat
         crate::report::TraceEventLevel::Warn => ("warn".into(), 13),
         crate::report::TraceEventLevel::Error => ("error".into(), 17),
     }
-}
-
-fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
-    let mut map = BTreeMap::new();
-    map.insert(
-        "message".to_string(),
-        AttachmentValue::String(error.message.to_string_owned().into()),
-    );
-    map.insert(
-        "type".to_string(),
-        AttachmentValue::String(error.r#type.clone().into_owned().into()),
-    );
-    AttachmentValue::Object(map)
-}
-
-#[cfg(feature = "trace")]
-fn build_trace_value(
-    trace: &crate::report::ReportTrace,
-    error: &DiagnosticIrError<'_>,
-) -> AttachmentValue {
-    let mut ctx = BTreeMap::new();
-    ctx.insert(
-        "trace_id".to_string(),
-        trace
-            .context
-            .trace_id
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "span_id".to_string(),
-        trace
-            .context
-            .span_id
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "parent_span_id".to_string(),
-        trace
-            .context
-            .parent_span_id
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "sampled".to_string(),
-        trace
-            .context
-            .sampled
-            .map(AttachmentValue::Bool)
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "trace_state".to_string(),
-        trace
-            .context
-            .trace_state
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "flags".to_string(),
-        trace
-            .context
-            .flags
-            .map(|v| AttachmentValue::Unsigned(v as u64))
-            .unwrap_or(AttachmentValue::Null),
-    );
-
-    let events = trace
-        .events
-        .iter()
-        .map(|event| {
-            let mut map = BTreeMap::new();
-            map.insert(
-                "name".to_string(),
-                AttachmentValue::String(event.name.clone()),
-            );
-            map.insert(
-                "level".to_string(),
-                event
-                    .level
-                    .map(|v| AttachmentValue::String(v.into()))
-                    .unwrap_or(AttachmentValue::Null),
-            );
-            map.insert(
-                "timestamp_unix_nano".to_string(),
-                event
-                    .timestamp_unix_nano
-                    .map(AttachmentValue::Unsigned)
-                    .unwrap_or(AttachmentValue::Null),
-            );
-            let attrs = event
-                .attributes
-                .iter()
-                .map(|attr| {
-                    let mut kv = BTreeMap::new();
-                    kv.insert("key".to_string(), AttachmentValue::String(attr.key.clone()));
-                    kv.insert("value".to_string(), attr.value.clone());
-                    AttachmentValue::Object(kv)
-                })
-                .collect();
-            map.insert("attributes".to_string(), AttachmentValue::Array(attrs));
-            AttachmentValue::Object(map)
-        })
-        .collect();
-
-    let mut trace_obj = BTreeMap::new();
-    trace_obj.insert("error".to_string(), build_error_value(error));
-    trace_obj.insert("context".to_string(), AttachmentValue::Object(ctx));
-    trace_obj.insert("events".to_string(), AttachmentValue::Array(events));
-    AttachmentValue::Object(trace_obj)
 }

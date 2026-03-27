@@ -210,3 +210,118 @@ fn json_renderer_supports_pretty_option() {
     assert!(payload.contains('\n'));
     assert!(payload.contains("  \"schema_version\""));
 }
+
+#[cfg(all(feature = "json", feature = "trace"))]
+#[test]
+fn json_trace_section_uses_shared_trace_shape() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
+        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
+        .with_trace_sampled(true)
+        .with_trace_state("vendor=blue")
+        .with_trace_flags(1)
+        .with_trace_event(TraceEvent {
+            name: "db.query".into(),
+            level: Some(TraceEventLevel::Info),
+            timestamp_unix_nano: Some(1_713_337_100_000_000_000),
+            attributes: vec![TraceEventAttribute {
+                key: "db.system".into(),
+                value: AttachmentValue::from("postgres"),
+            }],
+        });
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let trace = &parsed["trace"];
+
+    assert!(trace.get("error").is_none());
+    assert_eq!(
+        trace["context"]["trace_id"].as_str(),
+        Some("4bf92f3577b34da6a3ce929d0e0e4736")
+    );
+    assert_eq!(
+        trace["context"]["span_id"].as_str(),
+        Some("00f067aa0ba902b7")
+    );
+    assert_eq!(
+        trace["context"]["parent_span_id"].as_str(),
+        Some("1111111111111111")
+    );
+    assert_eq!(trace["context"]["sampled"].as_bool(), Some(true));
+    assert_eq!(
+        trace["context"]["trace_state"].as_str(),
+        Some("vendor=blue")
+    );
+    assert_eq!(trace["context"]["flags"].as_u64(), Some(1));
+    assert_eq!(trace["events"].as_array().map(|a| a.len()), Some(1));
+    assert_eq!(
+        trace["events"][0]["attributes"][0]["value"]["kind"].as_str(),
+        Some("string")
+    );
+}
+
+#[cfg(all(feature = "json", feature = "trace"))]
+#[test]
+fn json_trace_section_keeps_tagged_trace_values() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized).with_trace_event(TraceEvent {
+        name: "db.query".into(),
+        level: Some(TraceEventLevel::Warn),
+        timestamp_unix_nano: Some(1_713_337_100_000_000_000),
+        attributes: vec![
+            TraceEventAttribute {
+                key: "db.statement".into(),
+                value: AttachmentValue::Redacted {
+                    kind: Some("sql".into()),
+                    reason: Some("sensitive".into()),
+                },
+            },
+            TraceEventAttribute {
+                key: "blob".into(),
+                value: AttachmentValue::Bytes(vec![1, 2, 3]),
+            },
+        ],
+    });
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let trace = &parsed["trace"];
+    let attrs = trace["events"][0]["attributes"]
+        .as_array()
+        .expect("attributes");
+
+    assert_eq!(attrs[0]["value"]["kind"].as_str(), Some("redacted"));
+    assert_eq!(attrs[0]["value"]["value"]["kind"].as_str(), Some("sql"));
+    assert_eq!(attrs[1]["value"]["kind"].as_str(), Some("bytes"));
+    assert_eq!(
+        attrs[1]["value"]["value"].as_array().map(|a| a.len()),
+        Some(3)
+    );
+}
+
+#[cfg(all(feature = "json", feature = "trace"))]
+#[test]
+fn json_trace_section_rejects_non_finite_floats() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized).with_trace_event(TraceEvent {
+        name: "db.query".into(),
+        level: Some(TraceEventLevel::Info),
+        timestamp_unix_nano: None,
+        attributes: vec![TraceEventAttribute {
+            key: "latency".into(),
+            value: AttachmentValue::Float(f64::INFINITY),
+        }],
+    });
+
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = report.render(Json::default()).to_string();
+    }))
+    .is_err());
+}

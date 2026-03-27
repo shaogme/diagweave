@@ -5,6 +5,7 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - Schema version: `v0.1.0`
 - Draft: JSON Schema 2020-12
 - Canonical schema file: `diagweave/schemas/report-v0.1.0.schema.json`
+- Related OTEL schema: [`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md)
 
 ## Stable payload fields
 
@@ -86,3 +87,5 @@ When `feature = "json"` is enabled, `diagweave` exports:
 - `report_json_schema()`
 
 These can be used for strict cross-service validation and compatibility checks.
+
+See also the OpenTelemetry envelope schema in [`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md).

@@ -37,6 +37,8 @@
   - [Standalone `#[derive(Error)]`](#standalone-deriveerror)
   - [`Report` and chain APIs](#report-and-chain-apis)
   - [Rendering and export](#rendering-and-export)
+    - [JSON schema](#json-schema)
+    - [OTEL schema](#otel-schema)
   - [Advanced patterns from `showcase`](#advanced-patterns-from-showcase)
   - [Comparison with other crates](#comparison-with-other-crates)
   - [Feature flags](#feature-flags)
@@ -419,6 +421,13 @@ JSON output includes `schema_version: "v0.1.0"`.
 
 - Schema: `diagweave/schemas/report-v0.1.0.schema.json`
 - Doc: [`docs/report-json-schema-v0.1.0.md`](docs/report-json-schema-v0.1.0.md)
+
+### OTEL schema
+
+OpenTelemetry envelope output is documented separately.
+
+- Schema: `diagweave/schemas/report-otel-v0.1.0.schema.json`
+- Doc: [`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md)
 
 Tracing export:
 

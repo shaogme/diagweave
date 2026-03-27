@@ -420,6 +420,13 @@ JSON 输出固定包含 `schema_version: "v0.1.0"`：
 - Schema：`diagweave/schemas/report-v0.1.0.schema.json`
 - 文档：[`docs/report-json-schema-v0.1.0.md`](docs/report-json-schema-v0.1.0.md)
 
+### OTEL schema
+
+OpenTelemetry 输出的 envelope 单独记录在这里：
+
+- Schema：`diagweave/schemas/report-otel-v0.1.0.schema.json`
+- 文档：[`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md)
+
 tracing 导出：
 
 ```rust

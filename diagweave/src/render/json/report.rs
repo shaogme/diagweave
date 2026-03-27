@@ -4,13 +4,15 @@ use core::fmt::{self, Display, Formatter, Write};
 use crate::report::{CauseCollectOptions, Report, StackTrace};
 
 #[cfg(feature = "trace")]
-use crate::report::{TraceContext, TraceEvent, TraceEventAttribute};
-
-#[cfg(feature = "trace")]
 use super::attachment;
 use super::{
     ReportRenderOptions, close_array, close_object, write_array_item_prefix, write_error_code,
     write_json_display, write_json_string, write_object_field, write_option_string,
+};
+#[cfg(feature = "trace")]
+use crate::render_impl::{
+    TraceAttributeValue, TraceContextValue, TraceEventValue, TraceSectionValue,
+    build_trace_section_value,
 };
 
 pub(super) fn write_error_object<E>(
@@ -269,35 +271,44 @@ where
     let Some(trace) = report.trace() else {
         return f.write_str("null");
     };
+    write_trace_section_value(f, pretty, depth, &build_trace_section_value(trace))
+}
 
+#[cfg(feature = "trace")]
+fn write_trace_section_value(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    value: &TraceSectionValue,
+) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "context", |f| {
-        write_trace_ctx(f, pretty, depth + 1, &trace.context)
+        write_trace_context_value(f, pretty, depth + 1, &value.context)
     })?;
     write_object_field(f, pretty, depth, &mut first, "events", |f| {
-        write_trace_events_array(f, pretty, depth + 1, &trace.events)
+        write_trace_events_array(f, pretty, depth + 1, &value.events)
     })?;
     close_object(f, pretty, depth, first)
 }
 
 #[cfg(feature = "trace")]
-fn write_trace_ctx(
+fn write_trace_context_value(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    context: &TraceContext,
+    context: &TraceContextValue,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "trace_id", |f| {
-        write_option_string(f, context.trace_id.as_ref().map(|v| v.as_ref()))
+        write_option_string(f, context.trace_id.as_deref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "span_id", |f| {
-        write_option_string(f, context.span_id.as_ref().map(|v| v.as_ref()))
+        write_option_string(f, context.span_id.as_deref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "parent_span_id", |f| {
-        write_option_string(f, context.parent_span_id.as_ref().map(|v| v.as_ref()))
+        write_option_string(f, context.parent_span_id.as_deref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "sampled", |f| {
         match context.sampled {
@@ -322,23 +333,23 @@ fn write_trace_events_array(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    events: &[TraceEvent],
+    events: &[TraceEventValue],
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('[')?;
     for event in events {
         write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_trace_event_object(f, pretty, depth + 1, event)?;
+        write_trace_event_value(f, pretty, depth + 1, event)?;
     }
     close_array(f, pretty, depth, first)
 }
 
 #[cfg(feature = "trace")]
-fn write_trace_event_object(
+fn write_trace_event_value(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    event: &TraceEvent,
+    event: &TraceEventValue,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
@@ -346,10 +357,7 @@ fn write_trace_event_object(
         write_json_string(f, event.name.as_ref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "level", |f| {
-        match event.level {
-            Some(level) => write_json_display(f, &level),
-            None => f.write_str("null"),
-        }
+        write_option_string(f, event.level.as_deref())
     })?;
     write_object_field(
         f,
@@ -363,42 +371,41 @@ fn write_trace_event_object(
         },
     )?;
     write_object_field(f, pretty, depth, &mut first, "attributes", |f| {
-        write_trace_attrs(f, pretty, depth + 1, &event.attributes)
+        write_trace_attributes(f, pretty, depth + 1, &event.attributes)
     })?;
     close_object(f, pretty, depth, first)
 }
 
 #[cfg(feature = "trace")]
-fn write_trace_attrs(
+fn write_trace_attributes(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    attributes: &[TraceEventAttribute],
+    attributes: &[TraceAttributeValue],
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('[')?;
     for attr in attributes {
         write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_kv_obj(f, pretty, depth + 1, &attr.key, &attr.value)?;
+        write_trace_attribute_value(f, pretty, depth + 1, attr)?;
     }
     close_array(f, pretty, depth, first)
 }
 
 #[cfg(feature = "trace")]
-fn write_kv_obj(
+fn write_trace_attribute_value(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    key: &str,
-    value: &crate::report::AttachmentValue,
+    attr: &TraceAttributeValue,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "key", |f| {
-        write_json_string(f, key)
+        write_json_string(f, attr.key.as_ref())
     })?;
     write_object_field(f, pretty, depth, &mut first, "value", |f| {
-        attachment::write_attachment_value(f, pretty, depth + 1, value)
+        attachment::write_attachment_value(f, pretty, depth + 1, &attr.value)
     })?;
     close_object(f, pretty, depth, first)
 }

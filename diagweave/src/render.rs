@@ -4,6 +4,14 @@ mod json;
 #[path = "render/pretty.rs"]
 mod pretty;
 
+#[cfg(all(feature = "trace", feature = "json"))]
+use crate::report::TraceEventAttribute;
+use crate::report::{
+    Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseTraversalState,
+    ErrorCode, Report, Severity, StackFrame, StackTrace,
+};
+#[cfg(feature = "trace")]
+use crate::report::{ReportTrace, TraceContext, TraceEvent};
 use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
@@ -14,17 +22,48 @@ use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-#[cfg(feature = "trace")]
-use crate::report::ReportTrace;
-use crate::report::{
-    Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseTraversalState,
-    ErrorCode, Report, Severity, StackFrame, StackTrace,
-};
-
 pub use pretty::Pretty;
 
 #[cfg(feature = "json")]
 pub use json::{Json, REPORT_JSON_SCHEMA_DRAFT, REPORT_JSON_SCHEMA_VERSION, report_json_schema};
+
+#[cfg(all(feature = "trace", feature = "json"))]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct TraceSectionValue {
+    pub context: TraceContextValue,
+    pub events: Vec<TraceEventValue>,
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct TraceContextValue {
+    pub trace_id: Option<Cow<'static, str>>,
+    pub span_id: Option<Cow<'static, str>>,
+    pub parent_span_id: Option<Cow<'static, str>>,
+    pub sampled: Option<bool>,
+    pub trace_state: Option<Cow<'static, str>>,
+    pub flags: Option<u8>,
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct TraceEventValue {
+    pub name: Cow<'static, str>,
+    pub level: Option<Cow<'static, str>>,
+    pub timestamp_unix_nano: Option<u64>,
+    pub attributes: Vec<TraceAttributeValue>,
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct TraceAttributeValue {
+    pub key: Cow<'static, str>,
+    pub value: AttachmentValue,
+}
 
 /// Options for rendering a diagnostic report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,6 +358,180 @@ pub(crate) fn build_context_and_attachments(
     }
 
     (context_items, attachment_items)
+}
+
+pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
+    let mut map = BTreeMap::new();
+    map.insert(
+        "message".to_string(),
+        AttachmentValue::String(error.message.to_string_owned().into()),
+    );
+    map.insert(
+        "type".to_string(),
+        AttachmentValue::String(error.r#type.clone().into_owned().into()),
+    );
+    AttachmentValue::Object(map)
+}
+
+#[cfg(feature = "trace")]
+pub(crate) fn build_trace_value(
+    trace: &ReportTrace,
+    error: &DiagnosticIrError<'_>,
+) -> AttachmentValue {
+    let mut trace_obj = BTreeMap::new();
+    trace_obj.insert("error".to_string(), build_error_value(error));
+    trace_obj.insert(
+        "context".to_string(),
+        build_trace_attachment_context_value(&trace.context),
+    );
+    trace_obj.insert(
+        "events".to_string(),
+        AttachmentValue::Array(
+            trace
+                .events
+                .iter()
+                .map(build_trace_attachment_event_value)
+                .collect(),
+        ),
+    );
+    AttachmentValue::Object(trace_obj)
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+pub(crate) fn build_trace_section_value(trace: &ReportTrace) -> TraceSectionValue {
+    TraceSectionValue {
+        context: build_trace_wire_context_value(&trace.context),
+        events: trace
+            .events
+            .iter()
+            .map(build_trace_wire_event_value)
+            .collect(),
+    }
+}
+
+#[cfg(feature = "trace")]
+fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentValue {
+    let mut ctx = BTreeMap::new();
+    ctx.insert(
+        "trace_id".to_string(),
+        context
+            .trace_id
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.as_cow()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    ctx.insert(
+        "span_id".to_string(),
+        context
+            .span_id
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.as_cow()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    ctx.insert(
+        "parent_span_id".to_string(),
+        context
+            .parent_span_id
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.as_cow()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    ctx.insert(
+        "sampled".to_string(),
+        context
+            .sampled
+            .map(AttachmentValue::Bool)
+            .unwrap_or(AttachmentValue::Null),
+    );
+    ctx.insert(
+        "trace_state".to_string(),
+        context
+            .trace_state
+            .as_ref()
+            .map(|v| AttachmentValue::String(v.clone()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    ctx.insert(
+        "flags".to_string(),
+        context
+            .flags
+            .map(|v| AttachmentValue::Unsigned(v as u64))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    AttachmentValue::Object(ctx)
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+fn build_trace_wire_context_value(context: &TraceContext) -> TraceContextValue {
+    TraceContextValue {
+        trace_id: context.trace_id.as_ref().map(|v| v.as_cow()),
+        span_id: context.span_id.as_ref().map(|v| v.as_cow()),
+        parent_span_id: context.parent_span_id.as_ref().map(|v| v.as_cow()),
+        sampled: context.sampled,
+        trace_state: context.trace_state.clone(),
+        flags: context.flags,
+    }
+}
+
+#[cfg(feature = "trace")]
+fn build_trace_attachment_event_value(event: &TraceEvent) -> AttachmentValue {
+    let mut map = BTreeMap::new();
+    map.insert(
+        "name".to_string(),
+        AttachmentValue::String(event.name.clone()),
+    );
+    map.insert(
+        "level".to_string(),
+        event
+            .level
+            .map(|v| AttachmentValue::String(v.into()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    map.insert(
+        "timestamp_unix_nano".to_string(),
+        event
+            .timestamp_unix_nano
+            .map(AttachmentValue::Unsigned)
+            .unwrap_or(AttachmentValue::Null),
+    );
+    map.insert(
+        "attributes".to_string(),
+        AttachmentValue::Array(
+            event
+                .attributes
+                .iter()
+                .map(|attr| {
+                    let mut kv = BTreeMap::new();
+                    kv.insert("key".to_string(), AttachmentValue::String(attr.key.clone()));
+                    kv.insert("value".to_string(), attr.value.clone());
+                    AttachmentValue::Object(kv)
+                })
+                .collect(),
+        ),
+    );
+    AttachmentValue::Object(map)
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue {
+    TraceEventValue {
+        name: event.name.clone(),
+        level: event.level.map(Cow::from),
+        timestamp_unix_nano: event.timestamp_unix_nano,
+        attributes: event
+            .attributes
+            .iter()
+            .map(build_trace_wire_attribute_value)
+            .collect(),
+    }
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+fn build_trace_wire_attribute_value(attr: &TraceEventAttribute) -> TraceAttributeValue {
+    TraceAttributeValue {
+        key: attr.key.clone(),
+        value: attr.value.clone(),
+    }
 }
 
 pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentValue {

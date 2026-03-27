@@ -185,6 +185,11 @@ set! {
 
 `#[display(transparent)]` 与 `#[from]` 均支持，且都要求“恰好一个字段”。
 
+补充说明：
+- 枚举可见性遵循 `set!` 声明（`pub` / `pub(crate)` / 私有）
+- `set!` 顶层属性会保留在生成的 enum 上
+- 自动生成 `diag()` 与 `source()` 方法
+
 ## `union!`
 
 ```rust
@@ -230,6 +235,9 @@ union! {
 - 外部类型自动委托 `Display`
 - 支持 `as Alias` 覆盖默认变体名
 - 自动实现 `Error`，缺少 `Debug` 时自动补充
+- 自动生成构造器与 `*_report`（同 `set!`）
+- 支持 `#[diagweave(constructor_prefix = \"...\", report_path = \"...\")]`
+- 自动生成 `diag()` 与 `source()` 方法
 
 ## 独立 `#[derive(Error)]`
 

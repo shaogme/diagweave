@@ -185,6 +185,11 @@ set! {
 
 `#[display(transparent)]` and `#[from]` on tuple variants are supported and require exactly one field.
 
+Additional notes:
+- enum visibility follows the `set!` declaration (`pub`, `pub(crate)`, or private)
+- top-level attributes on the `set!` enum are preserved
+- auto helpers: `diag()` and `source()` on the enum
+
 ## `union!`
 
 ```rust
@@ -230,6 +235,9 @@ Highlights:
 - display delegation for wrapped external errors
 - `as Alias` for variant naming override
 - auto `Error` implementation and auto `Debug` backfill
+- generated constructors and `*_report` helpers (same as `set!`)
+- supports `#[diagweave(constructor_prefix = "...", report_path = "...")]`
+- auto helpers: `diag()` and `source()` on the enum
 
 ## Standalone `#[derive(Error)]`
 

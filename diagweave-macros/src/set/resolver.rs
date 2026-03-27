@@ -23,6 +23,7 @@ pub(crate) struct ResolvedVariant {
 #[derive(Clone)]
 pub(crate) struct ResolvedSet {
     pub(crate) attrs: Vec<Attribute>,
+    pub(crate) vis: syn::Visibility,
     pub(crate) name: Ident,
     pub(crate) variants: Vec<ResolvedVariant>,
     pub(crate) members: BitSet,
@@ -97,6 +98,7 @@ pub(crate) fn resolve_set(
         name.to_owned(),
         ResolvedSet {
             attrs: decl.attrs.clone(),
+            vis: decl.vis.clone(),
             name: decl.name.clone(),
             variants,
             members,

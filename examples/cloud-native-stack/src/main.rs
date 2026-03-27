@@ -1,4 +1,4 @@
-﻿use std::io;
+use std::io;
 
 use diagweave::prelude::{
     GlobalContext, Report, ReportRenderOptions, ReportResultExt, register_global_injector, set,
@@ -21,7 +21,7 @@ mod payment {
         }
 
         #[derive(Debug)]
-        PaymentError = NetworkError | {
+        pub PaymentError = NetworkError | {
             #[display("payment declined by provider")]
             Declined,
         }
@@ -65,7 +65,7 @@ mod order {
 
     set! {
         #[derive(Debug)]
-        OrderError = {
+        pub OrderError = {
             #[display("payment failed for order {order_id}")]
             PaymentFailed { order_id: u64 },
 
@@ -106,9 +106,11 @@ mod gateway {
 
     pub fn handle_request(request_id: &str) -> Result<String, Report<ApiError>> {
         if request_id == "bad-request" {
-            return Err(Report::new(ApiError::bad_request("missing auth header".to_owned()))
-                .with_note("gateway rejected request")
-                .with_context("route", "/v1/order"));
+            return Err(
+                Report::new(ApiError::bad_request("missing auth header".to_owned()))
+                    .with_note("gateway rejected request")
+                    .with_context("route", "/v1/order"),
+            );
         }
         if request_id == "payment-only" {
             payment::charge(0)
@@ -142,8 +144,7 @@ fn init_global_context() {
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context
-            .push(("request_id".into(), REQUEST_ID.into()));
+        ctx.context.push(("request_id".into(), REQUEST_ID.into()));
         ctx.context.push(("span_id".into(), SPAN_ID.into()));
         ctx.trace_id = Some(TRACE_ID.into());
         ctx.span_id = Some(SPAN_ID.into());

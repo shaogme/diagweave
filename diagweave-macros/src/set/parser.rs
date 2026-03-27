@@ -1,8 +1,10 @@
 use syn::{
-    Attribute, Error, Ident, LitStr, Path, Result, Token, Variant, braced,
+    Attribute, Ident, Result, Token, Variant, Visibility, braced,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
 };
+
+use crate::shared::options::{DiagweaveOptions, parse_diagweave_options};
 
 pub(crate) struct SetInput {
     pub(crate) attrs: Vec<Attribute>,
@@ -34,65 +36,16 @@ impl Parse for SetInput {
     }
 }
 
-pub(crate) struct SetOptions {
-    pub(crate) report_path: Path,
-    pub(crate) constructor_prefix: String,
-}
-
-impl Default for SetOptions {
-    fn default() -> Self {
-        Self {
-            report_path: syn::parse_quote!(::diagweave::report::Report),
-            constructor_prefix: String::new(),
-        }
-    }
-}
+pub(crate) type SetOptions = DiagweaveOptions;
 
 pub(crate) fn parse_set_options(attrs: &[Attribute]) -> Result<SetOptions> {
-    let mut options = SetOptions::default();
-    for attr in attrs {
-        if !attr.path().is_ident("diagweave") {
-            continue;
-        }
-        attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("report_path") {
-                let value = meta.value()?.parse::<LitStr>()?;
-                options.report_path = syn::parse_str::<Path>(&value.value()).map_err(|_| {
-                    Error::new_spanned(
-                        &value,
-                        "invalid report_path; expected a valid Rust type path string",
-                    )
-                })?;
-                return Ok(());
-            }
-            if meta.path.is_ident("constructor_prefix") {
-                let value = meta.value()?.parse::<LitStr>()?;
-                let prefix = value.value();
-                if !prefix.is_empty()
-                    && !prefix
-                        .chars()
-                        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
-                {
-                    return Err(Error::new_spanned(
-                        &value,
-                        "invalid constructor_prefix; expected snake_case identifier fragment",
-                    ));
-                }
-                options.constructor_prefix = prefix;
-                return Ok(());
-            }
-            Err(Error::new_spanned(
-                meta.path,
-                "unknown diagweave option; supported options: report_path = \"path::to::Report\", constructor_prefix = \"prefix\"",
-            ))
-        })?;
-    }
-    Ok(options)
+    parse_diagweave_options(attrs)
 }
 
 #[derive(Clone)]
 pub(crate) struct SetDecl {
     pub(crate) attrs: Vec<Attribute>,
+    pub(crate) vis: Visibility,
     pub(crate) name: Ident,
     pub(crate) expr: UnionExpr,
 }
@@ -100,10 +53,16 @@ pub(crate) struct SetDecl {
 impl Parse for SetDecl {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let attrs = input.call(Attribute::parse_outer)?;
+        let vis = input.parse::<Visibility>()?;
         let name = input.parse::<Ident>()?;
         input.parse::<Token![=]>()?;
         let expr = input.parse::<UnionExpr>()?;
-        Ok(Self { attrs, name, expr })
+        Ok(Self {
+            attrs,
+            vis,
+            name,
+            expr,
+        })
     }
 }
 

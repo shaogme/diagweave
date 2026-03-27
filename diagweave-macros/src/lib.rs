@@ -1,5 +1,6 @@
 mod error;
 mod set;
+mod shared;
 mod union;
 
 use proc_macro::TokenStream;

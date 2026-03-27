@@ -16,7 +16,8 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    Attachment, AttachmentValue, AttachmentVisit, ErrorCode, Report, Severity, StackFrame, StackTrace,
+    Attachment, AttachmentValue, AttachmentVisit, ErrorCode, Report, Severity, StackFrame,
+    StackTrace,
 };
 
 pub use pretty::Pretty;
@@ -271,10 +272,7 @@ pub(crate) fn build_context_and_attachments(
             }
             Attachment::Note { message } => {
                 let mut map = BTreeMap::new();
-                map.insert(
-                    "kind".to_string(),
-                    AttachmentValue::String("note".into()),
-                );
+                map.insert("kind".to_string(), AttachmentValue::String("note".into()));
                 map.insert(
                     "message".to_string(),
                     AttachmentValue::String(message.to_string().into()),
@@ -314,10 +312,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
         crate::report::StackTraceFormat::Native => "native",
         crate::report::StackTraceFormat::Raw => "raw",
     };
-    map.insert(
-        "format".to_string(),
-        AttachmentValue::String(format.into()),
-    );
+    map.insert("format".to_string(), AttachmentValue::String(format.into()));
     map.insert(
         "frames".to_string(),
         AttachmentValue::Array(

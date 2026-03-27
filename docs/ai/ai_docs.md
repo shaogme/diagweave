@@ -3,7 +3,7 @@
 ## 1. `set!` Macro
 
 ### Overview
-Used to define a series of structured error enums (Error Sets). It automatically implements composition logic between sets, `From` conversions, snake_case named constructors, and report semantics.
+Used to define a series of structured error enums (Error Sets). It automatically implements composition logic between sets, `From` conversions, snake_case named constructors, report semantics, and enum helpers (`diag()`/`source()`).
 
 ### Syntax Definition
 ```text
@@ -52,7 +52,8 @@ set! {
 | :--- | :--- | :--- |
 | `AuthError::user_not_found(id: u64)` | `AuthError` | Snake_case constructor |
 | `AuthError::user_not_found_report(id: u64)` | `Report<AuthError>` | Returns a report object containing the current error |
-| `AuthError::diag(self)` | `Report<AuthError>` | Convers error instance into a report |
+| `AuthError::diag(self)` | `Report<AuthError>` | Converts error instance into a report |
+| `AuthError::source(&self)` | `Option<&dyn Error>` | Access to the underlying error source |
 | `From<AuthError> for ServiceError` | `ServiceError` | Automatic mapping from subset to superset |
 
 ---
@@ -108,6 +109,9 @@ union! {
 - **Auto `Display`**: For external types, generates `match` branches calling `inner.fmt(f)`; for inline variants, generates rendering logic based on `#[display]`.
 - **Auto `Error`**: If `Debug` is not provided, `#[derive(Debug)]` is automatically attached.
 - **From Injection**: Injects `impl From<T> for Union` for every external member type.
+- **Constructors**: Generates snake_case constructors and `*_report` helpers for inline and external variants.
+- **Options**: Supports `#[diagweave(constructor_prefix = "...", report_path = "...")]` on the union enum.
+- **Helpers**: Generates `diag()` and `source()` on the union enum.
 
 ---
 

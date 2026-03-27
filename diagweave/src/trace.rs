@@ -42,10 +42,7 @@ where
     }
 
     /// Emits the report using a specific tracing exporter.
-    pub fn emit_tracing_with(
-        &self,
-        exporter: &impl TracingExporterTrait,
-    ) {
+    pub fn emit_tracing_with(&self, exporter: &impl TracingExporterTrait) {
         let ir = self.to_diagnostic_ir();
         exporter.export_ir(&ir);
     }

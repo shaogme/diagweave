@@ -51,14 +51,14 @@ where
                 media_type,
             } => {
                 write_array_item_prefix(f, pretty, depth, &mut first)?;
-                write_payload_obj(
+                write_payload_obj(PayloadArgs {
                     f,
                     pretty,
-                    depth + 1,
-                    name.as_ref(),
+                    depth: depth + 1,
+                    name: name.as_ref(),
                     value,
-                    media_type.map(|m| m.as_ref()),
-                )?;
+                    media_type: media_type.map(|m| m.as_ref()),
+                })?;
             }
         }
         Ok(())
@@ -83,14 +83,24 @@ fn write_note_obj(
     close_object(f, pretty, depth, first)
 }
 
-fn write_payload_obj(
-    f: &mut Formatter<'_>,
+struct PayloadArgs<'a, 'b> {
+    f: &'a mut Formatter<'b>,
     pretty: bool,
     depth: usize,
-    name: &str,
-    value: &AttachmentValue,
-    media_type: Option<&str>,
-) -> fmt::Result {
+    name: &'a str,
+    value: &'a AttachmentValue,
+    media_type: Option<&'a str>,
+}
+
+fn write_payload_obj(args: PayloadArgs<'_, '_>) -> fmt::Result {
+    let PayloadArgs {
+        f,
+        pretty,
+        depth,
+        name,
+        value,
+        media_type,
+    } = args;
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "kind", |f| {

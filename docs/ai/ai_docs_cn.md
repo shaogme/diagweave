@@ -3,7 +3,7 @@
 ## 1. `set!` 宏
 
 ### 概览
-用于定义一系列结构化的错误枚举（Error Set），自动实现集合间的组合逻辑、`From` 转换、蛇形命名构造器及报告语义。
+用于定义一系列结构化的错误枚举（Error Set），自动实现集合间的组合逻辑、`From` 转换、蛇形命名构造器、报告语义，以及枚举辅助方法（`diag()`/`source()`）。
 
 ### 语法定义
 ```text
@@ -53,6 +53,7 @@ set! {
 | `AuthError::user_not_found(id: u64)` | `AuthError` | 蛇形命名构造器 |
 | `AuthError::user_not_found_report(id: u64)` | `Report<AuthError>` | 返回包含当前错误的报告对象 |
 | `AuthError::diag(self)` | `Report<AuthError>` | 将错误实例转换为报告 |
+| `AuthError::source(&self)` | `Option<&dyn Error>` | 读取底层 source 错误 |
 | `From<AuthError> for ServiceError` | `ServiceError` | 自动实现子集到超集的映射 |
 
 ---
@@ -108,6 +109,9 @@ union! {
 - **自动实现 `Display`**：对于外部类型，生成 `match` 分支调用 `inner.fmt(f)`；对于内联变体，基于 `#[display]` 模板生成渲染逻辑。
 - **自动实现 `Error`**：如果未提供 `Debug`，会自动附加 `#[derive(Debug)]`。
 - **From 注入**：为每一个外部成员类型注入 `impl From<T> for Union`。
+- **构造器**：为内联与外部变体生成蛇形命名构造器与 `*_report`。
+- **选项**：支持在 union enum 上使用 `#[diagweave(constructor_prefix = \"...\", report_path = \"...\")]`。
+- **辅助方法**：自动生成 `diag()` 与 `source()`。
 
 ---
 

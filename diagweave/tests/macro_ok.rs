@@ -59,6 +59,13 @@ set! {
     }
 }
 
+set! {
+    pub(crate) ScopedError = {
+        #[display("scoped error")]
+        Scoped,
+    }
+}
+
 #[test]
 fn converts_subset_into_union() {
     let auth = AuthError::PermissionDenied { id: 42 };
@@ -154,4 +161,10 @@ fn from_and_transparent_display_work_for_wrapper_variants() {
 
     let cfg = WrapperError::config("missing field");
     assert_eq!(cfg.to_string(), "config parse failed: missing field");
+}
+
+#[test]
+fn set_visibility_respects_pub_crate() {
+    let err = ScopedError::scoped();
+    assert_eq!(err.to_string(), "scoped error");
 }

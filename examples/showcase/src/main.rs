@@ -23,9 +23,6 @@ set! {
         #[display("resource {id} not found")]
         NotFound { id: String },
 
-        #[display("permission denied for {role}")]
-        PermissionDenied { role: String },
-
         #[display("operation timed out after {0}ms")]
         Timeout(u64),
     }
@@ -46,14 +43,11 @@ set! {
         #[from]
         #[display(transparent)]
         Io(io::Error),
-
-        #[display("host {host} unreachable: {reason}")]
-        Unreachable { host: String, reason: String },
     }
 
     /// Composition: A large set combining multiple sub-sets
     #[derive(Debug)]
-    AppError = BaseError | AuthError | NetworkError | {
+    pub AppError = BaseError | AuthError | NetworkError | {
         #[display("internal application error: {msg}")]
         Internal { msg: String },
     }

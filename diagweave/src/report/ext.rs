@@ -96,7 +96,7 @@ pub trait ReportResultExt<T, E> {
     fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_flags(self, flags: u32) -> Result<T, Report<E>>;
+    fn with_trace_flags(self, flags: u8) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E>>;
@@ -243,7 +243,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_flags(self, flags: u32) -> Result<T, Report<E>> {
+    fn with_trace_flags(self, flags: u8) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_flags(flags))
     }
 

@@ -530,18 +530,18 @@ report.emit_tracing_with(&MyCustomExporter);
 ## 9. 云原生适配 (OpenTelemetry)
 
 ### 概览
-`diagweave` 提供与 OpenTelemetry (OTel) 规范深度集成的适配器，支持将丰富的诊断数据转换为标准的 Envelope 结构。
+`diagweave` 提供与 OpenTelemetry (OTel) 规范深度集成的适配器，支持将丰富的诊断数据转换为符合 OTLP 日志数据模型的记录批次。
 
 ### 转换 API
 | 方法声明 | 返回类型 | 说明 |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope` | 包含 attributes 和 events 的 OTel 载荷 |
+| `ir.to_otel_envelope()` | `OtelEnvelope` | OTLP 风格的日志/事件记录批次 |
 | `ir.to_tracing_fields()` | `Vec<TracingField>`| 转换为 KV 形式的 Tracing/Logging 字段 |
 
 ### OTel 映射逻辑
-1. **Attributes (属性)**: 错误核心字段（消息、代码、类型）、严重程度/重试标记、原因链摘要与报告计数映射。
-2. **Events (事件)**: `Report` 内部 `TraceEvent` 转换为 OTel 事件序列。
-3. **TraceContext**: TraceID 和 SpanID 自动填充到 Envelope 顶层。
+1. **记录字段**: 主报告会变成一个日志记录，严重程度、可追踪上下文字段等直接放在顶层。
+2. **属性 (属性)**: 错误核心字段、重试/分类标记、原因链摘要以及附件/上下文数据会被扁平化为日志属性。
+3. **Trace 事件**: `Report` 内部的 `TraceEvent` 会转换成额外的 OTLP 风格日志/事件记录，带各自的时间戳、严重程度和 trace 关联字段。
 
 ---
 

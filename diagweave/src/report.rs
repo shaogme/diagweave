@@ -348,7 +348,7 @@ impl<E> Report<E> {
 
     /// Sets the trace flags.
     #[cfg(feature = "trace")]
-    pub fn with_trace_flags(mut self, flags: u32) -> Self {
+    pub fn with_trace_flags(mut self, flags: u8) -> Self {
         let trace = self.trace_mut();
         trace.context.flags = Some(flags);
         sync_trace_sampled_with_flags(&mut trace.context);

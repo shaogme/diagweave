@@ -2,7 +2,6 @@ use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::ToString;
-use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::render_impl::{
@@ -27,6 +26,7 @@ fn error_code_otel_value(value: &ErrorCode) -> OtelValue {
 
 /// A key-value pair for Tracing fields.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TracingField {
     pub key: Cow<'static, str>,
     pub value: AttachmentValue,
@@ -34,40 +34,31 @@ pub struct TracingField {
 
 /// An attribute for OpenTelemetry.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelAttribute {
     pub key: Cow<'static, str>,
     pub value: OtelValue,
 }
 
-/// An event for OpenTelemetry, consisting of a name and attributes.
+/// An OpenTelemetry log/event record shaped like the OTLP log data model.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelEvent {
     pub name: Cow<'static, str>,
+    pub body: Option<OtelValue>,
+    pub timestamp_unix_nano: Option<u64>,
+    pub observed_timestamp_unix_nano: Option<u64>,
+    pub severity_text: Option<Cow<'static, str>>,
+    pub severity_number: Option<u8>,
+    pub trace_id: Option<Cow<'static, str>>,
+    pub span_id: Option<Cow<'static, str>>,
+    pub trace_flags: Option<u8>,
     pub attributes: Vec<OtelAttribute>,
-}
-
-/// A context key-value pair for OpenTelemetry export.
-#[derive(Debug, Clone, PartialEq)]
-pub struct OtelContextItem {
-    pub key: Cow<'static, str>,
-    pub value: OtelValue,
-}
-
-/// An attachment for OpenTelemetry export.
-#[derive(Debug, Clone, PartialEq)]
-pub enum OtelAttachment {
-    Note {
-        message: Cow<'static, str>,
-    },
-    Payload {
-        name: Cow<'static, str>,
-        value: OtelValue,
-        media_type: Option<Cow<'static, str>>,
-    },
 }
 
 /// OTLP-friendly OpenTelemetry value representation.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub enum OtelValue {
     Null,
     String(Cow<'static, str>),
@@ -154,27 +145,11 @@ impl From<&AttachmentValue> for OtelValue {
     }
 }
 
-/// A collection of attributes and events for OpenTelemetry export.
+/// A batch of OpenTelemetry log/event records.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelEnvelope {
-    pub attributes: Vec<OtelAttribute>,
-    pub events: Vec<OtelEvent>,
-    pub context: Vec<OtelContextItem>,
-    pub attachments: Vec<OtelAttachment>,
-    #[cfg(feature = "trace")]
-    pub trace_context: Option<OtelTraceContext>,
-}
-
-/// Trace context for OTLP span/log correlation.
-#[cfg(feature = "trace")]
-#[derive(Debug, Clone, PartialEq)]
-pub struct OtelTraceContext {
-    pub trace_id: Option<Cow<'static, str>>,
-    pub span_id: Option<Cow<'static, str>>,
-    pub parent_span_id: Option<Cow<'static, str>>,
-    pub sampled: Option<bool>,
-    pub trace_state: Option<Cow<'static, str>>,
-    pub flags: Option<u32>,
+    pub records: Vec<OtelEvent>,
 }
 
 impl DiagnosticIr<'_> {
@@ -192,7 +167,7 @@ impl DiagnosticIr<'_> {
         fields
     }
 
-fn tracing_error(&self, fields: &mut Vec<TracingField>) {
+    fn tracing_error(&self, fields: &mut Vec<TracingField>) {
         fields.push(TracingField {
             key: "error".into(),
             value: build_error_value(&self.error),
@@ -273,87 +248,122 @@ fn tracing_error(&self, fields: &mut Vec<TracingField>) {
         });
     }
 
-    /// Converts the diagnostic IR to an OpenTelemetry envelope.
+    /// Converts the diagnostic IR to OpenTelemetry log/event records.
     pub fn to_otel_envelope(&self) -> OtelEnvelope {
+        let mut records = Vec::new();
+        records.push(self.otel_report_record());
+
+        #[cfg(feature = "trace")]
+        self.otel_trace_ev(&mut records);
+
+        OtelEnvelope { records }
+    }
+
+    fn otel_report_record(&self) -> OtelEvent {
+        let severity = self
+            .metadata
+            .severity
+            .unwrap_or(crate::report::Severity::Error);
         let mut attributes = Vec::new();
-        let mut context = Vec::new();
-        let mut attachments = Vec::new();
-        #[cfg(feature = "trace")]
-        let mut events = Vec::new();
-        #[cfg(not(feature = "trace"))]
-        let events = Vec::new();
 
-        self.otel_error(&mut attributes);
-        self.otel_meta(&mut attributes);
-        self.otel_stack_trace_and_causes(&mut attributes);
-        self.otel_stats(&mut attributes);
-        #[cfg(feature = "trace")]
-        self.otel_trace_ev(&mut events);
-        self.otel_context_and_attachments(&mut context, &mut attachments);
-
-        OtelEnvelope {
-            attributes,
-            events,
-            context,
-            attachments,
-            #[cfg(feature = "trace")]
-            trace_context: self.otel_trace_context(),
-        }
-    }
-
-    fn otel_error(&self, attributes: &mut Vec<OtelAttribute>) {
-        let fields = vec![
-            OtelAttribute {
-                key: "message".into(),
-                value: OtelValue::String(self.error.message.to_string_owned().into()),
-            },
-            OtelAttribute {
-                key: "type".into(),
-                value: OtelValue::String(self.error.r#type.clone().into_owned().into()),
-            },
-        ];
         attributes.push(OtelAttribute {
-            key: "error".into(),
-            value: OtelValue::KvList(fields),
+            key: "exception.type".into(),
+            value: OtelValue::String(self.error.r#type.clone().into_owned().into()),
         });
-    }
-
-    fn otel_meta(&self, attributes: &mut Vec<OtelAttribute>) {
-        if let Some(error_code) = &self.metadata.error_code {
+        attributes.push(OtelAttribute {
+            key: "exception.message".into(),
+            value: OtelValue::String(self.error.message.to_string_owned().into()),
+        });
+        if let Some(stack_trace) = &self.metadata.stack_trace {
             attributes.push(OtelAttribute {
-                key: "metadata.error_code".into(),
-                value: error_code_otel_value(*error_code),
+                key: "exception.stacktrace".into(),
+                value: OtelValue::String(build_stack_trace_value(stack_trace).to_string().into()),
             });
         }
-        if let Some(severity) = self.metadata.severity {
-            attributes.push(OtelAttribute {
-                key: "metadata.severity".into(),
-                value: OtelValue::String(Cow::from(severity)),
-            });
+        if let Some(error_code) = &self.metadata.error_code {
+            attributes.push(Self::otel_error_code_attr("error.code", error_code));
         }
         if let Some(category) = self.metadata.category {
             attributes.push(OtelAttribute {
-                key: "metadata.category".into(),
+                key: "error.category".into(),
                 value: OtelValue::String((*category).clone()),
             });
         }
         if let Some(retryable) = self.metadata.retryable {
             attributes.push(OtelAttribute {
-                key: "metadata.retryable".into(),
+                key: "error.retryable".into(),
                 value: OtelValue::Bool(retryable),
+            });
+        }
+        self.otel_trace_correlation(&mut attributes);
+        self.otel_diagnostic_bag(&mut attributes);
+        self.otel_attachment_attributes(&mut attributes);
+
+        #[cfg(feature = "trace")]
+        let trace_id = self
+            .trace
+            .and_then(|trace| trace.context.trace_id.as_ref().map(|v| v.as_cow()));
+        #[cfg(not(feature = "trace"))]
+        let trace_id: Option<Cow<'static, str>> = None;
+
+        #[cfg(feature = "trace")]
+        let span_id = self
+            .trace
+            .and_then(|trace| trace.context.span_id.as_ref().map(|v| v.as_cow()));
+        #[cfg(not(feature = "trace"))]
+        let span_id: Option<Cow<'static, str>> = None;
+
+        #[cfg(feature = "trace")]
+        let trace_flags = self.trace.and_then(|trace| trace.context.flags);
+        #[cfg(not(feature = "trace"))]
+        let trace_flags: Option<u8> = None;
+
+        OtelEvent {
+            name: "exception".into(),
+            body: Some(OtelValue::String(
+                self.error.message.to_string_owned().into(),
+            )),
+            timestamp_unix_nano: None,
+            observed_timestamp_unix_nano: None,
+            severity_text: Some(Cow::from(severity)),
+            severity_number: Some(severity_to_otel_number(severity)),
+            trace_id,
+            span_id,
+            trace_flags,
+            attributes,
+        }
+    }
+
+    fn otel_error_code_attr(key: &'static str, value: &ErrorCode) -> OtelAttribute {
+        OtelAttribute {
+            key: key.into(),
+            value: error_code_otel_value(value),
+        }
+    }
+
+    #[cfg(feature = "trace")]
+    fn otel_trace_correlation(&self, attributes: &mut Vec<OtelAttribute>) {
+        let Some(trace) = self.trace else {
+            return;
+        };
+        if let Some(parent_span_id) = trace.context.parent_span_id.as_ref() {
+            attributes.push(OtelAttribute {
+                key: "trace.parent_span_id".into(),
+                value: OtelValue::String(parent_span_id.as_cow()),
+            });
+        }
+        if let Some(trace_state) = trace.context.trace_state.as_ref() {
+            attributes.push(OtelAttribute {
+                key: "trace.state".into(),
+                value: OtelValue::String(trace_state.clone()),
             });
         }
     }
 
-    fn otel_stats(&self, _attributes: &mut Vec<OtelAttribute>) {}
+    #[cfg(not(feature = "trace"))]
+    fn otel_trace_correlation(&self, _attributes: &mut Vec<OtelAttribute>) {}
 
-    fn otel_stack_trace_and_causes(&self, attributes: &mut Vec<OtelAttribute>) {
-        if let Some(stack_trace) = &self.metadata.stack_trace {
-            attributes.push(OtelAttribute {
-                key: "diagnostic_bag.stack_trace".into(),
-                value: OtelValue::from(&build_stack_trace_value(stack_trace)),
-            });
-        }
+    fn otel_diagnostic_bag(&self, attributes: &mut Vec<OtelAttribute>) {
         if !self.display_causes.is_empty() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.display_causes".into(),
@@ -374,79 +384,19 @@ fn tracing_error(&self, fields: &mut Vec<TracingField>) {
         }
     }
 
-    #[cfg(feature = "trace")]
-    fn otel_trace_ev(&self, events: &mut Vec<OtelEvent>) {
-        let trace = match self.trace {
-            Some(t) => t,
-            None => return,
-        };
-        for trace_event in trace.events.iter() {
-            let mut event_attributes = Vec::new();
-            if let Some(level) = trace_event.level {
-                event_attributes.push(OtelAttribute {
-                    key: "level".into(),
-                    value: OtelValue::String(level.into()),
-                });
-            }
-            if let Some(ts) = trace_event.timestamp_unix_nano {
-                event_attributes.push(OtelAttribute {
-                    key: "timestamp_unix_nano".into(),
-                    value: OtelValue::U64(ts),
-                });
-            }
-            if !trace_event.attributes.is_empty() {
-                let attrs = trace_event
-                    .attributes
-                    .iter()
-                    .map(|attr| OtelAttribute {
-                        key: attr.key.clone(),
-                        value: OtelValue::from(&attr.value),
-                    })
-                    .collect();
-                event_attributes.push(OtelAttribute {
-                    key: "attributes".into(),
-                    value: OtelValue::KvList(attrs),
-                });
-            }
-            events.push(OtelEvent {
-                name: trace_event.name.clone(),
-                attributes: event_attributes,
-            });
-        }
-    }
-
-    #[cfg(feature = "trace")]
-    fn otel_trace_context(&self) -> Option<OtelTraceContext> {
-        let trace = self.trace?;
-        if trace.context.is_empty() {
-            return None;
-        }
-        Some(OtelTraceContext {
-            trace_id: trace.context.trace_id.as_ref().map(|v| v.as_cow()),
-            span_id: trace.context.span_id.as_ref().map(|v| v.as_cow()),
-            parent_span_id: trace.context.parent_span_id.as_ref().map(|v| v.as_cow()),
-            sampled: trace.context.sampled,
-            trace_state: trace.context.trace_state.clone(),
-            flags: trace.context.flags,
-        })
-    }
-
-    fn otel_context_and_attachments(
-        &self,
-        context: &mut Vec<OtelContextItem>,
-        attachments: &mut Vec<OtelAttachment>,
-    ) {
+    fn otel_attachment_attributes(&self, attributes: &mut Vec<OtelAttribute>) {
         for attachment in self.attachments {
             match attachment {
                 Attachment::Context { key, value } => {
-                    context.push(OtelContextItem {
+                    attributes.push(OtelAttribute {
                         key: key.clone(),
                         value: OtelValue::from(value),
                     });
                 }
                 Attachment::Note { message } => {
-                    attachments.push(OtelAttachment::Note {
-                        message: message.to_string().into(),
+                    attributes.push(OtelAttribute {
+                        key: "attachment.note".into(),
+                        value: OtelValue::String(message.to_string().into()),
                     });
                 }
                 Attachment::Payload {
@@ -454,14 +404,93 @@ fn tracing_error(&self, fields: &mut Vec<TracingField>) {
                     value,
                     media_type,
                 } => {
-                    attachments.push(OtelAttachment::Payload {
-                        name: name.clone(),
+                    attributes.push(OtelAttribute {
+                        key: format!("attachment.payload.{name}").into(),
                         value: OtelValue::from(value),
-                        media_type: media_type.clone(),
                     });
+                    if let Some(media_type) = media_type {
+                        attributes.push(OtelAttribute {
+                            key: format!("attachment.payload.{name}.media_type").into(),
+                            value: OtelValue::String(media_type.clone()),
+                        });
+                    }
                 }
             }
         }
+    }
+
+    #[cfg(feature = "trace")]
+    fn otel_trace_ev(&self, records: &mut Vec<OtelEvent>) {
+        let trace = match self.trace {
+            Some(t) => t,
+            None => return,
+        };
+        let fallback_severity = self
+            .metadata
+            .severity
+            .unwrap_or(crate::report::Severity::Error);
+        for trace_event in trace.events.iter() {
+            let (severity_text, severity_number) = match trace_event.level {
+                Some(level) => severity_for_trace_level(level),
+                None => (
+                    Cow::from(fallback_severity),
+                    severity_to_otel_number(fallback_severity),
+                ),
+            };
+            let mut attributes = trace_event
+                .attributes
+                .iter()
+                .map(|attr| OtelAttribute {
+                    key: attr.key.clone(),
+                    value: OtelValue::from(&attr.value),
+                })
+                .collect::<Vec<_>>();
+            if let Some(parent_span_id) = trace.context.parent_span_id.as_ref() {
+                attributes.push(OtelAttribute {
+                    key: "trace.parent_span_id".into(),
+                    value: OtelValue::String(parent_span_id.as_cow()),
+                });
+            }
+            if let Some(trace_state) = trace.context.trace_state.as_ref() {
+                attributes.push(OtelAttribute {
+                    key: "trace.state".into(),
+                    value: OtelValue::String(trace_state.clone()),
+                });
+            }
+            records.push(OtelEvent {
+                name: trace_event.name.clone(),
+                body: None,
+                timestamp_unix_nano: trace_event.timestamp_unix_nano,
+                observed_timestamp_unix_nano: None,
+                severity_text: Some(severity_text),
+                severity_number: Some(severity_number),
+                trace_id: trace.context.trace_id.as_ref().map(|v| v.as_cow()),
+                span_id: trace.context.span_id.as_ref().map(|v| v.as_cow()),
+                trace_flags: trace.context.flags,
+                attributes,
+            });
+        }
+    }
+}
+
+fn severity_to_otel_number(severity: crate::report::Severity) -> u8 {
+    match severity {
+        crate::report::Severity::Debug => 5,
+        crate::report::Severity::Info => 9,
+        crate::report::Severity::Warn => 13,
+        crate::report::Severity::Error => 17,
+        crate::report::Severity::Fatal => 21,
+    }
+}
+
+#[cfg(feature = "trace")]
+fn severity_for_trace_level(level: crate::report::TraceEventLevel) -> (Cow<'static, str>, u8) {
+    match level {
+        crate::report::TraceEventLevel::Trace => ("trace".into(), 1),
+        crate::report::TraceEventLevel::Debug => ("debug".into(), 5),
+        crate::report::TraceEventLevel::Info => ("info".into(), 9),
+        crate::report::TraceEventLevel::Warn => ("warn".into(), 13),
+        crate::report::TraceEventLevel::Error => ("error".into(), 17),
     }
 }
 

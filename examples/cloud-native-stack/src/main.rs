@@ -234,16 +234,16 @@ fn render_report(
 
     let ir = report.to_diagnostic_ir();
     let otel = ir.to_otel_envelope();
+    let report_record = otel.records.first().expect("report record should exist");
 
     println!("--- {label}: OTel Envelope ---");
-    println!("attributes_count={}", otel.attributes.len());
-    println!("events_count={}", otel.events.len());
+    println!("records_count={}", otel.records.len());
     println!(
         "trace_id={:?}",
-        find_attr(&otel.attributes, "trace_id").map(|v| v.to_string())
+        find_attr(&report_record.attributes, "trace_id").map(|v| v.to_string())
     );
     println!(
         "span_id={:?}",
-        find_attr(&otel.attributes, "span_id").map(|v| v.to_string())
+        find_attr(&report_record.attributes, "span_id").map(|v| v.to_string())
     );
 }

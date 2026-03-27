@@ -138,19 +138,23 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         .attach_payload("nested", nested, Some("application/json"));
 
     let otel = report.to_diagnostic_ir().to_otel_envelope();
+    let record = otel.records.first().expect("report record should exist");
+    assert_eq!(record.name, "exception");
+    assert_eq!(record.severity_text.as_deref(), Some("error"));
+    assert_eq!(record.severity_number, Some(17));
 
-    let overflow_ctx = otel
-        .context
+    let overflow_ctx = record
+        .attributes
         .iter()
         .find(|v| v.key == "overflow")
-        .expect("overflow context should exist");
+        .expect("overflow attribute should exist");
     assert_eq!(overflow_ctx.value, OtelValue::U64(u64::MAX));
 
-    let secret_ctx = otel
-        .context
+    let secret_ctx = record
+        .attributes
         .iter()
         .find(|v| v.key == "secret")
-        .expect("secret context should exist");
+        .expect("secret attribute should exist");
     match &secret_ctx.value {
         OtelValue::KvList(attrs) => {
             assert!(attrs.iter().any(|a| a.key == "kind"));
@@ -159,17 +163,11 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         other => panic!("expected redacted to convert into kvlist, got: {other:?}"),
     }
 
-    let nested_payload = otel
-        .attachments
+    let nested_payload = record
+        .attributes
         .iter()
-        .find_map(|a| match a {
-            diagweave::adapters::OtelAttachment::Payload { name, value, .. }
-                if name == "nested" =>
-            {
-                Some(value)
-            }
-            _ => None,
-        })
+        .find(|a| a.key == "attachment.payload.nested")
+        .map(|a| &a.value)
         .expect("nested payload should exist");
     match nested_payload {
         OtelValue::KvList(attrs) => {
@@ -272,17 +270,37 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     };
     assert!(!events.is_empty());
     let otel = ir.to_otel_envelope();
+    let report_record = otel
+        .records
+        .iter()
+        .find(|record| record.name == "exception")
+        .expect("report record should exist");
     assert!(
-        otel.attributes
+        report_record
+            .attributes
             .iter()
             .any(|a| a.key == "diagnostic_bag.display_causes")
     );
-    assert!(otel.events.iter().any(|e| e.name == "auth.lookup"));
+    let trace_record = otel
+        .records
+        .iter()
+        .find(|record| record.name == "auth.lookup")
+        .expect("trace record should exist");
+    assert_eq!(
+        trace_record.timestamp_unix_nano,
+        Some(1_713_337_000_000_000_000)
+    );
+    assert_eq!(trace_record.severity_text.as_deref(), Some("warn"));
+    assert_eq!(trace_record.severity_number, Some(13));
+    assert_eq!(
+        trace_record.trace_id.as_ref().map(|v| v.as_ref()).is_some(),
+        true
+    );
     assert!(
-        otel.trace_context
-            .as_ref()
-            .and_then(|ctx| ctx.trace_id.as_ref())
-            .is_some()
+        trace_record
+            .attributes
+            .iter()
+            .any(|a| a.key == "trace.parent_span_id")
     );
 }
 

@@ -316,11 +316,7 @@ where
     let tracing_fields = ir.to_tracing_fields();
     let otel = ir.to_otel_envelope();
     println!("Tracing fields count: {}", tracing_fields.len());
-    println!(
-        "OTel attributes/events: {}/{}\n",
-        otel.attributes.len(),
-        otel.events.len()
-    );
+    println!("OTel records: {}\n", otel.records.len());
 
     report.emit_tracing_with(&ConsoleExporter);
     println!();

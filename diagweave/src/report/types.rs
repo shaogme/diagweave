@@ -534,7 +534,7 @@ pub struct TraceContext {
     pub parent_span_id: Option<ParentSpanId>,
     pub sampled: Option<bool>,
     pub trace_state: Option<Cow<'static, str>>,
-    pub flags: Option<u32>,
+    pub flags: Option<u8>,
 }
 
 #[cfg(feature = "trace")]

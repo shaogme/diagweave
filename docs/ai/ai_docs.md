@@ -530,18 +530,18 @@ report.emit_tracing_with(&MyCustomExporter);
 ## 9. Cloud-Native Adaptation (OpenTelemetry)
 
 ### Overview
-`diagweave` provides adapters deeply integrated with OpenTelemetry (OTel) specifications, supporting conversion of rich diagnostic data into standard Envelope structures.
+`diagweave` provides adapters deeply integrated with OpenTelemetry (OTel) specifications, supporting conversion of rich diagnostic data into log/event records that follow the OTLP log data model.
 
 ### Conversion API
 | Method Declaration | Return Type | Description |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope` | OTel payload containing attributes and events |
+| `ir.to_otel_envelope()` | `OtelEnvelope` | OTLP-style batch of log/event records |
 | `ir.to_tracing_fields()` | `Vec<TracingField>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
-1. **Attributes**: Core error fields (message, code, type), severity/retry flags, cause-chain summaries, and report-level counters are mapped.
-2. **Events**: Internal `TraceEvent` from `Report` is converted into OTel event sequences.
-3. **TraceContext**: TraceID and SpanID are automatically filled into the top level of the Envelope.
+1. **Record fields**: The primary report becomes a log record with severity, timestamp-ready metadata, and trace correlation fields at the top level.
+2. **Attributes**: Core error fields, retry/category flags, cause-chain summaries, and attachment/context data are flattened into log attributes.
+3. **Trace events**: Internal `TraceEvent` values become additional OTLP-style log/event records with their own top-level timestamp, severity, and trace correlation fields.
 
 ---
 

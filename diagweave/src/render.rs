@@ -5,8 +5,8 @@ mod json;
 mod pretty;
 
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::borrow::ToOwned;
+use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;

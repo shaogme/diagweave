@@ -28,6 +28,7 @@ diagweave-macros = { path = "diagweave-macros", version = "0.1.0" }
 
 # External Crates
 tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "std"] }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 
 [workspace.lints.rust]

@@ -1,8 +1,8 @@
 use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
-#[cfg(feature = "trace")]
 use alloc::format;
 use alloc::string::ToString;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::render_impl::{
@@ -109,9 +109,7 @@ impl From<&AttachmentValue> for OtelValue {
             AttachmentValue::Null => Self::Null,
             AttachmentValue::String(v) => Self::String(v.clone()),
             AttachmentValue::Integer(v) => Self::Int(*v),
-            AttachmentValue::Unsigned(v) => {
-                Self::U64(*v)
-            }
+            AttachmentValue::Unsigned(v) => Self::U64(*v),
             AttachmentValue::Float(v) => Self::Double(*v),
             AttachmentValue::Bool(v) => Self::Bool(*v),
             AttachmentValue::Array(values) => {
@@ -194,7 +192,7 @@ impl DiagnosticIr<'_> {
         fields
     }
 
-    fn tracing_error(&self, fields: &mut Vec<TracingField>) {
+fn tracing_error(&self, fields: &mut Vec<TracingField>) {
         fields.push(TracingField {
             key: "error".into(),
             value: build_error_value(&self.error),
@@ -251,10 +249,7 @@ impl DiagnosticIr<'_> {
         if !self.display_causes.is_empty() {
             fields.push(TracingField {
                 key: "diagnostic_bag.display_causes".into(),
-                value: build_display_causes_value(
-                    self.display_causes,
-                    self.display_causes_state,
-                ),
+                value: build_display_causes_value(self.display_causes, self.display_causes_state),
             });
         }
         if !self.source_errors.is_empty() {
@@ -283,7 +278,10 @@ impl DiagnosticIr<'_> {
         let mut attributes = Vec::new();
         let mut context = Vec::new();
         let mut attachments = Vec::new();
+        #[cfg(feature = "trace")]
         let mut events = Vec::new();
+        #[cfg(not(feature = "trace"))]
+        let events = Vec::new();
 
         self.otel_error(&mut attributes);
         self.otel_meta(&mut attributes);
@@ -467,7 +465,6 @@ impl DiagnosticIr<'_> {
     }
 }
 
-#[cfg(feature = "trace")]
 fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
     let mut map = BTreeMap::new();
     map.insert(
@@ -545,7 +542,10 @@ fn build_trace_value(
         .iter()
         .map(|event| {
             let mut map = BTreeMap::new();
-            map.insert("name".to_string(), AttachmentValue::String(event.name.clone()));
+            map.insert(
+                "name".to_string(),
+                AttachmentValue::String(event.name.clone()),
+            );
             map.insert(
                 "level".to_string(),
                 event

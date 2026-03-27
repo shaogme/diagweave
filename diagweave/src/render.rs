@@ -5,6 +5,7 @@ mod json;
 mod pretty;
 
 use alloc::borrow::Cow;
+use alloc::boxed::Box;
 use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
@@ -401,7 +402,7 @@ pub(crate) fn build_display_causes_value(
         AttachmentValue::Array(
             display_causes
                 .iter()
-                .map(|v| AttachmentValue::String(v.to_string().into()))
+                .map(|v: &Box<dyn Display + 'static>| AttachmentValue::String(v.to_string().into()))
                 .collect(),
         ),
     );

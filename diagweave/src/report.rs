@@ -113,6 +113,13 @@ impl<E> Report<E> {
         }
     }
 
+    /// Returns the display-cause chain associated with the report, if any.
+    #[cfg(feature = "json")]
+    pub(crate) fn display_causes_chain(&self) -> Option<&DisplayCauseChain> {
+        self.diagnostics()
+            .and_then(|diag| diag.display_causes.as_ref())
+    }
+
     /// Returns the source errors associated with the report.
     pub fn source_errors(&self) -> &[Box<dyn Error + 'static>] {
         match self.diagnostics() {
@@ -123,6 +130,13 @@ impl<E> Report<E> {
                 .unwrap_or(&[]),
             None => &[],
         }
+    }
+
+    /// Returns the source-error chain associated with the report, if any.
+    #[cfg(feature = "json")]
+    pub(crate) fn source_errors_chain(&self) -> Option<&SourceErrorChain> {
+        self.diagnostics()
+            .and_then(|diag| diag.source_errors.as_ref())
     }
 
     /// Returns the metadata associated with the report.
@@ -201,8 +215,7 @@ impl<E> Report<E> {
 
         let has_context = !context.is_empty();
         #[cfg(feature = "trace")]
-        let has_trace =
-            trace_id.is_some() || span_id.is_some() || parent_span_id.is_some();
+        let has_trace = trace_id.is_some() || span_id.is_some() || parent_span_id.is_some();
         #[cfg(not(feature = "trace"))]
         let has_trace = false;
 
@@ -439,6 +452,12 @@ impl<E> Report<E> {
         self
     }
 
+    /// Replaces the display-cause chain for the report.
+    pub fn with_display_cause_chain(mut self, display_causes: DisplayCauseChain) -> Self {
+        self.diagnostics_mut().display_causes = Some(display_causes);
+        self
+    }
+
     /// Adds multiple display causes to the report.
     pub fn with_display_causes<I, T>(mut self, causes: I) -> Self
     where
@@ -464,6 +483,12 @@ impl<E> Report<E> {
             .get_or_insert_with(SourceErrorChain::default)
             .items
             .push(Box::new(err));
+        self
+    }
+
+    /// Replaces the source-error chain for the report.
+    pub fn with_source_error_chain(mut self, source_errors: SourceErrorChain) -> Self {
+        self.diagnostics_mut().source_errors = Some(source_errors);
         self
     }
 
@@ -627,7 +652,6 @@ pub fn register_global_injector(
         .set(Box::new(injector))
         .map_err(|_| RegisterGlobalContextError)
 }
-
 
 impl<E> Report<E>
 where

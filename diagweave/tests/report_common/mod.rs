@@ -20,7 +20,8 @@ pub use diagweave::report::GlobalContext;
 #[cfg(feature = "std")]
 pub use diagweave::report::register_global_injector;
 pub use diagweave::report::{
-    Attachment, AttachmentValue, ReportMetadata, StackTrace, StackTraceFormat,
+    Attachment, AttachmentValue, DisplayCauseChain, ReportMetadata, SourceErrorChain, StackTrace,
+    StackTraceFormat,
 };
 #[cfg(feature = "tracing")]
 pub use diagweave::trace::TracingExporterTrait;
@@ -110,8 +111,7 @@ pub fn ensure_global_injector_installed() {
                 .push(("request_id".into(), AttachmentValue::from("req-42")));
             #[cfg(feature = "trace")]
             {
-                context.trace_id =
-                    Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap());
+                context.trace_id = Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap());
                 context.span_id = Some(SpanId::new("00f067aa0ba902b7").unwrap());
             }
             Some(context)

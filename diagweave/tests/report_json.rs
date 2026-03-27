@@ -54,6 +54,8 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
         assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
         assert!(parsed["diagnostic_bag"]["source_errors"].is_object());
+        #[cfg(feature = "trace")]
+        assert!(parsed["trace"].is_null());
         assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(0));
     }
 }
@@ -99,14 +101,99 @@ fn json_document_carries_metadata_and_structured_attachments() {
     assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
     assert!(parsed["diagnostic_bag"]["source_errors"].is_null());
     #[cfg(feature = "trace")]
-    if parsed.get("trace").is_some() {
-        assert_eq!(
-            parsed["trace"]["events"].as_array().map(|a| a.len()),
-            Some(0)
-        );
-    }
+    assert!(parsed["trace"].is_null());
     assert_eq!(parsed["context"].as_array().map(|a| a.len()), Some(1));
     assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(2));
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_preserves_empty_cause_chains_with_state() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_display_cause_chain(DisplayCauseChain {
+            items: vec![],
+            truncated: true,
+            cycle_detected: true,
+        })
+        .with_source_error_chain(SourceErrorChain {
+            items: vec![],
+            truncated: true,
+            cycle_detected: true,
+        });
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+
+    let display = &parsed["diagnostic_bag"]["display_causes"];
+    assert!(display.is_object());
+    assert_eq!(display["items"].as_array().map(|a| a.len()), Some(0));
+    assert_eq!(display["truncated"].as_bool(), Some(true));
+    assert_eq!(display["cycle_detected"].as_bool(), Some(true));
+
+    let source = &parsed["diagnostic_bag"]["source_errors"];
+    assert!(source.is_object());
+    assert_eq!(source["items"].as_array().map(|a| a.len()), Some(0));
+    assert_eq!(source["truncated"].as_bool(), Some(true));
+    assert_eq!(source["cycle_detected"].as_bool(), Some(true));
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_renderer_honors_section_visibility_options() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_error_code("API.UNAUTHORIZED")
+        .attach("request_id", "req-json")
+        .attach_printable("token rejected");
+
+    let opts = ReportRenderOptions {
+        show_governance_section: false,
+        show_trace_section: false,
+        show_stack_trace_section: false,
+        show_context_section: false,
+        show_attachments_section: false,
+        show_cause_chains_section: false,
+        show_empty_sections: false,
+        ..ReportRenderOptions::default()
+    };
+
+    let json = report.render(Json::new(opts)).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+
+    assert!(parsed.get("metadata").is_none());
+    assert!(parsed.get("diagnostic_bag").is_none());
+    assert!(parsed.get("trace").is_none());
+    assert!(parsed.get("context").is_none());
+    assert!(parsed.get("attachments").is_none());
+    assert_eq!(parsed["schema_version"], REPORT_JSON_SCHEMA_VERSION);
+    assert_eq!(parsed["error"]["message"], "api unauthorized");
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_display_causes_respect_depth_limits() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_display_cause("first")
+        .with_display_cause("second");
+
+    let opts = ReportRenderOptions {
+        max_source_depth: 1,
+        show_cause_chains_section: true,
+        show_empty_sections: false,
+        ..ReportRenderOptions::default()
+    };
+
+    let json = report.render(Json::new(opts)).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let display = &parsed["diagnostic_bag"]["display_causes"];
+
+    assert_eq!(display["items"].as_array().map(|a| a.len()), Some(1));
+    assert_eq!(display["truncated"].as_bool(), Some(true));
 }
 
 #[cfg(feature = "json")]

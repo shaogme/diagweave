@@ -52,13 +52,13 @@ pub mod report {
         ReportSourceErrorIter, Severity, SourceErrorChain, StackFrame, StackTrace,
         StackTraceFormat,
     };
-    #[cfg(feature = "std")]
-    pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
     #[cfg(feature = "trace")]
     pub use crate::report_impl::{
         ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
         TraceEventLevel, TraceId,
     };
+    #[cfg(feature = "std")]
+    pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
 }
 
 #[cfg(feature = "trace")]

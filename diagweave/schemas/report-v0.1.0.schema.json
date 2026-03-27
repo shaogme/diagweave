@@ -232,14 +232,7 @@
   },
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "error",
-    "metadata",
-    "diagnostic_bag",
-    "context",
-    "attachments"
-  ],
+  "required": ["schema_version", "error"],
   "properties": {
     "schema_version": {
       "type": "string",

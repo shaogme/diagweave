@@ -6,7 +6,7 @@ use crate::render_impl::{
     DiagnosticIr, build_context_and_attachments, build_display_causes_value,
     build_source_errors_value, build_stack_trace_value,
 };
-use crate::report::{AttachmentValue, Severity, TraceEvent, TraceEventLevel};
+use crate::report::{AttachmentValue, ReportTrace, Severity, TraceEvent, TraceEventLevel};
 
 use super::TracingExporterTrait;
 
@@ -37,11 +37,7 @@ impl TracingExporterTrait for TracingExporter {
         if let Some(trace) = ir.trace {
             for (idx, trace_event) in trace.events.iter().enumerate() {
                 let trace_level = trace_level_to_tracing(trace_event.level).unwrap_or(report_level);
-                emit_trace_event(
-                    trace_level,
-                    idx,
-                    trace_event,
-                );
+                emit_trace_event(trace_level, idx, trace_event, Some(trace));
             }
         }
     }
@@ -157,7 +153,7 @@ fn emit_report_event(
 }
 
 macro_rules! trace_event {
-    ($level:expr, $idx:expr, $event:expr) => {
+    ($level:expr, $idx:expr, $event:expr, $trace:expr) => {
         event!(
             target: "diagweave::trace_event",
             $level,
@@ -166,17 +162,23 @@ macro_rules! trace_event {
             trace_event_level = ?$event.level,
             trace_event_timestamp_unix_nano = ?$event.timestamp_unix_nano,
             trace_event_attributes = ?$event.attributes,
+            trace_id = ?$trace.and_then(|t| t.context.trace_id.as_ref()),
+            span_id = ?$trace.and_then(|t| t.context.span_id.as_ref()),
+            parent_span_id = ?$trace.and_then(|t| t.context.parent_span_id.as_ref()),
+            trace_sampled = ?$trace.and_then(|t| t.context.sampled),
+            trace_state = ?$trace.and_then(|t| t.context.trace_state.as_ref()),
+            trace_flags = ?$trace.and_then(|t| t.context.flags),
             "diagweave trace event"
         )
     };
 }
 
-fn emit_trace_event(level: Level, idx: usize, event: &TraceEvent) {
+fn emit_trace_event(level: Level, idx: usize, event: &TraceEvent, trace: Option<&ReportTrace>) {
     match level {
-        Level::TRACE => trace_event!(Level::TRACE, idx, event),
-        Level::DEBUG => trace_event!(Level::DEBUG, idx, event),
-        Level::INFO => trace_event!(Level::INFO, idx, event),
-        Level::WARN => trace_event!(Level::WARN, idx, event),
-        Level::ERROR => trace_event!(Level::ERROR, idx, event),
+        Level::TRACE => trace_event!(Level::TRACE, idx, event, trace),
+        Level::DEBUG => trace_event!(Level::DEBUG, idx, event, trace),
+        Level::INFO => trace_event!(Level::INFO, idx, event, trace),
+        Level::WARN => trace_event!(Level::WARN, idx, event, trace),
+        Level::ERROR => trace_event!(Level::ERROR, idx, event, trace),
     }
 }

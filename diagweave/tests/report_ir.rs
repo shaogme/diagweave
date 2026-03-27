@@ -1,10 +1,22 @@
 mod report_common;
+use diagweave::adapters::OtelValue;
 use diagweave::prelude::*;
 use report_common::*;
-use diagweave::adapters::OtelValue;
-use std::collections::BTreeMap;
 #[cfg(feature = "tracing")]
 use std::cell::Cell;
+use std::collections::BTreeMap;
+#[cfg(all(feature = "tracing", feature = "std"))]
+use std::sync::{Arc, Mutex};
+#[cfg(all(feature = "tracing", feature = "std"))]
+use tracing::Subscriber;
+#[cfg(all(feature = "tracing", feature = "std"))]
+use tracing::field::{Field, Visit};
+#[cfg(all(feature = "tracing", feature = "std"))]
+use tracing_subscriber::layer::{Context, Layer};
+#[cfg(all(feature = "tracing", feature = "std"))]
+use tracing_subscriber::prelude::*;
+#[cfg(all(feature = "tracing", feature = "std"))]
+use tracing_subscriber::registry::LookupSpan;
 
 #[test]
 fn cause_tree_supports_multiple_sources_and_events() {
@@ -78,7 +90,10 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
         panic!("report.source_errors should be object");
     };
     assert_eq!(map.get("truncated"), Some(&AttachmentValue::Bool(false)));
-    assert_eq!(map.get("cycle_detected"), Some(&AttachmentValue::Bool(false)));
+    assert_eq!(
+        map.get("cycle_detected"),
+        Some(&AttachmentValue::Bool(false))
+    );
 
     let Some(AttachmentValue::Array(items)) = map.get("items") else {
         panic!("items should be an array");
@@ -129,10 +144,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         .iter()
         .find(|v| v.key == "overflow")
         .expect("overflow context should exist");
-    assert_eq!(
-        overflow_ctx.value,
-        OtelValue::U64(u64::MAX)
-    );
+    assert_eq!(overflow_ctx.value, OtelValue::U64(u64::MAX));
 
     let secret_ctx = otel
         .context
@@ -151,7 +163,9 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         .attachments
         .iter()
         .find_map(|a| match a {
-            diagweave::adapters::OtelAttachment::Payload { name, value, .. } if name == "nested" => {
+            diagweave::adapters::OtelAttachment::Payload { name, value, .. }
+                if name == "nested" =>
+            {
                 Some(value)
             }
             _ => None,
@@ -233,7 +247,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     let ir = report.to_diagnostic_ir();
     let tracing_fields = ir.to_tracing_fields();
     assert!(tracing_fields.iter().any(|f| f.key == "error"));
-    assert!(tracing_fields.iter().any(|f| f.key == "metadata.error_code"));
+    assert!(
+        tracing_fields
+            .iter()
+            .any(|f| f.key == "metadata.error_code")
+    );
     let trace_value = tracing_fields
         .iter()
         .find(|f| f.key == "trace")
@@ -260,11 +278,12 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .any(|a| a.key == "diagnostic_bag.display_causes")
     );
     assert!(otel.events.iter().any(|e| e.name == "auth.lookup"));
-    assert!(otel
-        .trace_context
-        .as_ref()
-        .and_then(|ctx| ctx.trace_id.as_ref())
-        .is_some());
+    assert!(
+        otel.trace_context
+            .as_ref()
+            .and_then(|ctx| ctx.trace_id.as_ref())
+            .is_some()
+    );
 }
 
 #[cfg(feature = "trace")]
@@ -327,4 +346,118 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
     assert_eq!(calls.get(), 1);
     assert!(!stack_trace_present.get());
     assert_eq!(trace_events.get(), 1);
+}
+
+#[cfg(all(feature = "tracing", feature = "std"))]
+#[test]
+fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
+    let _guard = init_test();
+
+    #[derive(Default)]
+    struct FieldVisitor {
+        fields: BTreeMap<String, String>,
+    }
+
+    impl Visit for FieldVisitor {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
+
+    #[derive(Clone)]
+    struct EventCollector {
+        events: Arc<Mutex<Vec<CapturedEvent>>>,
+    }
+
+    struct CapturedEvent {
+        level: tracing::Level,
+        target: String,
+        fields: BTreeMap<String, String>,
+    }
+
+    impl<S> Layer<S> for EventCollector
+    where
+        S: Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = FieldVisitor::default();
+            event.record(&mut visitor);
+            self.events.lock().expect("event lock").push(CapturedEvent {
+                level: *event.metadata().level(),
+                target: event.metadata().target().to_string(),
+                fields: visitor.fields,
+            });
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let collector = EventCollector {
+        events: Arc::clone(&events),
+    };
+    let subscriber = tracing_subscriber::registry().with(collector);
+    let _subscriber = tracing::subscriber::set_default(subscriber);
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_severity(Severity::Error)
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
+        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
+        .with_trace_sampled(true)
+        .with_trace_state("vendor=blue")
+        .with_trace_flags(1)
+        .with_trace_event(TraceEvent {
+            name: "db.query".into(),
+            level: None,
+            timestamp_unix_nano: Some(1_713_337_100_000_000_000),
+            attributes: vec![],
+        });
+
+    report.emit_tracing();
+
+    let events = events.lock().expect("events lock");
+    let trace_event = events
+        .iter()
+        .find(|event| event.target == "diagweave::trace_event")
+        .expect("trace event should be emitted");
+
+    assert_eq!(trace_event.level, tracing::Level::ERROR);
+    assert!(
+        trace_event
+            .fields
+            .get("trace_id")
+            .is_some_and(|v| v.contains("4bf92f3577b34da6a3ce929d0e0e4736"))
+    );
+    assert!(
+        trace_event
+            .fields
+            .get("span_id")
+            .is_some_and(|v| v.contains("00f067aa0ba902b7"))
+    );
+    assert!(
+        trace_event
+            .fields
+            .get("parent_span_id")
+            .is_some_and(|v| v.contains("1111111111111111"))
+    );
+    assert!(
+        trace_event
+            .fields
+            .get("trace_sampled")
+            .is_some_and(|v| v.contains("true"))
+    );
+    assert!(
+        trace_event
+            .fields
+            .get("trace_state")
+            .is_some_and(|v| v.contains("vendor=blue"))
+    );
+    assert!(
+        trace_event
+            .fields
+            .get("trace_flags")
+            .is_some_and(|v| v.contains("1"))
+    );
 }

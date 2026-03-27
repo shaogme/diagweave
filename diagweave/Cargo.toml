@@ -20,10 +20,11 @@ tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 trybuild = "1.0"
+tracing-subscriber = { workspace = true, features = ["registry", "std"] }
 
 [features]
 default = ["std"]
-std = []
+std = ["tracing?/std"]
 json = ["dep:serde", "dep:serde_json"]
 trace = []
 tracing = ["trace", "dep:tracing"]

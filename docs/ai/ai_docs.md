@@ -480,9 +480,11 @@ Exports diagnostic reports to monitoring systems or log streams.
 
 ### Usage Example
 ```rust
-use diagweave::prelude::{Report, ReportRenderOptions, SpanId, TraceId};
+use diagweave::prelude::Report;
 use std::fmt;
 
+#[cfg(feature = "trace")]
+use diagweave::prelude::{SpanId, TraceId};
 #[cfg(feature = "trace")]
 use diagweave::trace::TracingExporterTrait;
 
@@ -506,9 +508,9 @@ impl TracingExporterTrait for MyCustomExporter {
 }
 
 let report = Report::new(MyError);
-let options = ReportRenderOptions::default();
 
 // Bind trace/span ids
+#[cfg(feature = "trace")]
 let report = report.with_trace_ids(
     TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
     SpanId::new("00f067aa0ba902b7").unwrap(),

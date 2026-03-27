@@ -61,6 +61,21 @@ where
 {
     let pretty = options.json_pretty;
     let mut first = true;
+    let metadata = report.metadata();
+    let has_metadata = metadata.error_code.is_some()
+        || metadata.severity.is_some()
+        || metadata.category.is_some()
+        || metadata.retryable.is_some();
+    let has_context = report
+        .attachments()
+        .iter()
+        .any(|attachment| matches!(attachment, crate::report::Attachment::Context { .. }));
+    let has_attachments = report
+        .attachments()
+        .iter()
+        .any(|attachment| !matches!(attachment, crate::report::Attachment::Context { .. }));
+    let has_diag_bag =
+        has_stack_trace(report) || has_display_causes(report) || has_source_errors(report);
 
     f.write_char('{')?;
     write_object_field(f, pretty, 0, &mut first, "schema_version", |f| {
@@ -69,30 +84,63 @@ where
     write_object_field(f, pretty, 0, &mut first, "error", |f| {
         report::write_error_object(f, pretty, 1, report.inner())
     })?;
-    write_object_field(f, pretty, 0, &mut first, "metadata", |f| {
-        report::write_metadata_object(f, pretty, 1, report)
-    })?;
-    write_object_field(f, pretty, 0, &mut first, "diagnostic_bag", |f| {
-        report::write_diag_bag(f, pretty, 1, report, options)
-    })?;
+    if options.show_governance_section && (options.show_empty_sections || has_metadata) {
+        write_object_field(f, pretty, 0, &mut first, "metadata", |f| {
+            report::write_metadata_object(f, pretty, 1, report)
+        })?;
+    }
+    if (options.show_stack_trace_section || options.show_cause_chains_section)
+        && (options.show_empty_sections || has_diag_bag)
+    {
+        write_object_field(f, pretty, 0, &mut first, "diagnostic_bag", |f| {
+            report::write_diag_bag(f, pretty, 1, report, options)
+        })?;
+    }
     #[cfg(feature = "trace")]
-    if report.trace().is_some() {
+    if options.show_trace_section
+        && (options.show_empty_sections || report.trace().is_some_and(|trace| !trace.is_empty()))
+    {
         write_object_field(f, pretty, 0, &mut first, "trace", |f| {
             report::write_trace_object(f, pretty, 1, report)
         })?;
     }
-    write_object_field(f, pretty, 0, &mut first, "context", |f| {
-        attachment::write_context_array(f, pretty, 1, report)
-    })?;
-    write_object_field(f, pretty, 0, &mut first, "attachments", |f| {
-        attachment::write_attachments_array(f, pretty, 1, report)
-    })?;
+    if options.show_context_section && (options.show_empty_sections || has_context) {
+        write_object_field(f, pretty, 0, &mut first, "context", |f| {
+            attachment::write_context_array(f, pretty, 1, report)
+        })?;
+    }
+    if options.show_attachments_section && (options.show_empty_sections || has_attachments) {
+        write_object_field(f, pretty, 0, &mut first, "attachments", |f| {
+            attachment::write_attachments_array(f, pretty, 1, report)
+        })?;
+    }
 
     if pretty && !first {
         f.write_char('\n')?;
         write_indent(f, 0)?;
     }
     f.write_char('}')
+}
+
+fn has_stack_trace<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.stack_trace().is_some()
+}
+
+fn has_display_causes<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.display_causes_chain().is_some()
+}
+
+fn has_source_errors<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.source_errors_chain().is_some() || report.inner().source().is_some()
 }
 
 // Internal utilities used by submodules

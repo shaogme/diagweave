@@ -61,24 +61,50 @@ where
 {
     let mut first = true;
     f.write_char('{')?;
-    write_object_field(
-        f,
-        pretty,
-        depth,
-        &mut first,
-        "stack_trace",
-        |f| match report.stack_trace() {
-            Some(stack_trace) => write_stack_trace_object(f, pretty, depth + 1, stack_trace),
-            None => f.write_str("null"),
-        },
-    )?;
-    write_object_field(f, pretty, depth, &mut first, "display_causes", |f| {
-        write_display_causes(f, pretty, depth + 1, report, options)
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "source_errors", |f| {
-        write_source_errors(f, pretty, depth + 1, report, options)
-    })?;
+    if options.show_stack_trace_section
+        && (options.show_empty_sections || report.stack_trace().is_some())
+    {
+        write_object_field(
+            f,
+            pretty,
+            depth,
+            &mut first,
+            "stack_trace",
+            |f| match report.stack_trace() {
+                Some(stack_trace) => write_stack_trace_object(f, pretty, depth + 1, stack_trace),
+                None => f.write_str("null"),
+            },
+        )?;
+    }
+    if options.show_cause_chains_section
+        && (options.show_empty_sections || has_display_causes(report))
+    {
+        write_object_field(f, pretty, depth, &mut first, "display_causes", |f| {
+            write_display_causes(f, pretty, depth + 1, report, options)
+        })?;
+    }
+    if options.show_cause_chains_section
+        && (options.show_empty_sections || has_source_errors(report))
+    {
+        write_object_field(f, pretty, depth, &mut first, "source_errors", |f| {
+            write_source_errors(f, pretty, depth + 1, report, options)
+        })?;
+    }
     close_object(f, pretty, depth, first)
+}
+
+fn has_display_causes<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.display_causes_chain().is_some()
+}
+
+fn has_source_errors<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.source_errors_chain().is_some() || report.inner().source().is_some()
 }
 
 fn write_meta_gov_fields(
@@ -122,10 +148,10 @@ fn write_display_causes(
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    let display_causes = report.display_causes();
-    if display_causes.is_empty() {
+    let Some(display_causes) = report.display_causes_chain() else {
         return f.write_str("null");
-    }
+    };
+
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
@@ -144,10 +170,18 @@ fn write_display_causes(
         close_array(f, pretty, depth + 1, array_first)
     })?;
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
-        write!(f, "{}", traversal_state.truncated)
+        write!(
+            f,
+            "{}",
+            display_causes.truncated || traversal_state.truncated
+        )
     })?;
     write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
-        write!(f, "{}", traversal_state.cycle_detected)
+        write!(
+            f,
+            "{}",
+            display_causes.cycle_detected || traversal_state.cycle_detected
+        )
     })?;
     close_object(f, pretty, depth, first)
 }
@@ -159,10 +193,27 @@ fn write_source_errors(
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    if report.source_errors().is_empty() && report.inner().source().is_none() {
-        return f.write_str("null");
-    }
+    let Some(source_errors) = report.source_errors_chain() else {
+        if report.inner().source().is_none() {
+            return f.write_str("null");
+        }
+        return write_source_errors_from_traversal(f, pretty, depth, report, options, None);
+    };
 
+    write_source_errors_from_traversal(f, pretty, depth, report, options, Some(source_errors))
+}
+
+fn write_source_errors_from_traversal<E>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E>,
+    options: ReportRenderOptions,
+    source_errors: Option<&crate::report::SourceErrorChain>,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
@@ -181,10 +232,12 @@ fn write_source_errors(
         close_array(f, pretty, depth + 1, array_first)
     })?;
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
-        write!(f, "{}", traversal_state.truncated)
+        let base = source_errors.map(|v| v.truncated).unwrap_or(false);
+        write!(f, "{}", base || traversal_state.truncated)
     })?;
     write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
-        write!(f, "{}", traversal_state.cycle_detected)
+        let base = source_errors.map(|v| v.cycle_detected).unwrap_or(false);
+        write!(f, "{}", base || traversal_state.cycle_detected)
     })?;
     close_object(f, pretty, depth, first)
 }

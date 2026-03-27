@@ -141,6 +141,53 @@ fn json_preserves_empty_cause_chains_with_state() {
 
 #[cfg(feature = "json")]
 #[test]
+fn json_source_errors_include_error_type() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_source_error(AuthError::InvalidToken)
+        .with_source_error(std::io::Error::other("network down"));
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let source = &parsed["diagnostic_bag"]["source_errors"];
+
+    let items = source["items"].as_array().expect("items should be array");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["message"], "auth invalid token");
+    assert_eq!(items[0]["type"], std::any::type_name::<AuthError>());
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_source_errors_without_concrete_type_emit_null() {
+    let _guard = init_test();
+
+    let report = Report::new(LoopError);
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let source = &parsed["diagnostic_bag"]["source_errors"];
+    let items = source["items"].as_array().expect("items should be array");
+    assert_eq!(items[0]["type"], serde_json::Value::Null);
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_source_errors_hide_internal_report_wrapper_types() {
+    let _guard = init_test();
+
+    let report = Report::new(AuthError::InvalidToken).wrap(ApiError::Unauthorized);
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let source = &parsed["diagnostic_bag"]["source_errors"];
+    let items = source["items"].as_array().expect("items should be array");
+    assert_eq!(items[0]["type"], serde_json::Value::Null);
+}
+
+#[cfg(feature = "json")]
+#[test]
 fn json_renderer_honors_section_visibility_options() {
     let _guard = init_test();
 
@@ -320,8 +367,10 @@ fn json_trace_section_rejects_non_finite_floats() {
         }],
     });
 
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = report.render(Json::default()).to_string();
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = report.render(Json::default()).to_string();
+        }))
+        .is_err()
+    );
 }

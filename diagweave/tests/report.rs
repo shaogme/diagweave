@@ -268,6 +268,19 @@ fn pretty_output_is_structured() {
 }
 
 #[test]
+fn pretty_indents_nested_source_errors() {
+    let _guard = init_test();
+
+    let pretty = Report::new(ApiError::Unauthorized)
+        .wrap(ApiError::Wrapped { code: 500 })
+        .wrap(ApiError::Wrapped { code: 501 })
+        .pretty()
+        .to_string();
+
+    assert!(pretty.contains("  - source:\n    - message:"));
+}
+
+#[test]
 fn pretty_respects_max_source_depth() {
     let _guard = init_test();
 
@@ -330,6 +343,25 @@ fn pretty_can_hide_type_and_empty_sections_and_change_indent() {
 }
 
 #[test]
+fn pretty_can_hide_type_names_in_source_chains() {
+    let _guard = init_test();
+
+    let pretty = Report::new(ApiError::Unauthorized)
+        .with_source_error(AuthError::InvalidToken)
+        .render(Pretty::new(ReportRenderOptions {
+            show_type_name: false,
+            show_cause_chains_section: true,
+            show_empty_sections: true,
+            ..ReportRenderOptions::default()
+        }))
+        .to_string();
+
+    assert!(pretty.contains("Source Errors:"));
+    assert!(pretty.contains("auth invalid token"));
+    assert!(!pretty.contains("- type:"));
+}
+
+#[test]
 fn custom_renderer_trait_is_supported() {
     let _guard = init_test();
 
@@ -387,7 +419,7 @@ fn public_cause_visit_apis_are_accessible() {
     let mut source = Vec::new();
     let source_state = report
         .visit_sources(|err| {
-            source.push(err.to_string());
+            source.push(err.message);
             Ok(())
         })
         .expect("source errors");
@@ -414,11 +446,176 @@ fn public_cause_visit_apis_are_accessible() {
         max_depth: 4,
         detect_cycle: true,
     });
-    let collected: Vec<String> = iter.by_ref().map(|err| err.to_string()).collect();
+    let collected: Vec<String> = iter.by_ref().map(|err| err.message).collect();
     let iter_state = iter.state();
     assert_eq!(collected, vec!["api unauthorized".to_owned()]);
     assert!(!iter_state.truncated);
     assert!(!iter_state.cycle_detected);
+}
+
+#[test]
+fn source_iteration_can_disable_cycle_detection() {
+    let _guard = init_test();
+
+    let report = Report::new(LoopError);
+    let mut iter = report.iter_sources_ext(CauseCollectOptions {
+        max_depth: 4,
+        detect_cycle: false,
+    });
+    let collected: Vec<String> = iter.by_ref().map(|err| err.message).collect();
+    let iter_state = iter.state();
+
+    assert_eq!(
+        collected,
+        vec![
+            "loop error".to_owned(),
+            "loop error".to_owned(),
+            "loop error".to_owned(),
+            "loop error".to_owned(),
+        ]
+    );
+    assert!(iter_state.truncated);
+    assert!(!iter_state.cycle_detected);
+}
+
+#[test]
+fn wrap_keeps_explicit_source_chain_isolated_from_inner_source() {
+    let _guard = init_test();
+
+    #[derive(Debug)]
+    struct NaturalSourceError;
+
+    impl std::fmt::Display for NaturalSourceError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "natural source")
+        }
+    }
+
+    impl Error for NaturalSourceError {}
+
+    #[derive(Debug)]
+    struct SourcefulError;
+
+    impl std::fmt::Display for SourcefulError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "sourceful error")
+        }
+    }
+
+    impl Error for SourcefulError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            Some(&NATURAL_SOURCE)
+        }
+    }
+
+    static NATURAL_SOURCE: NaturalSourceError = NaturalSourceError;
+
+    let report = Report::new(SourcefulError)
+        .with_source_error(ApiError::Unauthorized)
+        .wrap(ApiError::Wrapped { code: 500 });
+
+    let messages: Vec<String> = report
+        .iter_sources_ext(CauseCollectOptions {
+            max_depth: 8,
+            detect_cycle: true,
+        })
+        .map(|entry| entry.message)
+        .collect();
+
+    assert!(messages.iter().any(|message| message == "api unauthorized"));
+    assert!(!messages.iter().any(|message| message == "natural source"));
+}
+
+#[test]
+fn source_iteration_keeps_top_level_siblings_at_same_depth() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_source_error(AuthError::InvalidToken)
+        .with_source_error(std::io::Error::other("network down"));
+    let collected: Vec<(String, usize)> = report
+        .iter_sources_ext(CauseCollectOptions {
+            max_depth: 4,
+            detect_cycle: true,
+        })
+        .map(|err| (err.message, err.depth))
+        .collect();
+
+    assert_eq!(
+        collected,
+        vec![
+            ("auth invalid token".to_owned(), 0),
+            ("network down".to_owned(), 0),
+        ]
+    );
+}
+
+#[test]
+fn source_iteration_keeps_siblings_after_truncation() {
+    let _guard = init_test();
+
+    let deep_branch = Report::new(AuthError::InvalidToken).wrap(ApiError::Unauthorized);
+    let report = Report::new(ApiError::Wrapped { code: 400 })
+        .with_source_error(deep_branch)
+        .with_source_error(std::io::Error::other("network down"));
+
+    let collected: Vec<String> = report
+        .iter_sources_ext(CauseCollectOptions {
+            max_depth: 1,
+            detect_cycle: true,
+        })
+        .map(|err| err.message)
+        .collect();
+
+    assert!(collected.iter().any(|message| message == "network down"));
+}
+
+#[test]
+fn source_errors_iterator_only_uses_attached_chain() {
+    let _guard = init_test();
+
+    #[derive(Debug)]
+    struct NaturalSourceError;
+
+    impl std::fmt::Display for NaturalSourceError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "natural source")
+        }
+    }
+
+    impl Error for NaturalSourceError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            Some(&NATURAL_SOURCE)
+        }
+    }
+
+    static NATURAL_SOURCE: NaturalSourceError = NaturalSourceError;
+
+    let report = Report::new(NaturalSourceError).with_source_error(AuthError::InvalidToken);
+    let collected: Vec<String> = report.source_errors().map(|err| err.message).collect();
+
+    assert_eq!(collected, vec!["auth invalid token".to_owned()]);
+}
+
+#[test]
+fn wrap_preserves_deep_source_chains() {
+    let _guard = init_test();
+
+    let report = (0..18).fold(Report::new(ApiError::Unauthorized), |report, idx| {
+        report.wrap(ApiError::Wrapped {
+            code: 500 + idx as u16,
+        })
+    });
+
+    let mut iter = report.iter_sources_ext(CauseCollectOptions {
+        max_depth: 32,
+        detect_cycle: true,
+    });
+    let collected: Vec<String> = iter.by_ref().map(|err| err.message).collect();
+    let iter_state = iter.state();
+
+    assert!(collected.len() > 16);
+    assert!(!iter_state.truncated);
 }
 
 #[test]

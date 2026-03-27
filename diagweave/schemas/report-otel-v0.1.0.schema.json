@@ -123,6 +123,7 @@
       "properties": {
         "name": { "type": "string" },
         "body": {
+          "description": "Structured error node for the primary exception record, or null for trace-event records.",
           "oneOf": [
             { "$ref": "#/$defs/otel_value" },
             { "type": "null" }

@@ -408,36 +408,73 @@ fn render_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let mut count = 0usize;
-    let mut wrote_header = false;
-    let traversal = report.visit_sources_ext(traversal_options, |err| {
-        if !wrote_header {
-            wrote_header = true;
+    let Some(source_errors) = report.source_errors_snapshot(traversal_options) else {
+        if options.show_empty_sections {
             writeln!(f, "Source Errors:")?;
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         }
-        count += 1;
-        write_indent(f, options.pretty_indent)?;
-        writeln!(f, "{}. {}", count, err)
-    })?;
+        return Ok(());
+    };
 
-    let should_show_section =
-        options.show_empty_sections || count > 0 || traversal.truncated || traversal.cycle_detected;
-    if should_show_section && !wrote_header {
+    if options.show_empty_sections
+        || !source_errors.is_empty()
+        || source_errors.truncated
+        || source_errors.cycle_detected
+    {
         writeln!(f, "Source Errors:")?;
-        wrote_header = true;
     }
-
-    if wrote_header && count == 0 && options.show_empty_sections {
-        write_indent(f, options.pretty_indent)?;
-        writeln!(f, "- (none)")?;
+    if source_errors.is_empty() {
+        if options.show_empty_sections {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        }
+    } else {
+        render_source_error_chain(
+            f,
+            &source_errors,
+            options.pretty_indent,
+            1,
+            options.show_type_name,
+        )?;
     }
-    if wrote_header && traversal.truncated {
+    if source_errors.truncated {
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "- ... truncated by max_source_depth")?;
     }
-    if wrote_header && traversal.cycle_detected {
+    if source_errors.cycle_detected {
         write_indent(f, options.pretty_indent)?;
         writeln!(f, "- ... cycle detected and traversal stopped")?;
+    }
+    Ok(())
+}
+
+fn render_source_error_chain(
+    f: &mut Formatter<'_>,
+    source_errors: &crate::report::SourceErrorChain,
+    indent: PrettyIndent,
+    depth: usize,
+    show_type_name: bool,
+) -> fmt::Result {
+    for item in &source_errors.items {
+        write_depth_indent(f, indent, depth)?;
+        writeln!(f, "- message: {}", item.error)?;
+        if show_type_name {
+            write_depth_indent(f, indent, depth)?;
+            writeln!(f, "- type: {}", item.display_type_name().unwrap_or("null"))?;
+        }
+        if let Some(source) = item.source.as_ref() {
+            write_depth_indent(f, indent, depth + 1)?;
+            writeln!(f, "- source:")?;
+            render_source_error_chain(f, source, indent, depth + 1, show_type_name)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_depth_indent(f: &mut Formatter<'_>, indent: PrettyIndent, depth: usize) -> fmt::Result {
+    for _ in 0..depth {
+        write_indent(f, indent)?;
     }
     Ok(())
 }

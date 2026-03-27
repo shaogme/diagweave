@@ -377,14 +377,19 @@ Converts `Report` with rich metadata into displayable strings or structured data
 | `show_stack_trace_section`| `true`| Whether to show Stack Trace section |
 | `show_trace_section` | `true`| Whether to show Distributed Tracing (TraceID/Event) section |
 | `stack_trace_max_lines` | `24` | Maximum lines for raw stack trace rendering |
+| `stack_trace_include_raw` | `true` | Whether to include raw stack trace output when rendering stack traces |
+| `stack_trace_include_frames` | `true` | Whether to include parsed stack frames when rendering stack traces |
 
 
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
-Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir()` to a stable IR structure. The IR keeps header/metadata plus aggregate counters for attachment-related sections.
+Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir()` to a stable IR structure. The IR keeps the error node, metadata, trace reference, attachments, display causes, source errors, and aggregate counters for attachment-related sections.
 ```rust
 use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
+use diagweave::report::{Attachment, CauseTraversalState};
+use std::boxed::Box;
+use std::fmt::Display;
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
@@ -397,6 +402,11 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
+    pub attachments: &'a [Attachment],
+    pub display_causes: &'a [Box<dyn Display + 'static>],
+    pub display_causes_state: CauseTraversalState,
+    pub source_errors: Vec<DiagnosticIrError<'static>>,
+    pub source_errors_state: CauseTraversalState,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -431,7 +441,7 @@ let attachment_count = ir.attachment_count;
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIrMetadata` does not expose `display_causes` / `source_errors`; traverse those from `Report` via `visit_causes*`, `visit_sources*`, or `iter_sources*`.
+`DiagnosticIr` keeps `display_causes` and `source_errors` as structured data. `source_errors` use the same `message`/`type` error-node shape as the root error, while `DiagnosticIrMetadata` still does not expose the chains directly.
 
 ### Usage Example
 ```rust
@@ -475,7 +485,8 @@ Exports diagnostic reports to monitoring systems or log streams.
 
 ### Export Behavior
 - **Attribute Mapping**: `Context` is mapped as named fields for the `tracing` event.
-- **Display Causes**: Display-cause messages are concatenated into an `error.causes` string.
+- **Structured Fields**: `report_display_causes`, `report_source_errors`, `report_stack_trace`, `report_context`, and `report_attachments` are emitted as structured debug fields.
+- **Empty Sections**: Empty `trace`, `context`, and `attachments` sections are omitted.
 - **Trace ID Binding**: If Report contains `TraceContext`, it is automatically associated, or associated via injector from current Span environment.
 
 ### Usage Example
@@ -539,9 +550,10 @@ report.emit_tracing_with(&MyCustomExporter);
 | `ir.to_tracing_fields()` | `Vec<TracingField>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
-1. **Record fields**: The primary report becomes a log record with severity, timestamp-ready metadata, and trace correlation fields at the top level.
-2. **Attributes**: Core error fields, retry/category flags, cause-chain summaries, and attachment/context data are flattened into log attributes.
+1. **Record fields**: The primary report becomes a log record with severity, timestamp-ready metadata, trace correlation fields, and a structured `body` error node.
+2. **Attributes**: Core error fields, retry/category flags, cause-chain summaries, and attachment/context data are emitted as structured OTEL attributes.
 3. **Trace events**: Internal `TraceEvent` values become additional OTLP-style log/event records with their own top-level timestamp, severity, and trace correlation fields.
+4. **Structure preservation**: `exception.stacktrace` and `diagnostic_bag.source_errors` remain structured instead of string-flattened.
 
 ---
 

@@ -147,7 +147,8 @@ pub trait ReportResultExt<T, E> {
 
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer>>
     where
-        Report<E>: Error + 'static;
+        Report<E>: Error + 'static,
+        E: Error + 'static;
 
     fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer>>;
 }
@@ -331,6 +332,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer>>
     where
         Report<E>: Error + 'static,
+        E: Error + 'static,
     {
         self.map_err(|report| report.wrap(outer))
     }

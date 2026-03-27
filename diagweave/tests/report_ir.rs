@@ -109,6 +109,12 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
         first.get("message"),
         Some(&AttachmentValue::String("auth invalid token".into()))
     );
+    assert_eq!(
+        first.get("type"),
+        Some(&AttachmentValue::String(
+            std::any::type_name::<AuthError>().into()
+        ))
+    );
 }
 
 #[cfg(feature = "otel")]
@@ -269,6 +275,12 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         trace_error.get("message"),
         Some(&AttachmentValue::String("api unauthorized".into()))
     );
+    assert_eq!(
+        trace_error.get("type"),
+        Some(&AttachmentValue::String(
+            std::any::type_name::<ApiError>().into()
+        ))
+    );
     let Some(AttachmentValue::Array(events)) = trace_obj.get("events") else {
         panic!("trace.events should be array");
     };
@@ -306,6 +318,17 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|a| a.key == "trace.parent_span_id")
     );
+}
+
+#[cfg(feature = "trace")]
+#[test]
+fn tracing_exporter_skips_empty_trace_section() {
+    let _guard = init_test();
+
+    let report =
+        Report::new(ApiError::Unauthorized).with_trace(diagweave::report::ReportTrace::default());
+    let fields = report.to_diagnostic_ir().to_tracing_fields();
+    assert!(fields.iter().all(|field| field.key != "trace"));
 }
 
 #[cfg(feature = "trace")]
@@ -350,8 +373,9 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     assert_eq!(records[0]["name"], "exception");
     assert_eq!(records[0]["severity_text"], "error");
     assert_eq!(records[0]["severity_number"], 17);
+    assert_eq!(records[0]["body"]["KvList"][0]["key"], "message");
     assert_eq!(
-        records[0]["body"],
+        records[0]["body"]["KvList"][0]["value"],
         serde_json::json!({"String": "api unauthorized"})
     );
     assert_eq!(records[1]["name"], "db.query");

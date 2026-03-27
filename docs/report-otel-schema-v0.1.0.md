@@ -24,6 +24,11 @@ This document defines the machine-consumable OpenTelemetry envelope emitted by `
 - `trace_flags: integer|null`
 - `attributes: Array<OtelAttribute>`
 
+Record semantics:
+
+- The primary `exception` record uses a structured `body` value that mirrors the report error node rather than a plain message string.
+- Trace-event records keep `body: null` and carry their data in top-level fields and attributes.
+
 ## OtelAttribute model
 
 - `key: string`
@@ -60,6 +65,12 @@ Current exporters populate these keys:
 - `attachment.note`
 - `attachment.payload.{name}`
 - `attachment.payload.{name}.media_type`
+
+Notes:
+
+- `exception.stacktrace` is emitted as a structured `KvList` value, not a flattened string.
+- `diagnostic_bag.source_errors` items preserve `message`, `type`, and nested `source` fields.
+- Empty trace, context, and attachment sections are omitted by default when they carry no data.
 
 ## Rust type definitions
 

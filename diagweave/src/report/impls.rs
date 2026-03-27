@@ -183,7 +183,7 @@ where
             .and_then(|diag| {
                 diag.source_errors
                     .as_ref()
-                    .and_then(|v| v.items.first().map(|err| err.as_ref()))
+                    .and_then(|v| v.items.first().map(|err| err.error.as_ref()))
             })
             .or_else(|| self.inner().source())
     }

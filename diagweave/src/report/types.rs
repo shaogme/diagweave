@@ -7,7 +7,9 @@ use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::vec;
 use alloc::vec::Vec;
+use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
@@ -104,17 +106,6 @@ pub struct CauseTraversalState {
     pub cycle_detected: bool,
 }
 
-/// The current stage of source error iteration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SourceErrorIterStage {
-    /// Iterating through explicitly attached source errors.
-    Attached,
-    /// Iterating through the natural `source()` chain of the inner error.
-    Inner,
-    /// Completed iteration.
-    Done,
-}
-
 /// A streamed attachment item for visitor-based traversal.
 pub enum AttachmentVisit<'a> {
     Context {
@@ -132,15 +123,42 @@ pub enum AttachmentVisit<'a> {
 }
 
 /// Iterator over source errors with depth/cycle control.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceErrorEntry {
+    pub message: String,
+    pub type_name: Option<String>,
+    pub depth: usize,
+}
+
 pub struct ReportSourceErrorIter<'a> {
-    pub(crate) source_errors: core::slice::Iter<'a, Box<dyn Error + 'static>>,
-    pub(crate) root_source: Option<&'a (dyn Error + 'static)>,
-    pub(crate) current: Option<&'a (dyn Error + 'static)>,
-    pub(crate) stage: SourceErrorIterStage,
-    pub(crate) depth: usize,
+    pub(crate) stack: Vec<SourceErrorFrame<'a>>,
     pub(crate) options: CauseCollectOptions,
     pub(crate) seen: SeenErrorAddrs,
     pub(crate) state: CauseTraversalState,
+}
+
+pub(crate) enum SourceErrorFrame<'a> {
+    Chain {
+        items: core::slice::Iter<'a, SourceErrorItem>,
+        depth: usize,
+    },
+    Error {
+        current: Option<&'a (dyn Error + 'static)>,
+        depth: usize,
+    },
+}
+
+impl<'a> SourceErrorFrame<'a> {
+    pub(crate) fn chain(items: core::slice::Iter<'a, SourceErrorItem>, depth: usize) -> Self {
+        Self::Chain { items, depth }
+    }
+
+    pub(crate) fn error(error: &'a (dyn Error + 'static), depth: usize) -> Self {
+        Self::Error {
+            current: Some(error),
+            depth,
+        }
+    }
 }
 
 impl<'a> ReportSourceErrorIter<'a> {
@@ -151,54 +169,113 @@ impl<'a> ReportSourceErrorIter<'a> {
 }
 
 impl<'a> Iterator for ReportSourceErrorIter<'a> {
-    type Item = &'a (dyn Error + 'static);
+    type Item = SourceErrorEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.state.truncated || self.state.cycle_detected {
-            self.stage = SourceErrorIterStage::Done;
-            return None;
+        enum NextAction<'a> {
+            Return {
+                entry: SourceErrorEntry,
+                push: Option<SourceErrorFrame<'a>>,
+            },
+            PopContinue,
+            StopCycle,
         }
 
         loop {
-            let err = match self.current.take() {
-                Some(err) => err,
-                None => match self.stage {
-                    SourceErrorIterStage::Attached => {
-                        if let Some(err) = self.source_errors.next() {
-                            err.as_ref()
+            let action = {
+                let Some(frame) = self.stack.last_mut() else {
+                    return None;
+                };
+                match frame {
+                    SourceErrorFrame::Chain { items, depth } => {
+                        if *depth >= self.options.max_depth {
+                            self.state.truncated = true;
+                            NextAction::PopContinue
                         } else {
-                            self.stage = SourceErrorIterStage::Inner;
-                            continue;
+                            match items.next() {
+                                Some(item) => {
+                                if self.options.detect_cycle
+                                    && !self.seen.insert(error_addr(item.error.as_ref()))
+                                {
+                                    NextAction::StopCycle
+                                } else {
+                                        let push = item.source.as_ref().and_then(|source| {
+                                            if *depth + 1 < self.options.max_depth {
+                                                Some(SourceErrorFrame::chain(
+                                                    source.items.iter(),
+                                                    *depth + 1,
+                                                ))
+                                            } else {
+                                                self.state.truncated = true;
+                                                None
+                                            }
+                                        });
+                                        NextAction::Return {
+                                            entry: SourceErrorEntry {
+                                                message: item.error.to_string(),
+                                                type_name: item
+                                                    .type_name
+                                                    .as_ref()
+                                                    .map(|type_name| type_name.to_string()),
+                                                depth: *depth,
+                                            },
+                                            push,
+                                        }
+                                    }
+                                }
+                                None => NextAction::PopContinue,
+                            }
                         }
                     }
-                    SourceErrorIterStage::Inner => {
-                        let Some(err) = self.root_source.take() else {
-                            self.stage = SourceErrorIterStage::Done;
-                            return None;
-                        };
-                        err
+                    SourceErrorFrame::Error { current, depth } => {
+                        if *depth >= self.options.max_depth {
+                            self.state.truncated = true;
+                            NextAction::PopContinue
+                        } else {
+                            match current.take() {
+                                Some(error) => {
+                                    if self.options.detect_cycle
+                                        && !self.seen.insert(error_addr(error))
+                                    {
+                                        NextAction::StopCycle
+                                    } else {
+                                        let entry = SourceErrorEntry {
+                                            message: error.to_string(),
+                                            type_name: None,
+                                            depth: *depth,
+                                        };
+                                        *current = error.source();
+                                        *depth += 1;
+                                        NextAction::Return {
+                                            entry,
+                                            push: None,
+                                        }
+                                    }
+                                }
+                                None => NextAction::PopContinue,
+                            }
+                        }
                     }
-                    SourceErrorIterStage::Done => return None,
-                },
+                }
             };
 
-            if self.depth >= self.options.max_depth {
-                self.state.truncated = true;
-                self.stage = SourceErrorIterStage::Done;
-                return None;
-            }
-            if self.options.detect_cycle {
-                let ptr = (err as *const dyn Error) as *const ();
-                let addr = ptr as usize;
-                if !self.seen.insert(addr) {
+            match action {
+                NextAction::Return { entry, push } => {
+                    if let Some(push) = push {
+                        self.stack.push(push);
+                    }
+                    return Some(entry);
+                }
+                NextAction::PopContinue => {
+                    self.stack.pop();
+                    continue;
+                }
+                NextAction::StopCycle => {
                     self.state.cycle_detected = true;
-                    self.stage = SourceErrorIterStage::Done;
+                    self.stack.clear();
                     return None;
                 }
             }
-            self.current = err.source();
-            self.depth += 1;
-            return Some(err);
         }
     }
 }
@@ -380,9 +457,63 @@ impl Display for StringError {
 impl Error for StringError {}
 
 /// Runtime source-error chain captured in diagnostic bag.
+#[derive(Debug)]
+pub struct SourceErrorItem {
+    pub error: Box<dyn Error + 'static>,
+    pub type_name: Option<Cow<'static, str>>,
+    pub source: Option<Box<SourceErrorChain>>,
+}
+
+impl SourceErrorItem {
+    pub fn new<T>(error: T) -> Self
+    where
+        T: Error + 'static,
+    {
+        Self {
+            error: Box::new(error),
+            type_name: Some(Cow::Borrowed(any::type_name::<T>())),
+            source: None,
+        }
+    }
+
+    pub(crate) fn with_source(mut self, source: Option<Box<SourceErrorChain>>) -> Self {
+        self.source = source;
+        self
+    }
+
+    pub(crate) fn display_type_name(&self) -> Option<&str> {
+        let type_name = self.type_name.as_deref()?;
+        if is_report_wrapper_type_name(type_name) {
+            None
+        } else {
+            Some(type_name)
+        }
+    }
+
+    fn cloned(&self) -> Self {
+        Self {
+            error: Box::new(StringError(self.error.to_string())),
+            type_name: self.type_name.clone(),
+            source: self
+                .source
+                .as_ref()
+                .map(|chain| Box::new((**chain).clone())),
+        }
+    }
+
+    fn from_error<T>(error: T, options: CauseCollectOptions) -> (Self, bool)
+    where
+        T: Error + 'static,
+    {
+        let (source, state) = SourceErrorChain::from_borrowed_sources(error.source(), options);
+        let item = Self::new(error).with_source(source);
+        (item, state.cycle_detected)
+    }
+}
+
 #[derive(Default)]
 pub struct SourceErrorChain {
-    pub items: Vec<Box<dyn Error + 'static>>,
+    pub items: Vec<SourceErrorItem>,
     pub truncated: bool,
     pub cycle_detected: bool,
 }
@@ -390,11 +521,7 @@ pub struct SourceErrorChain {
 impl Clone for SourceErrorChain {
     fn clone(&self) -> Self {
         Self {
-            items: self
-                .items
-                .iter()
-                .map(|item| Box::new(StringError(item.to_string())) as Box<dyn Error + 'static>)
-                .collect(),
+            items: self.items.iter().map(SourceErrorItem::cloned).collect(),
             truncated: self.truncated,
             cycle_detected: self.cycle_detected,
         }
@@ -403,7 +530,18 @@ impl Clone for SourceErrorChain {
 
 impl core::fmt::Debug for SourceErrorChain {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let items: Vec<String> = self.items.iter().map(ToString::to_string).collect();
+        let items: Vec<(String, Option<String>)> = self
+            .items
+            .iter()
+            .map(|item| {
+                (
+                    item.error.to_string(),
+                    item.type_name
+                        .as_ref()
+                        .map(|type_name| type_name.to_string()),
+                )
+            })
+            .collect();
         f.debug_struct("SourceErrorChain")
             .field("items", &items)
             .field("truncated", &self.truncated)
@@ -416,12 +554,28 @@ impl PartialEq for SourceErrorChain {
     fn eq(&self, other: &Self) -> bool {
         self.items
             .iter()
-            .map(ToString::to_string)
+            .map(|item| {
+                (
+                    item.error.to_string(),
+                    item.type_name
+                        .as_ref()
+                        .map(|type_name| type_name.to_string()),
+                    item.source.as_deref(),
+                )
+            })
             .collect::<Vec<_>>()
             == other
                 .items
                 .iter()
-                .map(ToString::to_string)
+                .map(|item| {
+                    (
+                        item.error.to_string(),
+                        item.type_name
+                            .as_ref()
+                            .map(|type_name| type_name.to_string()),
+                        item.source.as_deref(),
+                    )
+                })
                 .collect::<Vec<_>>()
             && self.truncated == other.truncated
             && self.cycle_detected == other.cycle_detected
@@ -429,6 +583,233 @@ impl PartialEq for SourceErrorChain {
 }
 
 impl Eq for SourceErrorChain {}
+
+impl SourceErrorChain {
+    pub(crate) fn from_error<T>(error: T) -> Self
+    where
+        T: Error + 'static,
+    {
+        let (item, cycle_detected) = SourceErrorItem::from_error(
+            error,
+            CauseCollectOptions {
+                max_depth: usize::MAX,
+                detect_cycle: true,
+            },
+        );
+        Self {
+            items: vec![item],
+            truncated: false,
+            cycle_detected,
+        }
+    }
+
+    pub(crate) fn from_source(error: &dyn Error, options: CauseCollectOptions) -> Self {
+        Self::from_borrowed_error(error, options)
+    }
+
+    pub(crate) fn append(&mut self, mut other: SourceErrorChain) {
+        let state = source_chain_state(&other);
+        self.truncated |= state.truncated;
+        self.cycle_detected |= state.cycle_detected;
+        self.items.append(&mut other.items);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn iter_entries(&self) -> SourceErrorChainEntries<'_> {
+        SourceErrorChainEntries::new(self)
+    }
+
+    pub fn iter(&self) -> core::slice::Iter<'_, SourceErrorItem> {
+        self.items.iter()
+    }
+
+    fn from_borrowed_error(error: &dyn Error, options: CauseCollectOptions) -> Self {
+        let (source, state) = Self::from_borrowed_sources(error.source(), options);
+        Self {
+            items: vec![SourceErrorItem {
+                error: Box::new(StringError(error.to_string())),
+                type_name: None,
+                source,
+            }],
+            truncated: state.truncated,
+            cycle_detected: state.cycle_detected,
+        }
+    }
+
+    fn from_borrowed_sources(
+        mut next: Option<&dyn Error>,
+        options: CauseCollectOptions,
+    ) -> (Option<Box<SourceErrorChain>>, CauseTraversalState) {
+        let mut seeds = Vec::new();
+        let mut state = CauseTraversalState::default();
+        let mut seen = SeenErrorAddrs::new();
+        let mut depth = 0usize;
+
+        while let Some(error) = next {
+            if depth >= options.max_depth {
+                state.truncated = true;
+                break;
+            }
+            let addr = error_addr(error);
+            if options.detect_cycle {
+                if seen.contains(addr) {
+                    state.cycle_detected = true;
+                    break;
+                }
+            }
+            seeds.push(SourceErrorSeed {
+                message: error.to_string(),
+                type_name: None,
+            });
+            if options.detect_cycle {
+                let _ = seen.insert(addr);
+            }
+            depth += 1;
+            next = error.source();
+        }
+
+        let mut chain = None;
+        for seed in seeds.into_iter().rev() {
+            let item = SourceErrorItem {
+                error: Box::new(StringError(seed.message)),
+                type_name: seed.type_name,
+                source: chain,
+            };
+            chain = Some(Box::new(SourceErrorChain {
+                items: vec![item],
+                truncated: false,
+                cycle_detected: false,
+            }));
+        }
+
+        if let Some(chain) = chain.as_mut() {
+            chain.truncated = state.truncated;
+            chain.cycle_detected = state.cycle_detected;
+        } else if state.truncated || state.cycle_detected {
+            chain = Some(Box::new(SourceErrorChain {
+                items: Vec::new(),
+                truncated: state.truncated,
+                cycle_detected: state.cycle_detected,
+            }));
+        }
+
+        (chain, state)
+    }
+}
+
+struct SourceErrorSeed {
+    message: String,
+    type_name: Option<Cow<'static, str>>,
+}
+
+pub struct SourceErrorChainEntries<'a> {
+    stack: Vec<SourceErrorChainFrame<'a>>,
+}
+
+enum SourceErrorChainFrame<'a> {
+    Chain {
+        items: core::slice::Iter<'a, SourceErrorItem>,
+        depth: usize,
+    },
+}
+
+impl<'a> SourceErrorChainEntries<'a> {
+    fn new(chain: &'a SourceErrorChain) -> Self {
+        Self {
+            stack: vec![SourceErrorChainFrame::Chain {
+                items: chain.items.iter(),
+                depth: 0,
+            }],
+        }
+    }
+}
+
+impl<'a> Iterator for SourceErrorChainEntries<'a> {
+    type Item = SourceErrorEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        enum NextAction<'a> {
+            Return {
+                entry: SourceErrorEntry,
+                push: Option<SourceErrorChainFrame<'a>>,
+            },
+            PopContinue,
+        }
+
+        loop {
+            let action = {
+                let Some(frame) = self.stack.last_mut() else {
+                    return None;
+                };
+                match frame {
+                    SourceErrorChainFrame::Chain { items, depth } => match items.next() {
+                        Some(item) => NextAction::Return {
+                            entry: SourceErrorEntry {
+                                message: item.error.to_string(),
+                                type_name: item
+                                    .type_name
+                                    .as_ref()
+                                    .map(|type_name| type_name.to_string()),
+                                depth: *depth,
+                            },
+                            push: item.source.as_ref().map(|source| {
+                                SourceErrorChainFrame::Chain {
+                                    items: source.items.iter(),
+                                    depth: *depth + 1,
+                                }
+                            }),
+                        },
+                        None => NextAction::PopContinue,
+                    },
+                }
+            };
+
+            match action {
+                NextAction::Return { entry, push } => {
+                    if let Some(push) = push {
+                        self.stack.push(push);
+                    }
+                    return Some(entry);
+                }
+                NextAction::PopContinue => {
+                    self.stack.pop();
+                }
+            }
+        }
+    }
+}
+
+fn source_chain_state(chain: &SourceErrorChain) -> CauseTraversalState {
+    let mut state = CauseTraversalState {
+        truncated: chain.truncated,
+        cycle_detected: chain.cycle_detected,
+    };
+    for item in &chain.items {
+        if let Some(source) = item.source.as_ref() {
+            let nested = source_chain_state(source);
+            state.truncated |= nested.truncated;
+            state.cycle_detected |= nested.cycle_detected;
+        }
+    }
+    state
+}
+
+fn error_addr(error: &dyn Error) -> usize {
+    let ptr = (error as *const dyn Error) as *const ();
+    ptr as usize
+}
+
+fn is_report_wrapper_type_name(type_name: &str) -> bool {
+    let report_prefix = core::any::type_name::<crate::report::Report<()>>();
+    let report_prefix = report_prefix
+        .split_once('<')
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(report_prefix);
+    type_name.starts_with(report_prefix) && type_name[report_prefix.len()..].starts_with('<')
+}
 
 #[cfg(feature = "json")]
 impl serde::Serialize for SourceErrorChain {
@@ -439,6 +820,8 @@ impl serde::Serialize for SourceErrorChain {
         #[derive(serde::Serialize)]
         struct Item {
             message: String,
+            r#type: Option<String>,
+            source: Option<Box<Helper>>,
         }
         #[derive(serde::Serialize)]
         struct Helper {
@@ -446,18 +829,25 @@ impl serde::Serialize for SourceErrorChain {
             truncated: bool,
             cycle_detected: bool,
         }
-        Helper {
-            items: self
-                .items
-                .iter()
-                .map(|v| Item {
-                    message: v.to_string(),
-                })
-                .collect(),
-            truncated: self.truncated,
-            cycle_detected: self.cycle_detected,
+        fn serialize_chain(chain: &SourceErrorChain) -> Helper {
+            Helper {
+                items: chain
+                    .items
+                    .iter()
+                    .map(|v| Item {
+                        message: v.error.to_string(),
+                        r#type: v.type_name.as_ref().map(|type_name| type_name.to_string()),
+                        source: v
+                            .source
+                            .as_ref()
+                            .map(|source| Box::new(serialize_chain(source))),
+                    })
+                    .collect(),
+                truncated: chain.truncated,
+                cycle_detected: chain.cycle_detected,
+            }
         }
-        .serialize(serializer)
+        serialize_chain(self).serialize(serializer)
     }
 }
 

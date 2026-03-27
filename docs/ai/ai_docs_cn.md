@@ -377,14 +377,19 @@ Note 附件读取：
 | `show_stack_trace_section`| `true` | 是否显示堆栈轨迹部分 |
 | `show_trace_section` | `true` | 是否显示分布式追踪 (TraceID/Event) 部分 |
 | `stack_trace_max_lines` | `24` | 原始堆栈渲染的最大行数截断 |
+| `stack_trace_include_raw` | `true` | 渲染堆栈时是否包含原始堆栈输出 |
+| `stack_trace_include_frames` | `true` | 渲染堆栈时是否包含解析后的帧信息 |
 
 
 ### 诊断中间表示 (`DiagnosticIr`)
-渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir()` 转换为稳定的 IR 结构。该 IR 保留头部/元数据，并提供附件相关部分的聚合计数。
+渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir()` 转换为稳定的 IR 结构。该 IR 保留错误节点、元数据、trace 引用、附件、展示原因、source 错误，以及附件相关部分的聚合计数。
 ```rust
 use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
+use diagweave::report::{Attachment, CauseTraversalState};
+use std::boxed::Box;
+use std::fmt::Display;
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
@@ -397,6 +402,11 @@ pub struct DiagnosticIr<'a> {
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
+    pub attachments: &'a [Attachment],
+    pub display_causes: &'a [Box<dyn Display + 'static>],
+    pub display_causes_state: CauseTraversalState,
+    pub source_errors: Vec<DiagnosticIrError<'static>>,
+    pub source_errors_state: CauseTraversalState,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -431,7 +441,7 @@ let attachment_count = ir.attachment_count;
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIrMetadata` 不直接暴露 `display_causes` / `source_errors`；请通过 `Report` 的 `visit_causes*`、`visit_sources*` 或 `iter_sources*` 读取。
+`DiagnosticIr` 会保留 `display_causes` 和 `source_errors` 作为结构化数据。`source_errors` 与根错误使用相同的 `message` / `type` 节点形状，而 `DiagnosticIrMetadata` 本身仍不直接暴露这些链。
 
 ### 用法示例
 ```rust
@@ -475,7 +485,8 @@ let json_str = report.json().to_string();
 
 ### 导出行为
 - **属性映射**：`Context` 会被映射为 `tracing` 事件的命名字段。
-- **展示原因**：展示原因会被拼接为 `error.causes` 字符串。
+- **结构化字段**：`report_display_causes`、`report_source_errors`、`report_stack_trace`、`report_context` 和 `report_attachments` 会作为结构化调试字段导出。
+- **空部分**：空的 `trace`、`context`、`attachments` 部分默认会省略。
 - **Trace ID 绑定**：若 Report 包含 `TraceContext`，导出时会自动关联，或通过注入器自动关联当前 Span 环境信息。
 
 ### 用法示例
@@ -539,9 +550,10 @@ report.emit_tracing_with(&MyCustomExporter);
 | `ir.to_tracing_fields()` | `Vec<TracingField>`| 转换为 KV 形式的 Tracing/Logging 字段 |
 
 ### OTel 映射逻辑
-1. **记录字段**: 主报告会变成一个日志记录，严重程度、可追踪上下文字段等直接放在顶层。
-2. **属性 (属性)**: 错误核心字段、重试/分类标记、原因链摘要以及附件/上下文数据会被扁平化为日志属性。
+1. **记录字段**: 主报告会变成一个日志记录，严重程度、时间戳相关元数据、trace 关联字段和结构化 `body` 错误节点会放在顶层。
+2. **属性**: 错误核心字段、重试/分类标记、原因链摘要以及附件/上下文数据会以结构化 OTEL 属性输出。
 3. **Trace 事件**: `Report` 内部的 `TraceEvent` 会转换成额外的 OTLP 风格日志/事件记录，带各自的时间戳、严重程度和 trace 关联字段。
+4. **结构保留**: `exception.stacktrace` 和 `diagnostic_bag.source_errors` 不再被字符串扁平化。
 
 ---
 

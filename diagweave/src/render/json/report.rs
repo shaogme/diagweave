@@ -5,14 +5,14 @@ use crate::report::{CauseCollectOptions, Report, StackTrace};
 
 #[cfg(feature = "trace")]
 use super::attachment;
-use super::{
-    ReportRenderOptions, close_array, close_object, write_array_item_prefix, write_error_code,
-    write_json_display, write_json_string, write_object_field, write_option_string,
-};
 #[cfg(feature = "trace")]
 use super::trace::{
     TraceAttributeValue, TraceContextValue, TraceEventValue, TraceSectionValue,
     build_trace_section_value,
+};
+use super::{
+    ReportRenderOptions, close_array, close_object, write_array_item_prefix, write_error_code,
+    write_json_display, write_json_string, write_object_field, write_option_string,
 };
 
 pub(super) fn write_error_object<E>(
@@ -195,65 +195,63 @@ fn write_source_errors(
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
 ) -> fmt::Result {
-    let Some(source_errors) = report.source_errors_chain() else {
-        if report.inner().source().is_none() {
-            return f.write_str("null");
-        }
-        return write_source_errors_from_traversal(f, pretty, depth, report, options, None);
-    };
-
-    write_source_errors_from_traversal(f, pretty, depth, report, options, Some(source_errors))
-}
-
-fn write_source_errors_from_traversal<E>(
-    f: &mut Formatter<'_>,
-    pretty: bool,
-    depth: usize,
-    report: &Report<E>,
-    options: ReportRenderOptions,
-    source_errors: Option<&crate::report::SourceErrorChain>,
-) -> fmt::Result
-where
-    E: Error + Display + 'static,
-{
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let mut traversal_state = crate::report::CauseTraversalState::default();
-
-    let mut first = true;
-    f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "items", |f| {
-        let mut array_first = true;
-        f.write_char('[')?;
-        traversal_state = report.visit_sources_ext(traversal_options, |err| {
-            write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            write_source_error_object(f, pretty, depth + 2, err)
-        })?;
-        close_array(f, pretty, depth + 1, array_first)
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
-        let base = source_errors.map(|v| v.truncated).unwrap_or(false);
-        write!(f, "{}", base || traversal_state.truncated)
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
-        let base = source_errors.map(|v| v.cycle_detected).unwrap_or(false);
-        write!(f, "{}", base || traversal_state.cycle_detected)
-    })?;
-    close_object(f, pretty, depth, first)
+    let Some(source_errors) = report.source_errors_snapshot(traversal_options) else {
+        return f.write_str("null");
+    };
+    write_source_errors_chain(f, pretty, depth, &source_errors)
 }
 
 fn write_source_error_object(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    err: &dyn Error,
+    item: &crate::report::SourceErrorItem,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "message", |f| {
-        write_json_display(f, err)
+        write_json_display(f, item.error.as_ref())
+    })?;
+    write_object_field(f, pretty, depth, &mut first, "type", |f| {
+        match item.display_type_name() {
+            Some(type_name) => write_json_string(f, type_name),
+            None => f.write_str("null"),
+        }
+    })?;
+    if let Some(source) = item.source.as_ref() {
+        write_object_field(f, pretty, depth, &mut first, "source", |f| {
+            write_source_errors_chain(f, pretty, depth + 1, source)
+        })?;
+    }
+    close_object(f, pretty, depth, first)
+}
+
+fn write_source_errors_chain(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    source_errors: &crate::report::SourceErrorChain,
+) -> fmt::Result {
+    let mut first = true;
+    f.write_char('{')?;
+    write_object_field(f, pretty, depth, &mut first, "items", |f| {
+        let mut array_first = true;
+        f.write_char('[')?;
+        for item in &source_errors.items {
+            write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
+            write_source_error_object(f, pretty, depth + 2, item)?;
+        }
+        close_array(f, pretty, depth + 1, array_first)
+    })?;
+    write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
+        write!(f, "{}", source_errors.truncated)
+    })?;
+    write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
+        write!(f, "{}", source_errors.cycle_detected)
     })?;
     close_object(f, pretty, depth, first)
 }

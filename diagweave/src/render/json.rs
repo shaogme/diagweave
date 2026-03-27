@@ -2,11 +2,11 @@
 mod attachment;
 #[path = "json/helpers.rs"]
 mod helpers;
+#[path = "json/report.rs"]
+mod report;
 #[cfg(feature = "trace")]
 #[path = "json/trace.rs"]
 mod trace;
-#[path = "json/report.rs"]
-mod report;
 
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
@@ -16,8 +16,8 @@ use crate::report::Report;
 use super::{REPORT_JSON_SCHEMA_VERSION, ReportRenderOptions};
 
 pub(super) use helpers::{
-    close_array, close_object, write_array_item_prefix, write_error_code, write_json_display,
-    write_json_string, write_object_field, write_option_string, write_indent,
+    close_array, close_object, write_array_item_prefix, write_error_code, write_indent,
+    write_json_display, write_json_string, write_object_field, write_option_string,
 };
 
 pub(super) fn render_json<E>(

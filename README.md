@@ -432,6 +432,13 @@ OpenTelemetry envelope output is documented separately and requires the `otel` f
 - Schema: `diagweave/schemas/report-otel-v0.1.0.schema.json`
 - Doc: [`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md)
 
+The OTEL adapter keeps the report tree structured where possible:
+
+- the main `exception` record carries a structured `body` instead of a plain string
+- `exception.stacktrace` is exported as a `KvList`
+- `diagnostic_bag.source_errors` preserves both `message` and `type`
+- empty `trace` / `context` / `attachments` sections are omitted
+
 Tracing export:
 
 ```rust

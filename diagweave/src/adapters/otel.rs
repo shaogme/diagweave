@@ -5,7 +5,8 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::render_impl::{
-    DiagnosticIr, build_display_causes_value, build_source_errors_value, build_stack_trace_value,
+    DiagnosticIr, build_display_causes_value, build_error_value, build_source_errors_value,
+    build_stack_trace_value,
 };
 use crate::report::{Attachment, AttachmentValue, ErrorCode};
 
@@ -175,7 +176,7 @@ impl DiagnosticIr<'_> {
         if let Some(stack_trace) = &self.metadata.stack_trace {
             attributes.push(OtelAttribute {
                 key: "exception.stacktrace".into(),
-                value: OtelValue::String(build_stack_trace_value(stack_trace).to_string().into()),
+                value: OtelValue::from(&build_stack_trace_value(stack_trace)),
             });
         }
         if let Some(error_code) = &self.metadata.error_code {
@@ -193,7 +194,7 @@ impl DiagnosticIr<'_> {
                 value: OtelValue::Bool(retryable),
             });
         }
-        
+
         #[cfg(feature = "trace")]
         self.otel_trace_correlation(&mut attributes);
         self.otel_diagnostic_bag(&mut attributes);
@@ -220,9 +221,7 @@ impl DiagnosticIr<'_> {
 
         OtelEvent {
             name: "exception".into(),
-            body: Some(OtelValue::String(
-                self.error.message.to_string_owned().into(),
-            )),
+            body: Some(OtelValue::from(&build_error_value(&self.error))),
             timestamp_unix_nano: None,
             observed_timestamp_unix_nano: None,
             severity_text: Some(Cow::from(severity)),
@@ -270,13 +269,10 @@ impl DiagnosticIr<'_> {
                 )),
             });
         }
-        if !self.source_errors.is_empty() {
+        if let Some(source_errors) = self.source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.source_errors".into(),
-                value: OtelValue::from(&build_source_errors_value(
-                    &self.source_errors,
-                    self.source_errors_state,
-                )),
+                value: OtelValue::from(&build_source_errors_value(source_errors)),
             });
         }
     }

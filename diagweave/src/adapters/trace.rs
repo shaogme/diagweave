@@ -78,6 +78,9 @@ impl DiagnosticIr<'_> {
             Some(t) => t,
             None => return,
         };
+        if trace.is_empty() {
+            return;
+        }
         let trace_value = crate::render_impl::build_trace_value(trace, &self.error);
         fields.push(TracingField {
             key: "trace".into(),
@@ -98,10 +101,10 @@ impl DiagnosticIr<'_> {
                 value: build_display_causes_value(self.display_causes, self.display_causes_state),
             });
         }
-        if !self.source_errors.is_empty() {
+        if let Some(source_errors) = self.source_errors.as_ref() {
             fields.push(TracingField {
                 key: "diagnostic_bag.source_errors".into(),
-                value: build_source_errors_value(&self.source_errors, self.source_errors_state),
+                value: build_source_errors_value(source_errors),
             });
         }
     }
@@ -109,13 +112,17 @@ impl DiagnosticIr<'_> {
     fn tracing_context_and_attachments(&self, fields: &mut Vec<TracingField>) {
         let (context_items, attachment_items) = build_context_and_attachments(self.attachments);
 
-        fields.push(TracingField {
-            key: "context".into(),
-            value: AttachmentValue::Array(context_items),
-        });
-        fields.push(TracingField {
-            key: "attachments".into(),
-            value: AttachmentValue::Array(attachment_items),
-        });
+        if !context_items.is_empty() {
+            fields.push(TracingField {
+                key: "context".into(),
+                value: AttachmentValue::Array(context_items),
+            });
+        }
+        if !attachment_items.is_empty() {
+            fields.push(TracingField {
+                key: "attachments".into(),
+                value: AttachmentValue::Array(attachment_items),
+            });
+        }
     }
 }

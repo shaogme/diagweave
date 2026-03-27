@@ -2,31 +2,35 @@ use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
+#[cfg(feature = "trace")]
 use alloc::vec::Vec;
 use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
+#[cfg(any(feature = "trace", feature = "otel"))]
+use crate::report::AttachmentValue;
+use crate::report::SourceErrorChain;
+#[cfg(any(feature = "trace", feature = "otel"))]
+use crate::report::StackFrame;
 use crate::report::{
     Attachment, AttachmentVisit, CauseCollectOptions, CauseTraversalState, ErrorCode, Report,
     Severity, StackTrace,
 };
-#[cfg(any(feature = "trace", feature = "otel"))]
-use alloc::collections::BTreeMap;
-#[cfg(any(feature = "trace", feature = "otel"))]
-use crate::report::AttachmentValue;
-#[cfg(any(feature = "trace", feature = "otel"))]
-use crate::report::StackFrame;
 #[cfg(feature = "trace")]
 use crate::report::{ReportTrace, TraceContext, TraceEvent};
+#[cfg(any(feature = "trace", feature = "otel"))]
+use alloc::collections::BTreeMap;
 
-/// Error information in the Diagnostic Intermediate Representation.
+/// A structured diagnostic error node shared by renderers and adapters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize))]
-pub struct DiagnosticIrError<'a> {
+pub struct DiagnosticIrErrorNode<'a> {
     pub message: DiagnosticIrMessage<'a>,
     pub r#type: Cow<'a, str>,
 }
+
+pub type DiagnosticIrError<'a> = DiagnosticIrErrorNode<'a>;
 
 /// Lazily-resolved diagnostic message payload.
 #[derive(Clone)]
@@ -110,8 +114,7 @@ pub struct DiagnosticIr<'a> {
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Box<dyn Display + 'static>],
     pub display_causes_state: CauseTraversalState,
-    pub source_errors: Vec<String>,
-    pub source_errors_state: CauseTraversalState,
+    pub source_errors: Option<SourceErrorChain>,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -126,18 +129,10 @@ impl<E> Report<E> {
         let display_causes_state = self
             .visit_causes_ext(CauseCollectOptions::default(), |_| Ok(()))
             .unwrap_or_default();
-        let mut source_errors = Vec::new();
-        let source_errors_state = self
-            .visit_sources_ext(CauseCollectOptions::default(), |err| {
-                source_errors.push(err.to_string());
-                Ok(())
-            })
-            .unwrap_or_default();
-
         DiagnosticIr {
             #[cfg(feature = "json")]
             schema_version: Cow::Borrowed(crate::render_impl::REPORT_JSON_SCHEMA_VERSION),
-            error: DiagnosticIrError {
+            error: DiagnosticIrErrorNode {
                 message: DiagnosticIrMessage::Display(self.inner()),
                 r#type: Cow::Borrowed(any::type_name::<E>()),
             },
@@ -153,8 +148,7 @@ impl<E> Report<E> {
             attachments: self.attachments(),
             display_causes: self.display_causes(),
             display_causes_state,
-            source_errors,
-            source_errors_state,
+            source_errors: self.source_errors_snapshot(CauseCollectOptions::default()),
             context_count,
             attachment_count,
         }
@@ -227,7 +221,7 @@ pub(crate) fn build_context_and_attachments(
     (context_items, attachment_items)
 }
 
-#[cfg(feature = "trace")]
+#[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
     let mut map = BTreeMap::new();
     map.insert(
@@ -456,34 +450,44 @@ pub(crate) fn build_display_causes_value(
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
-pub(crate) fn build_source_errors_value(
-    source_errors: &[String],
-    state: CauseTraversalState,
-) -> AttachmentValue {
+pub(crate) fn build_source_errors_value(source_errors: &SourceErrorChain) -> AttachmentValue {
     let mut map = BTreeMap::new();
     map.insert(
         "items".to_string(),
         AttachmentValue::Array(
             source_errors
                 .iter()
-                .map(|message| {
-                    let mut item = BTreeMap::new();
-                    item.insert(
-                        "message".to_string(),
-                        AttachmentValue::String(message.clone().into()),
-                    );
-                    AttachmentValue::Object(item)
-                })
+                .map(build_source_error_node_value)
                 .collect(),
         ),
     );
     map.insert(
         "truncated".to_string(),
-        AttachmentValue::Bool(state.truncated),
+        AttachmentValue::Bool(source_errors.truncated),
     );
     map.insert(
         "cycle_detected".to_string(),
-        AttachmentValue::Bool(state.cycle_detected),
+        AttachmentValue::Bool(source_errors.cycle_detected),
     );
+    AttachmentValue::Object(map)
+}
+
+#[cfg(any(feature = "trace", feature = "otel"))]
+fn build_source_error_node_value(error: &crate::report::SourceErrorItem) -> AttachmentValue {
+    let mut map = BTreeMap::new();
+    map.insert(
+        "message".to_string(),
+        AttachmentValue::String(error.error.to_string().into()),
+    );
+    map.insert(
+        "type".to_string(),
+        error
+            .display_type_name()
+            .map(|type_name| AttachmentValue::String(type_name.to_string().into()))
+            .unwrap_or(AttachmentValue::Null),
+    );
+    if let Some(source) = error.source.as_ref() {
+        map.insert("source".to_string(), build_source_errors_value(source));
+    }
     AttachmentValue::Object(map)
 }

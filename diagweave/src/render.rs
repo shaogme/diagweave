@@ -10,17 +10,17 @@ use core::fmt::{self, Display, Formatter};
 
 use crate::report::Report;
 
-pub use ir::{DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata};
 #[cfg(feature = "trace")]
 pub(crate) use ir::build_context_and_attachments;
-#[cfg(feature = "trace")]
+#[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) use ir::build_error_value;
+#[cfg(feature = "trace")]
+pub(crate) use ir::build_trace_value;
+pub use ir::{DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata};
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) use ir::{
     build_display_causes_value, build_source_errors_value, build_stack_trace_value,
 };
-#[cfg(feature = "trace")]
-pub(crate) use ir::build_trace_value;
 pub use pretty::Pretty;
 
 #[cfg(feature = "json")]

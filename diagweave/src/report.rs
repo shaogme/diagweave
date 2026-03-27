@@ -10,6 +10,7 @@ mod types;
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
+use alloc::vec;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
@@ -19,8 +20,8 @@ use std::sync::OnceLock;
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
-    ErrorCodeIntError, ReportMetadata, Severity, SourceErrorChain, StackFrame, StackTrace,
-    StackTraceFormat,
+    ErrorCodeIntError, ReportMetadata, Severity, SourceErrorChain, SourceErrorEntry,
+    SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
 };
 pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
 
@@ -30,7 +31,7 @@ pub use trace::{
     TraceEventLevel, TraceId,
 };
 
-use types::{ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorIterStage};
+use types::{ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorFrame};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 pub struct Report<E> {
@@ -122,15 +123,15 @@ impl<E> Report<E> {
     }
 
     /// Returns the source errors associated with the report.
-    pub fn source_errors(&self) -> &[Box<dyn Error + 'static>] {
-        match self.diagnostics() {
-            Some(diag) => diag
-                .source_errors
-                .as_ref()
-                .map(|v| v.items.as_slice())
-                .unwrap_or(&[]),
-            None => &[],
-        }
+    pub fn source_errors(&self) -> impl Iterator<Item = SourceErrorEntry> + '_
+    where
+        E: Error + 'static,
+    {
+        self.diagnostics()
+            .and_then(|diag| diag.source_errors.as_ref())
+            .map(SourceErrorChain::iter_entries)
+            .into_iter()
+            .flatten()
     }
 
     /// Returns the source-error chain associated with the report, if any.
@@ -393,8 +394,7 @@ impl<E> Report<E> {
         self.diagnostics_mut()
             .source_errors
             .get_or_insert_with(SourceErrorChain::default)
-            .items
-            .push(Box::new(err));
+            .append(SourceErrorChain::from_error(err));
         self
     }
 
@@ -408,8 +408,43 @@ impl<E> Report<E> {
     pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer>
     where
         Self: Error + 'static,
+        E: Error + 'static,
     {
-        let source_errors = alloc::vec![Box::new(self) as Box<dyn Error + 'static>];
+        let source_errors = match self
+            .diagnostics()
+            .and_then(|diag| diag.source_errors.as_ref())
+        {
+            Some(source_errors) => Some(source_errors.clone()),
+            None => self.source_errors_snapshot(CauseCollectOptions {
+                max_depth: usize::MAX,
+                detect_cycle: true,
+            }),
+        };
+        let Report { inner, cold } = self;
+        let source_report = Report { inner, cold };
+        let source_state = source_errors
+            .as_ref()
+            .map(|chain| {
+                let mut state = CauseTraversalState::default();
+                state.truncated = chain.truncated;
+                state.cycle_detected = chain.cycle_detected;
+                for item in chain.iter() {
+                    if let Some(source) = item.source.as_ref() {
+                        let nested = source_errors_state(source);
+                        state.truncated |= nested.truncated;
+                        state.cycle_detected |= nested.cycle_detected;
+                    }
+                }
+                state
+            })
+            .unwrap_or_default();
+        let source_errors = SourceErrorChain {
+            items: vec![
+                SourceErrorItem::new(source_report).with_source(source_errors.map(Box::new)),
+            ],
+            truncated: source_state.truncated,
+            cycle_detected: source_state.cycle_detected,
+        };
         Report {
             inner: outer,
             cold: Some(Box::new(ColdData {
@@ -420,10 +455,7 @@ impl<E> Report<E> {
                     stack_trace: None,
                     attachments: Vec::new(),
                     display_causes: None,
-                    source_errors: Some(SourceErrorChain {
-                        items: source_errors,
-                        ..SourceErrorChain::default()
-                    }),
+                    source_errors: Some(source_errors),
                 },
             })),
         }
@@ -478,7 +510,7 @@ impl<E> Report<E> {
     /// Visits source errors using default collection options.
     pub fn visit_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
-        F: FnMut(&dyn Error) -> fmt::Result,
+        F: FnMut(SourceErrorEntry) -> fmt::Result,
         E: Error + 'static,
     {
         self.visit_sources_ext(CauseCollectOptions::default(), visit)
@@ -491,7 +523,7 @@ impl<E> Report<E> {
         mut visit: F,
     ) -> Result<CauseTraversalState, fmt::Error>
     where
-        F: FnMut(&dyn Error) -> fmt::Result,
+        F: FnMut(SourceErrorEntry) -> fmt::Result,
         E: Error + 'static,
     {
         let mut iter = self.iter_sources_ext(options);
@@ -500,6 +532,21 @@ impl<E> Report<E> {
         }
         Ok(iter.state())
     }
+}
+
+fn source_errors_state(chain: &SourceErrorChain) -> CauseTraversalState {
+    let mut state = CauseTraversalState {
+        truncated: chain.truncated,
+        cycle_detected: chain.cycle_detected,
+    };
+    for item in chain.iter() {
+        if let Some(source) = item.source.as_ref() {
+            let nested = source_errors_state(source);
+            state.truncated |= nested.truncated;
+            state.cycle_detected |= nested.cycle_detected;
+        }
+    }
+    state
 }
 
 /// Context injector type alias for global context providers.
@@ -538,20 +585,84 @@ where
 
     /// Iterates source errors using custom collection options.
     pub fn iter_sources_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_> {
-        let source_errors = self
+        let mut stack = Vec::new();
+        if let Some(inner_source) = self.inner.source() {
+            stack.push(SourceErrorFrame::error(inner_source, 0));
+        }
+        if let Some(source_errors) = self
             .diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref().map(|v| v.items.as_slice()))
-            .unwrap_or(&[]);
-
+            .and_then(|diag| diag.source_errors.as_ref())
+        {
+            stack.push(SourceErrorFrame::chain(source_errors.items.iter(), 0));
+        }
         ReportSourceErrorIter {
-            source_errors: source_errors.iter(),
-            root_source: self.inner.source(),
-            current: None,
-            stage: SourceErrorIterStage::Attached,
-            depth: 0,
+            stack,
             options,
             seen: SeenErrorAddrs::new(),
             state: CauseTraversalState::default(),
         }
     }
+}
+
+impl<E> Report<E>
+where
+    E: Error + 'static,
+{
+    pub(crate) fn source_errors_snapshot(
+        &self,
+        options: CauseCollectOptions,
+    ) -> Option<SourceErrorChain> {
+        let stored = self
+            .diagnostics()
+            .and_then(|diag| diag.source_errors.as_ref());
+        let inner_source = self.inner.source();
+
+        let mut snapshot = match (stored, inner_source) {
+            (None, None) => None,
+            (Some(chain), None) => Some(chain.clone()),
+            (None, Some(source)) => Some(SourceErrorChain::from_source(source, options)),
+            (Some(chain), Some(source)) => {
+                let mut snapshot = chain.clone();
+                snapshot.append(SourceErrorChain::from_source(source, options));
+                Some(snapshot)
+            }
+        }?;
+        limit_source_chain(&mut snapshot, options, 0);
+        if !options.detect_cycle {
+            clear_cycle_flags(&mut snapshot);
+        }
+        Some(snapshot)
+    }
+}
+
+fn clear_cycle_flags(chain: &mut SourceErrorChain) {
+    chain.cycle_detected = false;
+    for item in &mut chain.items {
+        if let Some(source) = item.source.as_mut() {
+            clear_cycle_flags(source);
+        }
+    }
+}
+
+fn limit_source_chain(
+    chain: &mut SourceErrorChain,
+    options: CauseCollectOptions,
+    depth: usize,
+) -> bool {
+    if depth >= options.max_depth {
+        chain.items.clear();
+        chain.truncated = true;
+        return true;
+    }
+
+    let mut truncated = chain.truncated;
+    for item in &mut chain.items {
+        if let Some(source) = item.source.as_mut() {
+            if limit_source_chain(source, options, depth + 1) {
+                truncated = true;
+            }
+        }
+    }
+    chain.truncated = truncated;
+    truncated
 }

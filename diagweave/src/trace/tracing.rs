@@ -21,8 +21,7 @@ impl TracingExporterTrait for TracingExporter {
         let stack_trace_value = ir.metadata.stack_trace.map(build_stack_trace_value);
         let display_causes_value =
             build_display_causes_value(ir.display_causes, ir.display_causes_state);
-        let source_errors_value =
-            build_source_errors_value(&ir.source_errors, ir.source_errors_state);
+        let source_errors_value = ir.source_errors.as_ref().map(build_source_errors_value);
 
         emit_report_event(
             report_level,
@@ -31,7 +30,7 @@ impl TracingExporterTrait for TracingExporter {
             &attachment_items,
             stack_trace_value.as_ref(),
             &display_causes_value,
-            &source_errors_value,
+            source_errors_value.as_ref(),
         );
 
         if let Some(trace) = ir.trace {
@@ -101,7 +100,7 @@ fn emit_report_event(
     attachments: &Vec<AttachmentValue>,
     stack_trace: Option<&AttachmentValue>,
     display_causes: &AttachmentValue,
-    source_errors: &AttachmentValue,
+    source_errors: Option<&AttachmentValue>,
 ) {
     match level {
         Level::TRACE => report_event!(

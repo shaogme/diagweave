@@ -282,7 +282,7 @@ where
         let mut idx = 0usize;
         let _ = report.visit_sources(|source| {
             idx += 1;
-            println!("  {}. {}", idx, source);
+            println!("  {}. {}", idx, source.message);
             Ok(())
         });
         let mut source_count = 0usize;

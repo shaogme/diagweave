@@ -36,6 +36,8 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 ## SourceErrorChain model
 
 - `diagnostic_bag.source_errors.items[*].message: string`
+- `diagnostic_bag.source_errors.items[*].type: string|null`
+- `diagnostic_bag.source_errors.items[*].source: SourceErrorChain|null`
 - `diagnostic_bag.source_errors.truncated: boolean`
 - `diagnostic_bag.source_errors.cycle_detected: boolean`
 

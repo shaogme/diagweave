@@ -1,4 +1,4 @@
-# diagweave-example
+# showcase
 
 Runnable best-practice example for `diagweave`.
 
@@ -13,5 +13,5 @@ What this example enables:
 Run:
 
 ```bash
-cargo run -p diagweave-example
+cargo run -p showcase
 ```

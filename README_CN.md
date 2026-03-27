@@ -37,7 +37,7 @@
   - [独立 `#[derive(Error)]`](#独立-deriveerror)
   - [`Report` 与链式 API](#report-与链式-api)
   - [渲染与导出](#渲染与导出)
-  - [来自 `diagweave-example` 的高级模式](#来自-diagweave-example-的高级模式)
+  - [来自 `showcase` 的高级模式](#来自-showcase-的高级模式)
   - [与其他库的对比](#与其他库的对比)
   - [Feature](#feature)
   - [仓库结构](#仓库结构)
@@ -426,9 +426,9 @@ tracing 导出：
 }
 ```
 
-## 来自 `diagweave-example` 的高级模式
+## 来自 `showcase` 的高级模式
 
-参考 [`diagweave-example/src/main.rs`](diagweave-example/src/main.rs) 可运行样例，包含：
+参考 [`examples/showcase/src/main.rs`](examples/showcase/src/main.rs) 可运行样例，包含：
 
 - `set!` 组合与 `union!` 边界
 - 自定义构造器前缀
@@ -441,7 +441,7 @@ tracing 导出：
 运行方式：
 
 ```bash
-cargo run -p diagweave-example
+cargo run -p showcase
 ```
 
 ## 与其他库的对比
@@ -467,7 +467,7 @@ cargo run -p diagweave-example
 
 - `diagweave/`：运行时 API 与宏 re-export
 - `diagweave-macros/`：过程宏实现
-- `diagweave-example/`：可运行最佳实践样例（`publish = false`）
+- `examples/showcase/`：可运行最佳实践样例（`publish = false`）
 
 ## 测试
 

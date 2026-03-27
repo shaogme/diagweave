@@ -37,7 +37,7 @@
   - [Standalone `#[derive(Error)]`](#standalone-deriveerror)
   - [`Report` and chain APIs](#report-and-chain-apis)
   - [Rendering and export](#rendering-and-export)
-  - [Advanced patterns from `diagweave-example`](#advanced-patterns-from-diagweave-example)
+  - [Advanced patterns from `showcase`](#advanced-patterns-from-showcase)
   - [Comparison with other crates](#comparison-with-other-crates)
   - [Feature flags](#feature-flags)
   - [Workspace layout](#workspace-layout)
@@ -426,9 +426,9 @@ Tracing export:
 }
 ```
 
-## Advanced patterns from `diagweave-example`
+## Advanced patterns from `showcase`
 
-See [`diagweave-example/src/main.rs`](diagweave-example/src/main.rs) for a runnable showcase including:
+See [`examples/showcase/src/main.rs`](examples/showcase/src/main.rs) for a runnable showcase including:
 
 - `set!` composition and `union!` API boundary
 - custom constructor prefixes
@@ -441,7 +441,7 @@ See [`diagweave-example/src/main.rs`](diagweave-example/src/main.rs) for a runna
 Run it with:
 
 ```bash
-cargo run -p diagweave-example
+cargo run -p showcase
 ```
 
 ## Comparison with other crates
@@ -467,7 +467,7 @@ cargo run -p diagweave-example
 
 - `diagweave/`: runtime APIs + macro re-export
 - `diagweave-macros/`: proc-macro implementation
-- `diagweave-example/`: runnable best-practice sample (`publish = false`)
+- `examples/showcase/`: runnable best-practice sample (`publish = false`)
 
 ## Testing
 

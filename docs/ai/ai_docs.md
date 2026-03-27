@@ -216,8 +216,13 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | GlobalContext Field | Description |
 | :--- | :--- |
 | `context` | `Vec<(Cow<'static, str>, AttachmentValue)>` globally associated key-value pairs |
-| `trace_id` | `Option<Cow<'static, str>>` Automatically bound Trace ID |
-| `span_id` | `Option<Cow<'static, str>>` Automatically bound Span ID |
+| `trace_id` | `Option<TraceId>` Automatically bound Trace ID |
+| `span_id` | `Option<SpanId>` Automatically bound Span ID |
+| `parent_span_id` | `Option<ParentSpanId>` Automatically bound parent Span ID |
+
+`TraceId` / `SpanId` / `ParentSpanId` are hex-validated identifiers. Construct them with:
+- `TraceId::new("32-hex")` / `SpanId::new("16-hex")` / `ParentSpanId::new("16-hex")`
+- `unsafe { TraceId::new_unchecked(...) }` to skip validation
 
 ### Chained Configuration Methods
 | Method | Parameter Type | Description |
@@ -466,7 +471,7 @@ Exports diagnostic reports to monitoring systems or log streams.
 | Method | Description |
 | :--- | :--- |
 | `emit_tracing(&self)` | Triggers an `info` level event under current Span, carrying all Report fields as attributes |
-| `with_trace_ids(tid, sid)` | Manually binds tracing context (Trace ID / Span ID) |
+| `with_trace_ids(tid, sid)` | Manually binds tracing context (Trace ID / Span ID). Parameters are `TraceId` / `SpanId`. |
 
 ### Export Behavior
 - **Attribute Mapping**: `Context` is mapped as named fields for the `tracing` event.
@@ -475,7 +480,7 @@ Exports diagnostic reports to monitoring systems or log streams.
 
 ### Usage Example
 ```rust
-use diagweave::prelude::{Report, ReportRenderOptions};
+use diagweave::prelude::{Report, ReportRenderOptions, SpanId, TraceId};
 use std::fmt;
 
 #[cfg(feature = "trace")]
@@ -502,6 +507,12 @@ impl TracingExporterTrait for MyCustomExporter {
 
 let report = Report::new(MyError);
 let options = ReportRenderOptions::default();
+
+// Bind trace/span ids
+let report = report.with_trace_ids(
+    TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+    SpanId::new("00f067aa0ba902b7").unwrap(),
+);
 
 // Export to current tracing span with default options
 #[cfg(feature = "tracing")]

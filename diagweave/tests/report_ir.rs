@@ -70,7 +70,7 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
     let fields = ir.to_tracing_fields();
     let source_errors = fields
         .iter()
-        .find(|f| f.key == "report_source_errors")
+        .find(|f| f.key == "diagnostic_bag.source_errors")
         .map(|f| &f.value)
         .expect("report.source_errors field should be present");
 
@@ -131,7 +131,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         .expect("overflow context should exist");
     assert_eq!(
         overflow_ctx.value,
-        OtelValue::String(u64::MAX.to_string().into())
+        OtelValue::U64(u64::MAX)
     );
 
     let secret_ctx = otel
@@ -164,7 +164,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
                 .find(|a| a.key == "a")
                 .map(|a| &a.value)
                 .expect("nested.a should exist");
-            assert_eq!(a_value, &OtelValue::String(u64::MAX.to_string().into()));
+            assert_eq!(a_value, &OtelValue::U64(u64::MAX));
             let b_value = attrs
                 .iter()
                 .find(|a| a.key == "b")
@@ -189,9 +189,13 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     let report = Report::new(ApiError::Unauthorized)
         .with_error_code("API.UNAUTHORIZED")
         .with_severity(Severity::Error)
-        .with_retryable(false)
-        .with_trace_ids("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7")
-        .with_parent_span_id("1111111111111111")
+        .with_retryable(false);
+    let report = report
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
+        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("vendor=blue")
         .with_trace_flags(1)
@@ -228,28 +232,47 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
 
     let ir = report.to_diagnostic_ir();
     let tracing_fields = ir.to_tracing_fields();
-    assert!(tracing_fields.iter().any(|f| f.key == "error.message"));
-    assert!(tracing_fields.iter().any(|f| f.key == "error.code"));
-    assert!(tracing_fields.iter().any(|f| f.key == "trace_id"));
-    assert!(tracing_fields.iter().any(|f| f.key == "trace_event.0.name"));
-    assert!(
-        tracing_fields
-            .iter()
-            .any(|f| f.key == "report_context_count")
+    assert!(tracing_fields.iter().any(|f| f.key == "error"));
+    assert!(tracing_fields.iter().any(|f| f.key == "metadata.error_code"));
+    let trace_value = tracing_fields
+        .iter()
+        .find(|f| f.key == "trace")
+        .map(|f| &f.value)
+        .expect("trace field should be present");
+    let AttachmentValue::Object(trace_obj) = trace_value else {
+        panic!("trace should be object");
+    };
+    let Some(AttachmentValue::Object(trace_error)) = trace_obj.get("error") else {
+        panic!("trace.error should be object");
+    };
+    assert_eq!(
+        trace_error.get("message"),
+        Some(&AttachmentValue::String("api unauthorized".into()))
     );
-    assert!(
-        tracing_fields
-            .iter()
-            .any(|f| f.key == "report_attachment_count")
-    );
+    let Some(AttachmentValue::Array(events)) = trace_obj.get("events") else {
+        panic!("trace.events should be array");
+    };
+    assert!(!events.is_empty());
     let otel = ir.to_otel_envelope();
     assert!(
         otel.attributes
             .iter()
-            .any(|a| a.key == "report_display_causes")
+            .any(|a| a.key == "diagnostic_bag.display_causes")
     );
-    assert!(otel.attributes.iter().any(|a| a.key == "trace_event_count"));
-    assert!(otel.events.iter().any(|e| e.name == "trace.event"));
+    assert!(otel.events.iter().any(|e| e.name == "auth.lookup"));
+    assert!(otel
+        .trace_context
+        .as_ref()
+        .and_then(|ctx| ctx.trace_id.as_ref())
+        .is_some());
+}
+
+#[cfg(feature = "trace")]
+#[test]
+fn hex_ids_reject_all_zero_values() {
+    assert!(TraceId::new("00000000000000000000000000000000").is_err());
+    assert!(SpanId::new("0000000000000000").is_err());
+    assert!(ParentSpanId::new("0000000000000000").is_err());
 }
 
 #[cfg(feature = "tracing")]
@@ -285,7 +308,10 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
     };
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_trace_ids("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7")
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
         .with_trace_event(TraceEvent {
             name: "db.query".into(),
             level: Some(TraceEventLevel::Info),

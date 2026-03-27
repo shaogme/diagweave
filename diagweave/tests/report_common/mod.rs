@@ -110,8 +110,9 @@ pub fn ensure_global_injector_installed() {
                 .push(("request_id".into(), AttachmentValue::from("req-42")));
             #[cfg(feature = "trace")]
             {
-                context.trace_id = Some("trace-42".into());
-                context.span_id = Some("span-42".into());
+                context.trace_id =
+                    Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap());
+                context.span_id = Some(SpanId::new("00f067aa0ba902b7").unwrap());
             }
             Some(context)
         });

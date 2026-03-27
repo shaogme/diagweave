@@ -56,7 +56,8 @@ pub mod report {
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
     #[cfg(feature = "trace")]
     pub use crate::report_impl::{
-        ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel,
+        ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
+        TraceEventLevel, TraceId,
     };
 }
 
@@ -75,6 +76,8 @@ pub mod prelude {
     #[cfg(feature = "std")]
     pub use crate::report::{GlobalContext, register_global_injector};
     #[cfg(feature = "trace")]
-    pub use crate::report::{TraceEvent, TraceEventAttribute, TraceEventLevel};
+    pub use crate::report::{
+        ParentSpanId, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
+    };
     pub use crate::{Error, set, union};
 }

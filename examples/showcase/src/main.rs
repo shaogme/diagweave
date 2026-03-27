@@ -3,8 +3,8 @@ use std::io;
 
 use diagweave::prelude::{
     AttachmentValue, Compact, Diagnostic, Error, GlobalContext, Pretty, Report,
-    ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, TraceEvent,
-    TraceEventAttribute, TraceEventLevel, register_global_injector, set, union,
+    ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, SpanId, TraceEvent,
+    TraceEventAttribute, TraceEventLevel, TraceId, ParentSpanId, register_global_injector, set, union,
 };
 use diagweave::render::{DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
@@ -168,8 +168,11 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
         .with_severity(Severity::Fatal)
         .with_category("auth")
         .with_retryable(false)
-        .with_trace_ids("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7")
-        .with_parent_span_id("1111111111111111")
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
+        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("service=api")
         .with_trace_flags(1)
@@ -382,8 +385,8 @@ fn init_global_context() {
         let mut ctx = GlobalContext::default();
         ctx.context
             .push(("global_request_id".into(), "req-global-001".into()));
-        ctx.trace_id = Some("trace-global-abc".into());
-        ctx.span_id = Some("span-global-def".into());
+        ctx.trace_id = Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap());
+        ctx.span_id = Some(SpanId::new("00f067aa0ba902b7").unwrap());
         Some(ctx)
     });
 }

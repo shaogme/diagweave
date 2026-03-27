@@ -323,6 +323,10 @@ Global context injector (`std`):
 }
 ```
 
+Trace context uses validated IDs:
+- `TraceId::new("32-hex")` / `SpanId::new("16-hex")` / `ParentSpanId::new("16-hex")`
+- `unsafe { TraceId::new_unchecked(...) }` to skip validation
+
 ## Rendering and export
 
 Built-in renderers:

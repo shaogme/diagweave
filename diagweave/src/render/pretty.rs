@@ -155,15 +155,15 @@ fn render_trace_section(
         } else {
             if let Some(trace_id) = &trace.context.trace_id {
                 write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- trace_id: {trace_id}")?;
+                writeln!(f, "- trace_id: {}", trace_id.as_ref())?;
             }
             if let Some(span_id) = &trace.context.span_id {
                 write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- span_id: {span_id}")?;
+                writeln!(f, "- span_id: {}", span_id.as_ref())?;
             }
             if let Some(parent_span_id) = &trace.context.parent_span_id {
                 write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- parent_span_id: {parent_span_id}")?;
+                writeln!(f, "- parent_span_id: {}", parent_span_id.as_ref())?;
             }
             if let Some(sampled) = trace.context.sampled {
                 write_indent(f, options.pretty_indent)?;

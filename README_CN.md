@@ -323,6 +323,10 @@ Note 附件读取：
 }
 ```
 
+Trace 上下文使用已校验的 ID：
+- `TraceId::new("32位hex")` / `SpanId::new("16位hex")` / `ParentSpanId::new("16位hex")`
+- `unsafe { TraceId::new_unchecked(...) }` 可跳过校验
+
 ## 渲染与导出
 
 内置渲染器：

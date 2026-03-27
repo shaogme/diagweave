@@ -24,7 +24,10 @@ pub use types::{
 pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
 
 #[cfg(feature = "trace")]
-pub use types::{ReportTrace, TraceContext, TraceEvent, TraceEventAttribute, TraceEventLevel};
+pub use types::{
+    ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
+    TraceEventLevel, TraceId,
+};
 
 use types::{ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorIterStage};
 
@@ -159,7 +162,7 @@ impl<E> Report<E> {
     /// Returns the trace information associated with the report, if any.
     #[cfg(feature = "trace")]
     pub fn trace(&self) -> Option<&ReportTrace> {
-        self.diagnostics().map(|diag| &diag.trace)
+        self.diagnostics().and_then(|diag| diag.trace.as_ref())
     }
 
     fn diagnostics(&self) -> Option<&DiagnosticBag> {
@@ -178,11 +181,52 @@ impl<E> Report<E> {
 
     #[cfg(feature = "std")]
     fn apply_global_context(&mut self) {
-        let diag = self.diagnostics_mut();
+        let Some(injector) = global_context_injector().get() else {
+            return;
+        };
+        let injected = catch_unwind(AssertUnwindSafe(injector));
+        let Some(global) = injected.unwrap_or_default() else {
+            return;
+        };
+
         #[cfg(feature = "trace")]
-        apply_global_context(&mut diag.attachments, &mut diag.trace.context);
+        let GlobalContext {
+            context,
+            trace_id,
+            span_id,
+            parent_span_id,
+        } = global;
         #[cfg(not(feature = "trace"))]
-        apply_global_context(&mut diag.attachments);
+        let GlobalContext { context } = global;
+
+        let has_context = !context.is_empty();
+        #[cfg(feature = "trace")]
+        let has_trace =
+            trace_id.is_some() || span_id.is_some() || parent_span_id.is_some();
+        #[cfg(not(feature = "trace"))]
+        let has_trace = false;
+
+        if !has_context && !has_trace {
+            return;
+        }
+
+        let diag = self.diagnostics_mut();
+        for (key, value) in context {
+            diag.attachments.push(Attachment::context(key, value));
+        }
+        #[cfg(feature = "trace")]
+        if has_trace {
+            let trace = diag.trace.get_or_insert_with(ReportTrace::default);
+            if trace.context.trace_id.is_none() {
+                trace.context.trace_id = trace_id;
+            }
+            if trace.context.span_id.is_none() {
+                trace.context.span_id = span_id;
+            }
+            if trace.context.parent_span_id.is_none() {
+                trace.context.parent_span_id = parent_span_id;
+            }
+        }
     }
 
     /// Attaches a context key-value pair to the report.
@@ -253,62 +297,62 @@ impl<E> Report<E> {
     /// Sets the trace information for the report.
     #[cfg(feature = "trace")]
     pub fn with_trace(mut self, trace: ReportTrace) -> Self {
-        self.diagnostics_mut().trace = trace;
+        self.diagnostics_mut().trace = Some(trace);
         self
     }
 
     /// Sets the trace and span IDs for the report.
     #[cfg(feature = "trace")]
-    pub fn with_trace_ids(
-        mut self,
-        trace_id: impl Into<Cow<'static, str>>,
-        span_id: impl Into<Cow<'static, str>>,
-    ) -> Self {
-        let trace = &mut self.diagnostics_mut().trace;
-        trace.context.trace_id = Some(trace_id.into());
-        trace.context.span_id = Some(span_id.into());
+    pub fn with_trace_ids(mut self, trace_id: TraceId, span_id: SpanId) -> Self {
+        let trace = self.trace_mut();
+        trace.context.trace_id = Some(trace_id);
+        trace.context.span_id = Some(span_id);
         self
     }
 
     /// Sets the parent span ID for the report.
     #[cfg(feature = "trace")]
-    pub fn with_parent_span_id(mut self, parent_span_id: impl Into<Cow<'static, str>>) -> Self {
-        self.diagnostics_mut().trace.context.parent_span_id = Some(parent_span_id.into());
+    pub fn with_parent_span_id(mut self, parent_span_id: ParentSpanId) -> Self {
+        self.trace_mut().context.parent_span_id = Some(parent_span_id);
         self
     }
 
     /// Sets whether the trace is sampled.
     #[cfg(feature = "trace")]
     pub fn with_trace_sampled(mut self, sampled: bool) -> Self {
-        self.diagnostics_mut().trace.context.sampled = Some(sampled);
+        let trace = self.trace_mut();
+        trace.context.sampled = Some(sampled);
+        sync_trace_flags_with_sampled(&mut trace.context);
         self
     }
 
     /// Sets the trace state.
     #[cfg(feature = "trace")]
     pub fn with_trace_state(mut self, trace_state: impl Into<Cow<'static, str>>) -> Self {
-        self.diagnostics_mut().trace.context.trace_state = Some(trace_state.into());
+        self.trace_mut().context.trace_state = Some(trace_state.into());
         self
     }
 
     /// Sets the trace flags.
     #[cfg(feature = "trace")]
     pub fn with_trace_flags(mut self, flags: u32) -> Self {
-        self.diagnostics_mut().trace.context.flags = Some(flags);
+        let trace = self.trace_mut();
+        trace.context.flags = Some(flags);
+        sync_trace_sampled_with_flags(&mut trace.context);
         self
     }
 
     /// Adds a trace event to the report.
     #[cfg(feature = "trace")]
     pub fn with_trace_event(mut self, event: TraceEvent) -> Self {
-        self.diagnostics_mut().trace.events.push(event);
+        self.trace_mut().events.push(event);
         self
     }
 
     /// Pushes a trace event with the specified name.
     #[cfg(feature = "trace")]
     pub fn push_trace_event(mut self, name: impl Into<Cow<'static, str>>) -> Self {
-        self.diagnostics_mut().trace.events.push(TraceEvent {
+        self.trace_mut().events.push(TraceEvent {
             name: name.into(),
             ..TraceEvent::default()
         });
@@ -324,7 +368,7 @@ impl<E> Report<E> {
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
     ) -> Self {
-        self.diagnostics_mut().trace.events.push(TraceEvent {
+        self.trace_mut().events.push(TraceEvent {
             name: name.into(),
             level,
             timestamp_unix_nano,
@@ -435,7 +479,7 @@ impl<E> Report<E> {
                 metadata: ReportMetadata::default(),
                 diagnostics: DiagnosticBag {
                     #[cfg(feature = "trace")]
-                    trace: ReportTrace::default(),
+                    trace: None,
                     stack_trace: None,
                     attachments: Vec::new(),
                     display_causes: None,
@@ -521,6 +565,44 @@ impl<E> Report<E> {
     }
 }
 
+#[cfg(feature = "trace")]
+impl<E> Report<E> {
+    fn trace_mut(&mut self) -> &mut ReportTrace {
+        let diag = self.diagnostics_mut();
+        if diag.trace.is_none() {
+            diag.trace = Some(ReportTrace::default());
+        }
+        diag.trace.as_mut().expect("trace just initialized")
+    }
+}
+
+#[cfg(feature = "trace")]
+fn sync_trace_flags_with_sampled(context: &mut TraceContext) {
+    let Some(sampled) = context.sampled else {
+        return;
+    };
+    match context.flags.as_mut() {
+        Some(flags) => {
+            if sampled {
+                *flags |= 1;
+            } else {
+                *flags &= !1;
+            }
+        }
+        None => {
+            context.flags = Some(if sampled { 1 } else { 0 });
+        }
+    }
+}
+
+#[cfg(feature = "trace")]
+fn sync_trace_sampled_with_flags(context: &mut TraceContext) {
+    let Some(flags) = context.flags else {
+        return;
+    };
+    context.sampled = Some((flags & 1) == 1);
+}
+
 /// Context injector type alias for global context providers.
 #[cfg(feature = "std")]
 pub(crate) type ContextInjector = dyn Fn() -> Option<GlobalContext> + Send + Sync + 'static;
@@ -546,34 +628,6 @@ pub fn register_global_injector(
         .map_err(|_| RegisterGlobalContextError)
 }
 
-#[cfg(feature = "std")]
-pub(crate) fn apply_global_context(
-    attachments: &mut Vec<Attachment>,
-    #[cfg(feature = "trace")] trace_ctx: &mut TraceContext,
-) {
-    let Some(injector) = global_context_injector().get() else {
-        return;
-    };
-    let injected = catch_unwind(AssertUnwindSafe(injector));
-    let Some(global) = injected.unwrap_or_default() else {
-        return;
-    };
-    for (key, value) in global.context {
-        attachments.push(Attachment::context(key, value));
-    }
-    #[cfg(feature = "trace")]
-    {
-        if trace_ctx.trace_id.is_none() {
-            trace_ctx.trace_id = global.trace_id;
-        }
-        if trace_ctx.span_id.is_none() {
-            trace_ctx.span_id = global.span_id;
-        }
-        if trace_ctx.parent_span_id.is_none() {
-            trace_ctx.parent_span_id = global.parent_span_id;
-        }
-    }
-}
 
 impl<E> Report<E>
 where

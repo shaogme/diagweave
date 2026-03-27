@@ -238,13 +238,13 @@ fn write_trace_ctx(
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "trace_id", |f| {
-        write_option_string(f, context.trace_id.as_deref())
+        write_option_string(f, context.trace_id.as_ref().map(|v| v.as_ref()))
     })?;
     write_object_field(f, pretty, depth, &mut first, "span_id", |f| {
-        write_option_string(f, context.span_id.as_deref())
+        write_option_string(f, context.span_id.as_ref().map(|v| v.as_ref()))
     })?;
     write_object_field(f, pretty, depth, &mut first, "parent_span_id", |f| {
-        write_option_string(f, context.parent_span_id.as_deref())
+        write_option_string(f, context.parent_span_id.as_ref().map(|v| v.as_ref()))
     })?;
     write_object_field(f, pretty, depth, &mut first, "sampled", |f| {
         match context.sampled {

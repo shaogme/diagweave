@@ -72,7 +72,7 @@ where
             diag.stack_trace.is_some() || !diag.attachments.is_empty() || {
                 #[cfg(feature = "trace")]
                 {
-                    !diag.trace.is_empty()
+                    diag.trace.as_ref().is_some_and(|trace| !trace.is_empty())
                 }
                 #[cfg(not(feature = "trace"))]
                 {
@@ -133,11 +133,13 @@ where
                     Ok(())
                 };
 
-                if let Some(tid) = &diag.trace.context.trace_id {
-                    write_field("trace_id", tid)?;
-                }
-                if let Some(sid) = &diag.trace.context.span_id {
-                    write_field("span_id", sid)?;
+                if let Some(trace) = diag.trace.as_ref() {
+                    if let Some(tid) = &trace.context.trace_id {
+                        write_field("trace_id", &tid.as_ref())?;
+                    }
+                    if let Some(sid) = &trace.context.span_id {
+                        write_field("span_id", &sid.as_ref())?;
+                    }
                 }
             }
 

@@ -1,8 +1,8 @@
 use std::io;
 
 use diagweave::prelude::{
-    GlobalContext, Report, ReportRenderOptions, ReportResultExt, register_global_injector, set,
-    union,
+    GlobalContext, Report, ReportRenderOptions, ReportResultExt, SpanId, TraceId,
+    register_global_injector, set, union,
 };
 use diagweave::render::Json;
 
@@ -139,15 +139,15 @@ fn init_tracing() {
 
 fn init_global_context() {
     const REQUEST_ID: &str = "req-20260327-0001";
-    const SPAN_ID: &str = "span-0000000000000001";
+    const SPAN_ID: &str = "00f067aa0ba902b7";
     const TRACE_ID: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context.push(("request_id".into(), REQUEST_ID.into()));
         ctx.context.push(("span_id".into(), SPAN_ID.into()));
-        ctx.trace_id = Some(TRACE_ID.into());
-        ctx.span_id = Some(SPAN_ID.into());
+        ctx.trace_id = Some(TraceId::new(TRACE_ID).unwrap());
+        ctx.span_id = Some(SpanId::new(SPAN_ID).unwrap());
         Some(ctx)
     });
 }

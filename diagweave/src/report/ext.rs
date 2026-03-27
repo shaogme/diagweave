@@ -4,7 +4,7 @@ use core::fmt::Display;
 
 use super::{Attachment, AttachmentValue, ErrorCode, Report, ReportMetadata, Severity, StackTrace};
 #[cfg(feature = "trace")]
-use super::{ReportTrace, TraceEvent, TraceEventAttribute, TraceEventLevel};
+use super::{ParentSpanId, ReportTrace, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId};
 use core::error::Error;
 
 /// A trait for types that can be converted into a diagnostic result.
@@ -84,14 +84,14 @@ pub trait ReportResultExt<T, E> {
     #[cfg(feature = "trace")]
     fn with_trace_ids(
         self,
-        trace_id: impl Into<Cow<'static, str>>,
-        span_id: impl Into<Cow<'static, str>>,
+        trace_id: TraceId,
+        span_id: SpanId,
     ) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn with_parent_span_id(
         self,
-        parent_span_id: impl Into<Cow<'static, str>>,
+        parent_span_id: ParentSpanId,
     ) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
@@ -230,8 +230,8 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     #[cfg(feature = "trace")]
     fn with_trace_ids(
         self,
-        trace_id: impl Into<Cow<'static, str>>,
-        span_id: impl Into<Cow<'static, str>>,
+        trace_id: TraceId,
+        span_id: SpanId,
     ) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_ids(trace_id, span_id))
     }
@@ -239,7 +239,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     #[cfg(feature = "trace")]
     fn with_parent_span_id(
         self,
-        parent_span_id: impl Into<Cow<'static, str>>,
+        parent_span_id: ParentSpanId,
     ) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_parent_span_id(parent_span_id))
     }

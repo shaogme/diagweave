@@ -216,8 +216,13 @@ pub struct Report<E> {
 | GlobalContext 字段 | 说明 |
 | :--- | :--- |
 | `context` | `Vec<(Cow<'static, str>, AttachmentValue)>` 全局关联的键值对 |
-| `trace_id` | `Option<Cow<'static, str>>` 自动绑定的 Trace ID |
-| `span_id` | `Option<Cow<'static, str>>` 自动绑定的 Span ID |
+| `trace_id` | `Option<TraceId>` 自动绑定的 Trace ID |
+| `span_id` | `Option<SpanId>` 自动绑定的 Span ID |
+| `parent_span_id` | `Option<ParentSpanId>` 自动绑定的父 Span ID |
+
+`TraceId` / `SpanId` / `ParentSpanId` 为十六进制校验后的标识符。构造方式：
+- `TraceId::new("32位hex")` / `SpanId::new("16位hex")` / `ParentSpanId::new("16位hex")`
+- `unsafe { TraceId::new_unchecked(...) }` 跳过校验
 
 ### 链式配置方法
 | 方法 | 参数类型 | 说明 |
@@ -466,7 +471,7 @@ let json_str = report.json().to_string();
 | 方法 | 说明 |
 | :--- | :--- |
 | `emit_tracing(&self)` | 在当前 Span 下触发一个 `info` 级别的事件，携带所有 Report 字段作为属性 |
-| `with_trace_ids(tid, sid)` | 手动绑定追踪上下文 (Trace ID / Span ID) |
+| `with_trace_ids(tid, sid)` | 手动绑定追踪上下文 (Trace ID / Span ID)，参数为 `TraceId` / `SpanId` |
 
 ### 导出行为
 - **属性映射**：`Context` 会被映射为 `tracing` 事件的命名字段。
@@ -475,7 +480,7 @@ let json_str = report.json().to_string();
 
 ### 用法示例
 ```rust
-use diagweave::prelude::{Report, ReportRenderOptions};
+use diagweave::prelude::{Report, ReportRenderOptions, SpanId, TraceId};
 use std::fmt;
 
 #[cfg(feature = "trace")]
@@ -502,6 +507,12 @@ impl TracingExporterTrait for MyCustomExporter {
 
 let report = Report::new(MyError);
 let options = ReportRenderOptions::default();
+
+// 绑定 trace/span ids
+let report = report.with_trace_ids(
+    TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+    SpanId::new("00f067aa0ba902b7").unwrap(),
+);
 
 // 使用默认选项导出到当前 tracing span
 #[cfg(feature = "tracing")]

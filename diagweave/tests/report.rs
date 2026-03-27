@@ -171,8 +171,14 @@ fn global_context_injector_applies_to_new_reports() {
     #[cfg(feature = "trace")]
     {
         let trace = report.trace().expect("trace should be injected");
-        assert_eq!(trace.context.trace_id.as_deref(), Some("trace-42"));
-        assert_eq!(trace.context.span_id.as_deref(), Some("span-42"));
+        assert_eq!(
+            trace.context.trace_id.as_ref().map(|v| v.as_ref()),
+            Some("4bf92f3577b34da6a3ce929d0e0e4736")
+        );
+        assert_eq!(
+            trace.context.span_id.as_ref().map(|v| v.as_ref()),
+            Some("00f067aa0ba902b7")
+        );
     }
 }
 

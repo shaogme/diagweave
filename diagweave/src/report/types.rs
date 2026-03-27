@@ -209,7 +209,7 @@ pub(crate) struct ColdData {
 #[derive(Default)]
 pub(crate) struct DiagnosticBag {
     #[cfg(feature = "trace")]
-    pub(crate) trace: ReportTrace,
+    pub(crate) trace: Option<ReportTrace>,
     pub(crate) stack_trace: Option<StackTrace>,
     pub(crate) attachments: Vec<Attachment>,
     pub(crate) display_causes: Option<DisplayCauseChain>,
@@ -230,13 +230,13 @@ pub struct GlobalContext {
     pub context: Vec<(Cow<'static, str>, AttachmentValue)>,
     /// Global trace ID if available.
     #[cfg(feature = "trace")]
-    pub trace_id: Option<Cow<'static, str>>,
+    pub trace_id: Option<TraceId>,
     /// Global span ID if available.
     #[cfg(feature = "trace")]
-    pub span_id: Option<Cow<'static, str>>,
+    pub span_id: Option<SpanId>,
     /// Global parent span ID if available.
     #[cfg(feature = "trace")]
-    pub parent_span_id: Option<Cow<'static, str>>,
+    pub parent_span_id: Option<ParentSpanId>,
 }
 
 pub(crate) struct SeenErrorAddrs {
@@ -529,9 +529,9 @@ pub struct TraceEvent {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceContext {
-    pub trace_id: Option<Cow<'static, str>>,
-    pub span_id: Option<Cow<'static, str>>,
-    pub parent_span_id: Option<Cow<'static, str>>,
+    pub trace_id: Option<TraceId>,
+    pub span_id: Option<SpanId>,
+    pub parent_span_id: Option<ParentSpanId>,
     pub sampled: Option<bool>,
     pub trace_state: Option<Cow<'static, str>>,
     pub flags: Option<u32>,
@@ -565,6 +565,89 @@ impl ReportTrace {
         self.context.is_empty() && self.events.is_empty()
     }
 }
+
+#[cfg(feature = "trace")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HexId<const N: usize>(Cow<'static, str>);
+
+#[cfg(feature = "trace")]
+impl<const N: usize> HexId<N> {
+    pub fn new(value: impl Into<Cow<'static, str>>) -> Result<Self, ()> {
+        let value = value.into();
+        if Self::is_valid(value.as_ref()) {
+            Ok(Self(value))
+        } else {
+            Err(())
+        }
+    }
+
+    pub unsafe fn new_unchecked(value: impl Into<Cow<'static, str>>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn is_valid(value: &str) -> bool {
+        if value.len() != N {
+            return false;
+        }
+        if value.bytes().all(|b| b == b'0') {
+            return false;
+        }
+        value
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))
+    }
+
+    pub fn as_cow(&self) -> Cow<'static, str> {
+        self.0.clone()
+    }
+}
+
+#[cfg(feature = "trace")]
+impl<const N: usize> AsRef<str> for HexId<N> {
+    fn as_ref(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
+#[cfg(feature = "trace")]
+impl<const N: usize> Display for HexId<N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0.as_ref())
+    }
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+impl<const N: usize> serde::Serialize for HexId<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.0.as_ref())
+    }
+}
+
+#[cfg(all(feature = "trace", feature = "json"))]
+impl<'de, const N: usize> serde::Deserialize<'de> for HexId<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = <Cow<'de, str>>::deserialize(deserializer)?;
+        let value: Cow<'static, str> = value.into_owned().into();
+        if Self::is_valid(value.as_ref()) {
+            Ok(Self(value))
+        } else {
+            Err(serde::de::Error::custom("invalid hex id"))
+        }
+    }
+}
+
+#[cfg(feature = "trace")]
+pub type TraceId = HexId<32>;
+#[cfg(feature = "trace")]
+pub type SpanId = HexId<16>;
+#[cfg(feature = "trace")]
+pub type ParentSpanId = HexId<16>;
 
 /// Options for collecting cause messages from an error report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

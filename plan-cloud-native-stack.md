@@ -12,7 +12,7 @@
 
 1. **`union!` 边界能力**：在网关层将所有下游服务错误统一 `union` 进一个 `ApiError`。
 2. **自动 Trace 关联**：通过 `register_global_injector` 自动把当前 `RequestID` 与 `SpanID` 注入到每个 `Report` 中。
-3. **OTel 导出**：验证 `ir.to_otel_envelope()` 生成的数据是否符合云端监控所需字段结构。
+3. **OTel 导出**：验证在 `otel` feature 开启时，`ir.to_otel_envelope()` 生成的数据是否符合云端监控所需字段结构。
 
 目标场景（模拟三层微服务）：
 
@@ -140,14 +140,14 @@ cargo run -p cloud-native-stack
 
 - `diagweave`（workspace 版本）
 - `json` feature
-- `trace` 或 `tracing` feature
+- `trace` / `tracing` / `otel` feature
 - `serde_json`（如果要构造 payload）
 
 示意：
 
 ```
 [dependencies]
-diagweave = { path = "../../diagweave", features = ["json", "trace", "tracing"] }
+diagweave = { path = "../../diagweave", features = ["json", "trace", "otel", "tracing"] }
 serde_json = "1"
 ```
 
@@ -156,6 +156,7 @@ serde_json = "1"
 ## 风险与注意事项
 
 - `register_global_injector` 仅在 `std` feature 下可用
+- `to_otel_envelope()` 仅在 `otel` feature 下可用，`trace` 只负责补充 trace 事件
 - 如果示例需要 `tracing` 输出，需要初始化 `tracing_subscriber`
 - `union!` 与 `wrap_with` 的使用顺序需谨慎，确保错误链可追溯
 

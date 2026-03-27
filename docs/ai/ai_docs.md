@@ -530,7 +530,7 @@ report.emit_tracing_with(&MyCustomExporter);
 ## 9. Cloud-Native Adaptation (OpenTelemetry)
 
 ### Overview
-`diagweave` provides adapters deeply integrated with OpenTelemetry (OTel) specifications, supporting conversion of rich diagnostic data into log/event records that follow the OTLP log data model.
+`diagweave` provides adapters deeply integrated with OpenTelemetry (OTel) specifications, supporting conversion of rich diagnostic data into log/event records that follow the OTLP log data model. This area requires the `otel` feature.
 
 ### Conversion API
 | Method Declaration | Return Type | Description |
@@ -642,12 +642,14 @@ impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRende
 | `std` | Yes | Standard library integrations (capture stack trace, global injector, etc.) |
 | `json` | No | `Json` renderer support (requires `serde` and `serde_json`) |
 | `trace` | No | Trace data model (`ReportTrace`, etc.) and pluggable exporter trait (`TracingExporterTrait`, `emit_tracing_with`) |
+| `otel` | No | OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` |
 | `tracing` | No | Default `tracing` crate integration (`TracingExporter`, `emit_tracing`). Automatically enables `trace`. |
 
 ### Requirements Matrix
 - **`no_std`**: Supported by disabling default features. Requires `alloc`.
 - **`json`**: Requires `serde` with `derive` and `alloc` features, plus `serde_json` with `alloc`.
 - **`trace`**: Zero-dependency trace data structures.
+- **`otel`**: Requires no extra dependency by itself; enabled explicitly for OTLP envelope export.
 - **`tracing`**: Requires `tracing` crate.
 
 

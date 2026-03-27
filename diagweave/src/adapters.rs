@@ -1,6 +1,9 @@
 use alloc::borrow::Cow;
-use alloc::collections::BTreeMap;
+#[cfg(feature = "otel")]
 use alloc::format;
+#[cfg(feature = "otel")]
+use alloc::collections::BTreeMap;
+#[cfg(feature = "otel")]
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
@@ -10,7 +13,9 @@ use crate::render_impl::{
     DiagnosticIr, build_context_and_attachments, build_display_causes_value, build_error_value,
     build_source_errors_value, build_stack_trace_value,
 };
-use crate::report::{Attachment, AttachmentValue, ErrorCode};
+#[cfg(feature = "otel")]
+use crate::report::Attachment;
+use crate::report::{AttachmentValue, ErrorCode};
 
 fn error_code_value(value: &ErrorCode) -> AttachmentValue {
     match value {
@@ -19,6 +24,7 @@ fn error_code_value(value: &ErrorCode) -> AttachmentValue {
     }
 }
 
+#[cfg(feature = "otel")]
 fn error_code_otel_value(value: &ErrorCode) -> OtelValue {
     match value {
         ErrorCode::Integer(v) => OtelValue::Int(*v),
@@ -35,6 +41,7 @@ pub struct TracingField {
 }
 
 /// An attribute for OpenTelemetry.
+#[cfg(feature = "otel")]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelAttribute {
@@ -43,6 +50,7 @@ pub struct OtelAttribute {
 }
 
 /// An OpenTelemetry log/event record shaped like the OTLP log data model.
+#[cfg(feature = "otel")]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelEvent {
@@ -59,6 +67,7 @@ pub struct OtelEvent {
 }
 
 /// OTLP-friendly OpenTelemetry value representation.
+#[cfg(feature = "otel")]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub enum OtelValue {
@@ -73,6 +82,7 @@ pub enum OtelValue {
     KvList(Vec<OtelAttribute>),
 }
 
+#[cfg(feature = "otel")]
 impl OtelValue {
     /// Returns a compact string representation for debugging and examples.
     pub fn as_string(&self) -> Cow<'static, str> {
@@ -90,12 +100,14 @@ impl OtelValue {
     }
 }
 
+#[cfg(feature = "otel")]
 impl core::fmt::Display for OtelValue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.as_string().as_ref())
     }
 }
 
+#[cfg(feature = "otel")]
 impl From<&AttachmentValue> for OtelValue {
     fn from(value: &AttachmentValue) -> Self {
         match value {
@@ -148,17 +160,21 @@ impl From<&AttachmentValue> for OtelValue {
 }
 
 /// A batch of OpenTelemetry log/event records.
+#[cfg(feature = "otel")]
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct OtelEnvelope {
     pub records: Vec<OtelEvent>,
 }
 
+#[cfg(feature = "otel")]
 pub const REPORT_OTEL_SCHEMA_VERSION: &str = "v0.1.0";
 
+#[cfg(feature = "otel")]
 pub const REPORT_OTEL_SCHEMA_DRAFT: &str = "https://json-schema.org/draft/2020-12/schema";
 
 /// Returns the OTEL schema for the diagnostic envelope.
+#[cfg(feature = "otel")]
 pub fn report_otel_schema() -> &'static str {
     include_str!("../schemas/report-otel-v0.1.0.schema.json")
 }
@@ -260,6 +276,7 @@ impl DiagnosticIr<'_> {
     }
 
     /// Converts the diagnostic IR to OpenTelemetry log/event records.
+    #[cfg(feature = "otel")]
     pub fn to_otel_envelope(&self) -> OtelEnvelope {
         let mut records = Vec::new();
         records.push(self.otel_report_record());
@@ -270,6 +287,7 @@ impl DiagnosticIr<'_> {
         OtelEnvelope { records }
     }
 
+    #[cfg(feature = "otel")]
     fn otel_report_record(&self) -> OtelEvent {
         let severity = self
             .metadata
@@ -345,6 +363,7 @@ impl DiagnosticIr<'_> {
         }
     }
 
+    #[cfg(feature = "otel")]
     fn otel_error_code_attr(key: &'static str, value: &ErrorCode) -> OtelAttribute {
         OtelAttribute {
             key: key.into(),
@@ -352,6 +371,7 @@ impl DiagnosticIr<'_> {
         }
     }
 
+    #[cfg(feature = "otel")]
     #[cfg(feature = "trace")]
     fn otel_trace_correlation(&self, attributes: &mut Vec<OtelAttribute>) {
         let Some(trace) = self.trace else {
@@ -371,9 +391,11 @@ impl DiagnosticIr<'_> {
         }
     }
 
+    #[cfg(feature = "otel")]
     #[cfg(not(feature = "trace"))]
     fn otel_trace_correlation(&self, _attributes: &mut Vec<OtelAttribute>) {}
 
+    #[cfg(feature = "otel")]
     fn otel_diagnostic_bag(&self, attributes: &mut Vec<OtelAttribute>) {
         if !self.display_causes.is_empty() {
             attributes.push(OtelAttribute {
@@ -395,6 +417,7 @@ impl DiagnosticIr<'_> {
         }
     }
 
+    #[cfg(feature = "otel")]
     fn otel_attachment_attributes(&self, attributes: &mut Vec<OtelAttribute>) {
         for attachment in self.attachments {
             match attachment {
@@ -430,6 +453,7 @@ impl DiagnosticIr<'_> {
         }
     }
 
+    #[cfg(feature = "otel")]
     #[cfg(feature = "trace")]
     fn otel_trace_ev(&self, records: &mut Vec<OtelEvent>) {
         let trace = match self.trace {
@@ -484,6 +508,7 @@ impl DiagnosticIr<'_> {
     }
 }
 
+#[cfg(feature = "otel")]
 fn severity_to_otel_number(severity: crate::report::Severity) -> u8 {
     match severity {
         crate::report::Severity::Debug => 5,
@@ -494,6 +519,7 @@ fn severity_to_otel_number(severity: crate::report::Severity) -> u8 {
     }
 }
 
+#[cfg(feature = "otel")]
 #[cfg(feature = "trace")]
 fn severity_for_trace_level(level: crate::report::TraceEventLevel) -> (Cow<'static, str>, u8) {
     match level {

@@ -37,6 +37,7 @@
   - [独立 `#[derive(Error)]`](#独立-deriveerror)
   - [`Report` 与链式 API](#report-与链式-api)
   - [渲染与导出](#渲染与导出)
+    - [OTEL schema](#otel-schema)
   - [来自 `showcase` 的高级模式](#来自-showcase-的高级模式)
   - [与其他库的对比](#与其他库的对比)
   - [Feature](#feature)
@@ -363,6 +364,7 @@ IR 与适配器：
 
 let ir = report.to_diagnostic_ir();
 let tracing_fields = ir.to_tracing_fields();
+#[cfg(feature = "otel")]
 let otel = ir.to_otel_envelope();
 ```
 
@@ -422,7 +424,7 @@ JSON 输出固定包含 `schema_version: "v0.1.0"`：
 
 ### OTEL schema
 
-OpenTelemetry 输出的 envelope 单独记录在这里：
+OpenTelemetry 输出的 envelope 单独记录在这里，需要 `otel` feature：
 
 - Schema：`diagweave/schemas/report-otel-v0.1.0.schema.json`
 - 文档：[`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md)
@@ -480,6 +482,7 @@ cargo run -p showcase
 - `std`（默认）：标准库能力
 - `json`：`Json` 渲染器（`serde` / `serde_json`）
 - `trace`：trace 数据模型（`ReportTrace` 等）与可插拔导出器 Trait（`TracingExporterTrait`、`emit_tracing_with`）
+- `otel`：OTLP envelope 模型（`OtelEnvelope`、`OtelEvent`、`OtelValue`）与 `to_otel_envelope()`
 - `tracing`：默认 `tracing` 生态集成（`TracingExporter`、`emit_tracing`）
 
 ## 仓库结构
@@ -499,7 +502,7 @@ bash scripts/test-feature-matrix.sh
 ```
 
 ```powershell
-powershell -File diagweave/scripts/test-feature-matrix.ps1
+powershell -File scripts/test-feature-matrix.ps1
 ```
 
 ## 适用场景

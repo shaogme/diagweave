@@ -1,9 +1,11 @@
 mod report_common;
+#[cfg(feature = "otel")]
 use diagweave::adapters::OtelValue;
 use diagweave::prelude::*;
 use report_common::*;
 #[cfg(feature = "tracing")]
 use std::cell::Cell;
+#[cfg(any(feature = "otel", all(feature = "tracing", feature = "std")))]
 use std::collections::BTreeMap;
 #[cfg(all(feature = "tracing", feature = "std"))]
 use std::sync::{Arc, Mutex};
@@ -108,6 +110,7 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
     );
 }
 
+#[cfg(feature = "otel")]
 #[test]
 fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() {
     let _guard = init_test();
@@ -193,7 +196,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
     }
 }
 
-#[cfg(feature = "trace")]
+#[cfg(all(feature = "trace", feature = "otel"))]
 #[test]
 fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     let _guard = init_test();
@@ -312,7 +315,7 @@ fn hex_ids_reject_all_zero_values() {
     assert!(ParentSpanId::new("0000000000000000").is_err());
 }
 
-#[cfg(all(feature = "json", feature = "trace"))]
+#[cfg(all(feature = "json", feature = "otel", feature = "trace"))]
 #[test]
 fn otel_envelope_serializes_with_expected_serde_shape() {
     let _guard = init_test();

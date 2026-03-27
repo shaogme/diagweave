@@ -530,7 +530,7 @@ report.emit_tracing_with(&MyCustomExporter);
 ## 9. 云原生适配 (OpenTelemetry)
 
 ### 概览
-`diagweave` 提供与 OpenTelemetry (OTel) 规范深度集成的适配器，支持将丰富的诊断数据转换为符合 OTLP 日志数据模型的记录批次。
+`diagweave` 提供与 OpenTelemetry (OTel) 规范深度集成的适配器，支持将丰富的诊断数据转换为符合 OTLP 日志数据模型的记录批次。这里需要显式启用 `otel` feature。
 
 ### 转换 API
 | 方法声明 | 返回类型 | 说明 |
@@ -642,11 +642,13 @@ impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRende
 | `std` | 是 | 标准库集成 (捕获堆栈、全局注入器等) |
 | `json` | 否 | `Json` 渲染器支持 (依赖 `serde` 和 `serde_json`) |
 | `trace` | 否 | Trace 数据模型 (`ReportTrace` 等) 与可插拔导出器 Trait (`TracingExporterTrait`、`emit_tracing_with`) |
+| `otel` | 否 | OTLP envelope 模型 (`OtelEnvelope`、`OtelEvent`、`OtelValue`) 与 `to_otel_envelope()` |
 | `tracing` | 否 | 默认 `tracing` 生态集成 (`TracingExporter`、`emit_tracing`)。会自动开启 `trace`。 |
 
 ### 依赖矩阵
 - **`no_std`**: 通过关闭默认特性支持。需要 `alloc`。
 - **`json`**: 需要 `serde` (含 `derive` 和 `alloc` 特性) 以及 `serde_json` (含 `alloc` 特性)。
 - **`trace`**: 无额外外部依赖的 Trace 数据结构。
+- **`otel`**: 本身不引入额外依赖，但需要显式开启后才能导出 OTLP envelope。
 - **`tracing`**: 依赖 `tracing` crate。
 

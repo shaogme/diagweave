@@ -19,30 +19,38 @@ function Run-Step {
     }
 }
 
-Run-Step "[1/7] cargo test --workspace" {
+Run-Step "[1/9] cargo test --workspace" {
     cargo test --workspace
 }
 
-Run-Step "[2/7] cargo hack test --each-feature" {
+Run-Step "[2/9] cargo hack test --each-feature" {
     cargo hack test --each-feature
 }
 
-Run-Step "[3/7] cargo hack test --no-default-features" {
+Run-Step "[3/9] cargo hack test --no-default-features" {
     cargo hack test --no-default-features
 }
 
-Run-Step "[4/7] cargo hack check --no-default-features --features json" {
+Run-Step "[4/9] cargo hack check --no-default-features --features json" {
     cargo hack check --no-default-features -p diagweave --features json
 }
 
-Run-Step "[5/7] cargo check -p diagweave --no-default-features --features trace" {
+Run-Step "[5/9] cargo hack check --no-default-features --features otel" {
+    cargo hack check --no-default-features -p diagweave --features otel
+}
+
+Run-Step "[6/9] cargo check -p diagweave --no-default-features --features trace" {
     cargo check -p diagweave --no-default-features --features trace
 }
 
-Run-Step "[6/7] cargo check -p diagweave --no-default-features --features tracing" {
+Run-Step "[7/9] cargo check -p diagweave --no-default-features --features trace,otel" {
+    cargo check -p diagweave --no-default-features --features trace,otel
+}
+
+Run-Step "[8/9] cargo check -p diagweave --no-default-features --features tracing" {
     cargo check -p diagweave --no-default-features --features tracing
 }
 
-Run-Step "[7/7] cargo hack test --feature-powerset" {
+Run-Step "[9/9] cargo hack test --feature-powerset" {
     cargo hack test --feature-powerset
 }

@@ -14,7 +14,7 @@ categories = ["development-tools::debugging"]
 publish = false
 
 [dependencies]
-diagweave = { workspace = true, features = ["std", "json", "trace", "tracing"] }
+diagweave = { workspace = true, features = ["std", "json", "trace", "otel", "tracing"] }
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 serde_json = { workspace = true, features = ["std"] }

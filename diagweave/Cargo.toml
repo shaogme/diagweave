@@ -27,6 +27,7 @@ default = ["std"]
 std = ["tracing?/std"]
 json = ["dep:serde", "dep:serde_json"]
 trace = []
+otel = []
 tracing = ["trace", "dep:tracing"]
 
 [lints]

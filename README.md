@@ -37,7 +37,6 @@
   - [Standalone `#[derive(Error)]`](#standalone-deriveerror)
   - [`Report` and chain APIs](#report-and-chain-apis)
   - [Rendering and export](#rendering-and-export)
-    - [JSON schema](#json-schema)
     - [OTEL schema](#otel-schema)
   - [Advanced patterns from `showcase`](#advanced-patterns-from-showcase)
   - [Comparison with other crates](#comparison-with-other-crates)
@@ -365,6 +364,7 @@ IR and adapters:
 
 let ir = report.to_diagnostic_ir();
 let tracing_fields = ir.to_tracing_fields();
+#[cfg(feature = "otel")]
 let otel = ir.to_otel_envelope();
 ```
 
@@ -424,7 +424,7 @@ JSON output includes `schema_version: "v0.1.0"`.
 
 ### OTEL schema
 
-OpenTelemetry envelope output is documented separately.
+OpenTelemetry envelope output is documented separately and requires the `otel` feature.
 
 - Schema: `diagweave/schemas/report-otel-v0.1.0.schema.json`
 - Doc: [`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md)
@@ -482,6 +482,7 @@ cargo run -p showcase
 - `std` (default): std integrations
 - `json`: `Json` renderer (`serde` / `serde_json`)
 - `trace`: trace data model (`ReportTrace`, etc.) and pluggable exporter trait (`TracingExporterTrait`, `emit_tracing_with`)
+- `otel`: OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()`
 - `tracing`: default `tracing` crate integration (`TracingExporter`, `emit_tracing`)
 
 ## Workspace layout
@@ -501,7 +502,7 @@ bash scripts/test-feature-matrix.sh
 ```
 
 ```powershell
-powershell -File diagweave/scripts/test-feature-matrix.ps1
+powershell -File scripts/test-feature-matrix.ps1
 ```
 
 ## When to use

@@ -63,7 +63,7 @@ Current exporters populate these keys:
 
 ## Rust type definitions
 
-When `feature = "json"` is enabled, `diagweave` exports:
+When `feature = "otel"` is enabled, `diagweave` exports:
 
 - `OtelEnvelope`
 - `OtelEvent`
@@ -72,5 +72,7 @@ When `feature = "json"` is enabled, `diagweave` exports:
 - `REPORT_OTEL_SCHEMA_VERSION`
 - `REPORT_OTEL_SCHEMA_DRAFT`
 - `report_otel_schema()`
+
+When `feature = "json"` is also enabled, these types additionally derive `serde::Serialize` / `serde::Deserialize`.
 
 See also the JSON report schema in [`docs/report-json-schema-v0.1.0.md`](docs/report-json-schema-v0.1.0.md).

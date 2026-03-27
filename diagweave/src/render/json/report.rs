@@ -129,8 +129,8 @@ fn write_meta_gov_fields(
         }
     })?;
     write_object_field(f, pretty, depth, first, "category", |f| {
-        match metadata.category.as_ref() {
-            Some(category) => write_json_string(f, category.as_ref()),
+        match metadata.category.as_deref() {
+            Some(category) => write_json_string(f, category),
             None => f.write_str("null"),
         }
     })?;
@@ -241,7 +241,7 @@ fn write_source_errors_chain(
     write_object_field(f, pretty, depth, &mut first, "items", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        for item in &source_errors.items {
+        for item in source_errors.items.iter() {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
             write_source_error_object(f, pretty, depth + 2, item)?;
         }
@@ -426,7 +426,7 @@ fn write_stack_trace_object(
     write_object_field(f, pretty, depth, &mut first, "frames", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        for frame in &stack_trace.frames {
+        for frame in stack_trace.frames.iter() {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
             write_stack_frame_object(f, pretty, depth + 2, frame)?;
         }

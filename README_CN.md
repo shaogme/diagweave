@@ -276,6 +276,9 @@ pub enum MyError {
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
 
+`category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `Arc<str>` 共享存储。
+对应的设置接口也接受 `impl Into<Arc<str>>`，可以直接传入共享字符串而不再额外拷贝。
+
 `Report<E>` 的读取接口：
 
 - `attachments()`、`metadata()`、`stack_trace()`
@@ -296,12 +299,14 @@ Note 附件读取：
 
 `ErrorCode` 设计：
 
-- 双表示：`Integer(i64)` 或 `String(Cow<'static, str>)`
+- 双表示：`Integer(i64)` 或 `String(Arc<str>)`
 - 写入路径：`with_error_code(x)` 接收 `impl Into<ErrorCode>`
 - 整型输入若可放入 `i64` 则存为 `Integer`；超范围自动降级为十进制字符串 `String`
 - 读取路径：支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
 - 字符串路径：同时支持 `Into<String>` 与 `to_string()`
 - 整型解析失败错误：`ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
+
+`AttachmentValue::String` 也使用 `Arc<str>` 作为内部存储，重复包装同一份 report 时可以减少字符串拷贝。
 
 原因语义说明：
 

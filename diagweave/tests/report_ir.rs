@@ -132,7 +132,8 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
                     "inner".to_owned(),
                     AttachmentValue::String("ok".into()),
                 )])),
-            ]),
+            ]
+            .into()),
         ),
     ]));
 
@@ -237,7 +238,8 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
                         reason: Some("sensitive".into()),
                     },
                 },
-            ],
+            ]
+            .into(),
         })
         .attach("request_id", "req-otel-1")
         .attach_printable("attachment-note")
@@ -357,7 +359,8 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
             attributes: vec![TraceEventAttribute {
                 key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
-            }],
+            }]
+            .into(),
         });
 
     let otel = report.to_diagnostic_ir().to_otel_envelope();
@@ -428,7 +431,8 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
             attributes: vec![TraceEventAttribute {
                 key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
-            }],
+            }]
+            .into(),
         })
         .with_display_cause("fallback path");
 
@@ -502,7 +506,7 @@ fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
             name: "db.query".into(),
             level: None,
             timestamp_unix_nano: Some(1_713_337_100_000_000_000),
-            attributes: vec![],
+            attributes: vec![].into(),
         });
 
     report.emit_tracing();

@@ -16,7 +16,8 @@ fn render_format_supports_compact_pretty_and_json() {
             AttachmentValue::Array(vec![
                 AttachmentValue::from("GET"),
                 AttachmentValue::from("/session"),
-            ]),
+            ]
+            .into()),
             Some("application/x.debug".to_owned()),
         )
         .wrap(ApiError::Unauthorized);
@@ -113,12 +114,12 @@ fn json_preserves_empty_cause_chains_with_state() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_display_cause_chain(DisplayCauseChain {
-            items: vec![],
+            items: vec![].into(),
             truncated: true,
             cycle_detected: true,
         })
         .with_source_error_chain(SourceErrorChain {
-            items: vec![],
+            items: vec![].into(),
             truncated: true,
             cycle_detected: true,
         });
@@ -279,7 +280,8 @@ fn json_trace_section_uses_shared_trace_shape() {
             attributes: vec![TraceEventAttribute {
                 key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
-            }],
+            }]
+            .into(),
         });
 
     let json = report.render(Json::default()).to_string();
@@ -333,7 +335,8 @@ fn json_trace_section_keeps_tagged_trace_values() {
                 key: "blob".into(),
                 value: AttachmentValue::Bytes(vec![1, 2, 3]),
             },
-        ],
+        ]
+        .into(),
     });
 
     let json = report.render(Json::default()).to_string();
@@ -364,7 +367,8 @@ fn json_trace_section_rejects_non_finite_floats() {
         attributes: vec![TraceEventAttribute {
             key: "latency".into(),
             value: AttachmentValue::Float(f64::INFINITY),
-        }],
+        }]
+        .into(),
     });
 
     assert!(

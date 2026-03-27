@@ -189,7 +189,8 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
                     key: "component".into(),
                     value: AttachmentValue::from("gateway"),
                 },
-            ],
+            ]
+            .into(),
         })
         .wrap_with(ApiError::App)?;
 

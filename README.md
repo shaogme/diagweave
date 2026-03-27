@@ -276,6 +276,9 @@ Common enrichers on `Result<T, Report<E>>`:
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
 
+Hot-path string fields like `category`, `trace_state`, and trace event names are shared with `Arc<str>` after capture.
+The matching setters accept `impl Into<Arc<str>>`, so callers can pass owned shared strings without an extra copy.
+
 Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
@@ -296,11 +299,13 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
 `ErrorCode` design:
 
-- dual representation: `Integer(i64)` or `String(Cow<'static, str>)`
+- dual representation: `Integer(i64)` or `String(Arc<str>)`
 - write path: `with_error_code(x)` accepts `impl Into<ErrorCode>`
 - integer inputs that fit in `i64` are stored as `Integer`; overflow falls back to decimal `String`
 - read path: `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` to integer types (`i8..i128`, `u8..u128`, `isize`, `usize`)
 - string path: `Into<String>` and `to_string()` are both supported
+
+`AttachmentValue::String` also uses `Arc<str>` internally, so repeated report wrapping can reuse string payloads without copying.
 - integer parse failures return `ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
 
 Cause semantics:

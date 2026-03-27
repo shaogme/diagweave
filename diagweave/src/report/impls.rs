@@ -111,8 +111,8 @@ where
         if let Some(sev) = metadata.severity {
             write_field("severity", &sev)?;
         }
-        if let Some(cat) = &metadata.category {
-            write_field("category", cat)?;
+        if let Some(cat) = metadata.category.as_deref() {
+            write_field("category", &cat)?;
         }
         if let Some(ret) = metadata.retryable {
             write_field("retryable", &ret)?;

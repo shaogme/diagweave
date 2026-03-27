@@ -158,6 +158,7 @@ enum FileError {
 
 ### 概览
 核心诊断容器，封装原始错误 `E` 并持有可选的“冷数据”（元数据、附件、展示原因链、追踪信息）。采用延迟分配策略，仅在添加辅助信息时才分配堆内存。
+`category`、`trace_state`、trace 事件名和 stack trace 原始文本等高频字符串在捕获后会以共享 `Arc<str>` 持有。
 
 ### 声明定义
 ```rust
@@ -195,7 +196,7 @@ pub struct Report<E> {
 ### `ErrorCode` 设计与转换规则
 - 内部模型：
   - `ErrorCode::Integer(i64)`：紧凑数值错误码
-  - `ErrorCode::String(Cow<'static, str>)`：符号型错误码或超范围数值错误码
+  - `ErrorCode::String(Arc<str>)`：符号型错误码或超范围数值错误码
 - 输入转换（`impl Into<ErrorCode>`）：
   - 整型输入（`i8..i128`、`u8..u128`、`isize`、`usize`）先尝试 `TryInto<i64>`
   - 成功则存为 `Integer`
@@ -207,6 +208,8 @@ pub struct Report<E> {
 - 整型提取错误：
   - `ErrorCodeIntError::InvalidIntegerString`
   - `ErrorCodeIntError::OutOfRange`
+
+`AttachmentValue::String` 也使用 `Arc<str>` 作为内部存储，重复包装同一份 report 时可以减少字符串拷贝。
 
 ### 全局注入 (Global Injection)
 用于跨层级自动注入上下文（如 RequestID、SessionID）。
@@ -232,12 +235,15 @@ pub struct Report<E> {
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<Cow<'static, str>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
-| `with_category` | `impl Into<Cow<'static, str>>` | 设置错误分类 (用于监控指标) |
+| `with_category` | `impl Into<Arc<str>>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
 | `with_display_cause` | `impl Display` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因字符串 |
 | `with_source_error` | `impl Error + 'static` | 添加单个显式错误源对象 |
 | `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
+| `with_trace_state` | `impl Into<Arc<str>>` | 设置 trace state 用于关联元数据 |
+| `push_trace_event` | `impl Into<Arc<str>>` | 追加一个默认字段的 trace 事件 |
+| `push_trace_event_with` | `(impl Into<Arc<str>>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | 追加一个完整指定的 trace 事件 |
 | `capture_stack_trace` | 无 | (std) 捕获当前堆栈 (若已存在则跳过) |
 | `force_capture_stack` | 无 | (std) 强制重新捕获堆栈 |
 | `clear_stack_trace` | 无 | 移除已关联的堆栈信息 |
@@ -388,8 +394,8 @@ use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
 use diagweave::report::{Attachment, CauseTraversalState};
-use std::boxed::Box;
 use std::fmt::Display;
+use std::sync::Arc;
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
@@ -403,7 +409,7 @@ pub struct DiagnosticIr<'a> {
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
-    pub display_causes: &'a [Box<dyn Display + 'static>],
+    pub display_causes: &'a [Arc<dyn Display + 'static>],
     pub display_causes_state: CauseTraversalState,
     pub source_errors: Vec<DiagnosticIrError<'static>>,
     pub source_errors_state: CauseTraversalState,

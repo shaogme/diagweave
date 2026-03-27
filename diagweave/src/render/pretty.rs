@@ -121,7 +121,7 @@ fn render_gov_meta(
         write_indent(f, indent)?;
         writeln!(f, "- severity: {severity}")?;
     }
-    if let Some(category) = metadata.category.as_ref() {
+    if let Some(category) = metadata.category.as_deref() {
         write_indent(f, indent)?;
         writeln!(f, "- category: {category}")?;
     }
@@ -456,7 +456,7 @@ fn render_source_error_chain(
     depth: usize,
     show_type_name: bool,
 ) -> fmt::Result {
-    for item in &source_errors.items {
+    for item in source_errors.items.iter() {
         write_depth_indent(f, indent, depth)?;
         writeln!(f, "- message: {}", item.error)?;
         if show_type_name {

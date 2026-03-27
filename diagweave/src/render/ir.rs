@@ -1,7 +1,7 @@
 use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
-use alloc::boxed::Box;
 use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 #[cfg(feature = "trace")]
 use alloc::vec::Vec;
 use core::any;
@@ -98,7 +98,7 @@ impl serde::Serialize for DiagnosticIrMessage<'_> {
 pub struct DiagnosticIrMetadata<'a> {
     pub error_code: Option<&'a ErrorCode>,
     pub severity: Option<Severity>,
-    pub category: Option<&'a Cow<'static, str>>,
+    pub category: Option<&'a str>,
     pub retryable: Option<bool>,
     pub stack_trace: Option<&'a StackTrace>,
 }
@@ -112,7 +112,7 @@ pub struct DiagnosticIr<'a> {
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
-    pub display_causes: &'a [Box<dyn Display + 'static>],
+    pub display_causes: &'a [Arc<dyn Display + 'static>],
     pub display_causes_state: CauseTraversalState,
     pub source_errors: Option<SourceErrorChain>,
     pub context_count: usize,
@@ -139,7 +139,7 @@ impl<E> Report<E> {
             metadata: DiagnosticIrMetadata {
                 error_code: metadata.error_code.as_ref(),
                 severity: metadata.severity,
-                category: metadata.category.as_ref(),
+                category: metadata.category.as_deref(),
                 retryable: metadata.retryable,
                 stack_trace: self.stack_trace(),
             },
@@ -181,7 +181,10 @@ pub(crate) fn build_context_and_attachments(
         match attachment {
             Attachment::Context { key, value } => {
                 let mut map = BTreeMap::new();
-                map.insert("key".to_string(), AttachmentValue::String(key.clone()));
+                map.insert(
+                    "key".to_string(),
+                    AttachmentValue::String(Arc::from(key.as_ref())),
+                );
                 map.insert("value".to_string(), value.clone());
                 context_items.push(AttachmentValue::Object(map));
             }
@@ -204,13 +207,16 @@ pub(crate) fn build_context_and_attachments(
                     "kind".to_string(),
                     AttachmentValue::String("payload".into()),
                 );
-                map.insert("name".to_string(), AttachmentValue::String(name.clone()));
+                map.insert(
+                    "name".to_string(),
+                    AttachmentValue::String(Arc::from(name.as_ref())),
+                );
                 map.insert("value".to_string(), value.clone());
                 map.insert(
                     "media_type".to_string(),
                     media_type
                         .as_ref()
-                        .map(|v| AttachmentValue::String(v.clone()))
+                        .map(|v| AttachmentValue::String(Arc::from(v.as_ref())))
                         .unwrap_or(AttachmentValue::Null),
                 );
                 attachment_items.push(AttachmentValue::Object(map));
@@ -230,7 +236,7 @@ pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValu
     );
     map.insert(
         "type".to_string(),
-        AttachmentValue::String(error.r#type.clone().into_owned().into()),
+        AttachmentValue::String(Arc::from(error.r#type.as_ref())),
     );
     AttachmentValue::Object(map)
 }
@@ -267,7 +273,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .trace_id
             .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow()))
+            .map(|v| AttachmentValue::String(v.as_cow().into_owned().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -275,7 +281,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .span_id
             .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow()))
+            .map(|v| AttachmentValue::String(v.as_cow().into_owned().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -283,7 +289,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .parent_span_id
             .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow()))
+            .map(|v| AttachmentValue::String(v.as_cow().into_owned().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -298,7 +304,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .trace_state
             .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
+            .map(|v| AttachmentValue::String(v.to_string().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -316,13 +322,13 @@ fn build_trace_attachment_event_value(event: &TraceEvent) -> AttachmentValue {
     let mut map = BTreeMap::new();
     map.insert(
         "name".to_string(),
-        AttachmentValue::String(event.name.clone()),
+        AttachmentValue::String(event.name.to_string().into()),
     );
     map.insert(
         "level".to_string(),
         event
             .level
-            .map(|v| AttachmentValue::String(v.into()))
+            .map(|v| AttachmentValue::String(v.to_string().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
@@ -373,7 +379,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
         stack_trace
             .raw
             .as_ref()
-            .map(|v| AttachmentValue::String(v.clone().into()))
+            .map(|v| AttachmentValue::String(v.to_string().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     AttachmentValue::Object(map)
@@ -425,7 +431,7 @@ fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) fn build_display_causes_value(
-    display_causes: &[Box<dyn Display + 'static>],
+    display_causes: &[Arc<dyn Display + 'static>],
     state: CauseTraversalState,
 ) -> AttachmentValue {
     let mut map = BTreeMap::new();
@@ -434,7 +440,7 @@ pub(crate) fn build_display_causes_value(
         AttachmentValue::Array(
             display_causes
                 .iter()
-                .map(|v: &Box<dyn Display + 'static>| AttachmentValue::String(v.to_string().into()))
+                .map(|v| AttachmentValue::String(v.to_string().into()))
                 .collect(),
         ),
     );
@@ -487,7 +493,10 @@ fn build_source_error_node_value(error: &crate::report::SourceErrorItem) -> Atta
             .unwrap_or(AttachmentValue::Null),
     );
     if let Some(source) = error.source.as_ref() {
-        map.insert("source".to_string(), build_source_errors_value(source));
+        map.insert(
+            "source".to_string(),
+            build_source_errors_value(source.as_ref()),
+        );
     }
     AttachmentValue::Object(map)
 }

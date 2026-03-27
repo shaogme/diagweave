@@ -32,7 +32,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     assert!(matches!(
         &report.attachments()[0],
         Attachment::Context { key, value: AttachmentValue::String(value) }
-            if key == "request_id" && value == "tx-100"
+            if key == "request_id" && value.as_ref() == "tx-100"
     ));
     assert_eq!(
         report.attachments()[0].as_context(),
@@ -166,7 +166,7 @@ fn global_context_injector_applies_to_new_reports() {
     assert!(matches!(
         &report.attachments()[0],
         Attachment::Context { key, value: AttachmentValue::String(value) }
-            if key == "request_id" && value == "req-42"
+            if key == "request_id" && value.as_ref() == "req-42"
     ));
     #[cfg(feature = "trace")]
     {
@@ -613,19 +613,20 @@ fn source_errors_iterator_preserves_long_attached_chain() {
     impl Error for ChainLinkError {}
 
     fn build_chain(depth: usize) -> SourceErrorChain {
-        let mut source: Option<Box<SourceErrorChain>> = None;
+        let mut source: Option<std::sync::Arc<SourceErrorChain>> = None;
         for idx in (0..depth).rev() {
-            source = Some(Box::new(SourceErrorChain {
+            source = Some(std::sync::Arc::new(SourceErrorChain {
                 items: vec![SourceErrorItem {
-                    error: Box::new(ChainLinkError(idx)),
+                    error: std::sync::Arc::new(ChainLinkError(idx)),
                     type_name: None,
                     source,
-                }],
+                }]
+                .into(),
                 truncated: false,
                 cycle_detected: false,
             }));
         }
-        *source.expect("chain should be created")
+        (*source.expect("chain should be created")).clone()
     }
 
     let chain = build_chain(20);

@@ -2,6 +2,7 @@ use alloc::borrow::Cow;
 use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use crate::render_impl::{
@@ -13,7 +14,7 @@ use crate::report::{Attachment, AttachmentValue, ErrorCode};
 fn error_code_otel_value(value: &ErrorCode) -> OtelValue {
     match value {
         ErrorCode::Integer(v) => OtelValue::Int(*v),
-        ErrorCode::String(v) => OtelValue::String(v.clone()),
+        ErrorCode::String(v) => OtelValue::String(Cow::Owned(v.to_string())),
     }
 }
 
@@ -61,7 +62,7 @@ impl OtelValue {
     pub fn as_string(&self) -> Cow<'static, str> {
         match self {
             Self::Null => Cow::Borrowed("null"),
-            Self::String(v) => v.clone(),
+            Self::String(v) => Cow::Owned(v.to_string()),
             Self::Int(v) => Cow::Owned(v.to_string()),
             Self::U64(v) => Cow::Owned(v.to_string()),
             Self::Double(v) => Cow::Owned(v.to_string()),
@@ -83,7 +84,7 @@ impl From<&AttachmentValue> for OtelValue {
     fn from(value: &AttachmentValue) -> Self {
         match value {
             AttachmentValue::Null => Self::Null,
-            AttachmentValue::String(v) => Self::String(v.clone()),
+            AttachmentValue::String(v) => Self::String(Cow::Owned(v.to_string())),
             AttachmentValue::Integer(v) => Self::Int(*v),
             AttachmentValue::Unsigned(v) => Self::U64(*v),
             AttachmentValue::Float(v) => Self::Double(*v),
@@ -107,14 +108,14 @@ impl From<&AttachmentValue> for OtelValue {
                 fields.insert(
                     "kind".to_string(),
                     kind.as_ref()
-                        .map(|v| AttachmentValue::String(v.clone()))
+                        .map(|v| AttachmentValue::String(Arc::from(v.to_string())))
                         .unwrap_or(AttachmentValue::Null),
                 );
                 fields.insert(
                     "reason".to_string(),
                     reason
                         .as_ref()
-                        .map(|v| AttachmentValue::String(v.clone()))
+                        .map(|v| AttachmentValue::String(Arc::from(v.to_string())))
                         .unwrap_or(AttachmentValue::Null),
                 );
                 let attrs = fields
@@ -182,10 +183,10 @@ impl DiagnosticIr<'_> {
         if let Some(error_code) = &self.metadata.error_code {
             attributes.push(Self::otel_error_code_attr("error.code", error_code));
         }
-        if let Some(category) = self.metadata.category {
+        if let Some(category) = self.metadata.category.as_deref() {
             attributes.push(OtelAttribute {
                 key: "error.category".into(),
-                value: OtelValue::String((*category).clone()),
+                value: OtelValue::String(category.to_string().into()),
             });
         }
         if let Some(retryable) = self.metadata.retryable {
@@ -254,7 +255,7 @@ impl DiagnosticIr<'_> {
         if let Some(trace_state) = trace.context.trace_state.as_ref() {
             attributes.push(OtelAttribute {
                 key: "trace.state".into(),
-                value: OtelValue::String(trace_state.clone()),
+                value: OtelValue::String(trace_state.to_string().into()),
             });
         }
     }
@@ -334,7 +335,7 @@ impl DiagnosticIr<'_> {
                 .attributes
                 .iter()
                 .map(|attr| OtelAttribute {
-                    key: attr.key.clone(),
+                    key: Cow::Owned(attr.key.to_string()),
                     value: OtelValue::from(&attr.value),
                 })
                 .collect::<Vec<_>>();
@@ -347,11 +348,11 @@ impl DiagnosticIr<'_> {
             if let Some(trace_state) = trace.context.trace_state.as_ref() {
                 attributes.push(OtelAttribute {
                     key: "trace.state".into(),
-                    value: OtelValue::String(trace_state.clone()),
+                    value: OtelValue::String(trace_state.to_string().into()),
                 });
             }
             records.push(OtelEvent {
-                name: trace_event.name.clone(),
+                name: Cow::Owned(trace_event.name.to_string()),
                 body: None,
                 timestamp_unix_nano: trace_event.timestamp_unix_nano,
                 observed_timestamp_unix_nano: None,

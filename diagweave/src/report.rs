@@ -10,6 +10,7 @@ mod types;
 
 use alloc::borrow::Cow;
 use alloc::boxed::Box;
+use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::error::Error;
@@ -104,7 +105,7 @@ impl<E> Report<E> {
     }
 
     /// Returns the display causes associated with the report.
-    pub fn display_causes(&self) -> &[Box<dyn Display + 'static>] {
+    pub fn display_causes(&self) -> &[Arc<dyn Display + 'static>] {
         match self.diagnostics() {
             Some(diag) => diag
                 .display_causes
@@ -316,7 +317,7 @@ impl<E> Report<E> {
     }
 
     /// Sets the category for the report.
-    pub fn with_category(mut self, category: impl Into<Cow<'static, str>>) -> Self {
+    pub fn with_category(mut self, category: impl Into<Arc<str>>) -> Self {
         self.ensure_cold().metadata.category = Some(category.into());
         self
     }
@@ -361,7 +362,7 @@ impl<E> Report<E> {
             .display_causes
             .get_or_insert_with(DisplayCauseChain::default)
             .items
-            .push(Box::new(cause));
+            .push(Arc::new(cause) as Arc<dyn Display + 'static>);
         self
     }
 
@@ -384,7 +385,7 @@ impl<E> Report<E> {
             .extend(
                 causes
                     .into_iter()
-                    .map(|cause| Box::new(cause) as Box<dyn Display + 'static>),
+                    .map(|cause| Arc::new(cause) as Arc<dyn Display + 'static>),
             );
         self
     }
@@ -428,8 +429,9 @@ impl<E> Report<E> {
             .unwrap_or_default();
         let source_errors = SourceErrorChain {
             items: vec![
-                SourceErrorItem::new(source_report).with_source(source_errors.map(Box::new)),
-            ],
+                SourceErrorItem::new(source_report).with_source(source_errors.map(Arc::new)),
+            ]
+            .into(),
             truncated: source_state.truncated,
             cycle_detected: source_state.cycle_detected,
         };

@@ -4,9 +4,9 @@ pub mod attachment;
 pub mod error;
 
 use alloc::borrow::Cow;
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::any;
@@ -15,6 +15,8 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "trace")]
 use super::trace::{ParentSpanId, ReportTrace, SpanId, TraceId};
+#[cfg(feature = "json")]
+use alloc::boxed::Box;
 
 pub use attachment::*;
 pub use error::*;
@@ -24,7 +26,7 @@ pub use error::*;
 pub struct ReportMetadata {
     pub error_code: Option<ErrorCode>,
     pub severity: Option<Severity>,
-    pub category: Option<Cow<'static, str>>,
+    pub category: Option<Arc<str>>,
     pub retryable: Option<bool>,
 }
 
@@ -50,15 +52,15 @@ pub struct StackFrame {
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct StackTrace {
     pub format: StackTraceFormat,
-    pub frames: Vec<StackFrame>,
-    pub raw: Option<String>,
+    pub frames: Arc<[StackFrame]>,
+    pub raw: Option<Arc<str>>,
 }
 
 impl Default for StackTrace {
     fn default() -> Self {
         Self {
             format: StackTraceFormat::Native,
-            frames: Vec::new(),
+            frames: Vec::new().into(),
             raw: None,
         }
     }
@@ -75,12 +77,12 @@ impl StackTrace {
 
     /// Appends frames to the stack trace.
     pub fn with_frames(mut self, frames: Vec<StackFrame>) -> Self {
-        self.frames = frames;
+        self.frames = frames.into();
         self
     }
 
     /// Sets the raw stack trace string.
-    pub fn with_raw(mut self, raw: impl Into<String>) -> Self {
+    pub fn with_raw(mut self, raw: impl Into<Arc<str>>) -> Self {
         self.raw = Some(raw.into());
         self
     }
@@ -91,8 +93,8 @@ impl StackTrace {
         let backtrace = std::backtrace::Backtrace::force_capture();
         Self {
             format: StackTraceFormat::Raw,
-            frames: Vec::new(),
-            raw: Some(backtrace.to_string()),
+            frames: Vec::new().into(),
+            raw: Some(Arc::from(backtrace.to_string())),
         }
     }
 }
@@ -521,14 +523,23 @@ impl Display for CauseKind {
 }
 
 /// Runtime display-cause chain captured in diagnostic bag.
-#[derive(Default)]
 pub struct DisplayCauseChain {
-    pub items: Vec<Box<dyn Display + 'static>>,
+    pub items: Vec<Arc<dyn Display + 'static>>,
     pub truncated: bool,
     pub cycle_detected: bool,
 }
 
-fn display_cause_strings(items: &[Box<dyn Display + 'static>]) -> Vec<String> {
+impl Default for DisplayCauseChain {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            truncated: false,
+            cycle_detected: false,
+        }
+    }
+}
+
+fn display_cause_strings(items: &[Arc<dyn Display + 'static>]) -> Vec<String> {
     items.iter().map(ToString::to_string).collect()
 }
 
@@ -543,10 +554,7 @@ struct DisplayCauseChainSerdeHelper {
 impl Clone for DisplayCauseChain {
     fn clone(&self) -> Self {
         Self {
-            items: display_cause_strings(&self.items)
-                .into_iter()
-                .map(|item| Box::new(item) as Box<dyn Display + 'static>)
-                .collect(),
+            items: self.items.clone(),
             truncated: self.truncated,
             cycle_detected: self.cycle_detected,
         }
@@ -601,11 +609,11 @@ impl Display for StringError {
 impl Error for StringError {}
 
 /// Runtime source-error chain captured in diagnostic bag.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SourceErrorItem {
-    pub error: Box<dyn Error + 'static>,
+    pub error: Arc<dyn Error + 'static>,
     pub type_name: Option<Cow<'static, str>>,
-    pub source: Option<Box<SourceErrorChain>>,
+    pub source: Option<Arc<SourceErrorChain>>,
 }
 
 impl SourceErrorItem {
@@ -614,13 +622,13 @@ impl SourceErrorItem {
         T: Error + 'static,
     {
         Self {
-            error: Box::new(error),
+            error: Arc::new(error),
             type_name: Some(Cow::Borrowed(any::type_name::<T>())),
             source: None,
         }
     }
 
-    pub(crate) fn with_source(mut self, source: Option<Box<SourceErrorChain>>) -> Self {
+    pub(crate) fn with_source(mut self, source: Option<Arc<SourceErrorChain>>) -> Self {
         self.source = source;
         self
     }
@@ -634,17 +642,6 @@ impl SourceErrorItem {
         }
     }
 
-    fn cloned(&self) -> Self {
-        Self {
-            error: Box::new(StringError(self.error.to_string())),
-            type_name: self.type_name.clone(),
-            source: self
-                .source
-                .as_ref()
-                .map(|chain| Box::new((**chain).clone())),
-        }
-    }
-
     fn from_error<T>(error: T, options: CauseCollectOptions) -> (Self, bool)
     where
         T: Error + 'static,
@@ -655,11 +652,20 @@ impl SourceErrorItem {
     }
 }
 
-#[derive(Default)]
 pub struct SourceErrorChain {
-    pub items: Vec<SourceErrorItem>,
+    pub items: Arc<[SourceErrorItem]>,
     pub truncated: bool,
     pub cycle_detected: bool,
+}
+
+impl Default for SourceErrorChain {
+    fn default() -> Self {
+        Self {
+            items: Vec::new().into(),
+            truncated: false,
+            cycle_detected: false,
+        }
+    }
 }
 
 fn source_error_debug_items(items: &[SourceErrorItem]) -> Vec<(String, Option<String>)> {
@@ -713,7 +719,7 @@ struct SourceErrorChainSerdeHelper {
 impl Clone for SourceErrorChain {
     fn clone(&self) -> Self {
         Self {
-            items: self.items.iter().map(SourceErrorItem::cloned).collect(),
+            items: self.items.clone(),
             truncated: self.truncated,
             cycle_detected: self.cycle_detected,
         }
@@ -754,7 +760,7 @@ impl SourceErrorChain {
             },
         );
         Self {
-            items: vec![item],
+            items: vec![item].into(),
             truncated: false,
             cycle_detected,
         }
@@ -764,11 +770,21 @@ impl SourceErrorChain {
         Self::from_borrowed_error(error, options)
     }
 
-    pub(crate) fn append(&mut self, mut other: SourceErrorChain) {
+    pub(crate) fn append(&mut self, other: SourceErrorChain) {
         let state = other.state();
         self.truncated |= state.truncated;
         self.cycle_detected |= state.cycle_detected;
-        self.items.append(&mut other.items);
+        if self.items.is_empty() {
+            self.items = other.items;
+            return;
+        }
+        if other.items.is_empty() {
+            return;
+        }
+        let mut items = Vec::with_capacity(self.items.len() + other.items.len());
+        items.extend(self.items.iter().cloned());
+        items.extend(other.items.iter().cloned());
+        self.items = items.into();
     }
 
     pub fn is_empty(&self) -> bool {
@@ -797,26 +813,44 @@ impl SourceErrorChain {
 
     pub(crate) fn clear_cycle_flags(&mut self) {
         self.cycle_detected = false;
-        for item in &mut self.items {
-            if let Some(source) = item.source.as_mut() {
-                source.clear_cycle_flags();
-            }
-        }
+        let items = self
+            .items
+            .iter()
+            .map(|item| {
+                let mut item = item.clone();
+                if let Some(source) = item.source.as_ref() {
+                    let mut source = (**source).clone();
+                    source.clear_cycle_flags();
+                    item.source = Some(Arc::new(source));
+                }
+                item
+            })
+            .collect::<Vec<_>>();
+        self.items = items.into();
     }
 
     pub(crate) fn limit_depth(&mut self, options: CauseCollectOptions, depth: usize) -> bool {
         let mut truncated = self.truncated;
         if depth >= options.max_depth {
-            self.items.clear();
+            self.items = Vec::new().into();
             self.truncated = true;
             return true;
         }
 
-        for item in &mut self.items {
-            if let Some(source) = item.source.as_mut() {
-                truncated |= source.limit_depth(options, depth + 1);
-            }
-        }
+        let items = self
+            .items
+            .iter()
+            .map(|item| {
+                let mut item = item.clone();
+                if let Some(source) = item.source.as_ref() {
+                    let mut source = (**source).clone();
+                    truncated |= source.limit_depth(options, depth + 1);
+                    item.source = Some(Arc::new(source));
+                }
+                item
+            })
+            .collect::<Vec<_>>();
+        self.items = items.into();
         self.truncated = truncated;
         truncated
     }
@@ -825,10 +859,11 @@ impl SourceErrorChain {
         let (source, state) = Self::from_borrowed_sources(error.source(), options);
         Self {
             items: vec![SourceErrorItem {
-                error: Box::new(StringError(error.to_string())),
+                error: Arc::new(StringError(error.to_string())),
                 type_name: None,
                 source,
-            }],
+            }]
+            .into(),
             truncated: state.truncated,
             cycle_detected: state.cycle_detected,
         }
@@ -837,7 +872,7 @@ impl SourceErrorChain {
     fn from_borrowed_sources(
         next: Option<&dyn Error>,
         options: CauseCollectOptions,
-    ) -> (Option<Box<SourceErrorChain>>, CauseTraversalState) {
+    ) -> (Option<Arc<SourceErrorChain>>, CauseTraversalState) {
         let Some(mut current) = next else {
             return (None, CauseTraversalState::default());
         };
@@ -863,7 +898,7 @@ impl SourceErrorChain {
             }
 
             items.push(SourceErrorItem {
-                error: Box::new(StringError(current.to_string())),
+                error: Arc::new(StringError(current.to_string())),
                 type_name: None,
                 source: None,
             });
@@ -877,8 +912,8 @@ impl SourceErrorChain {
 
         if items.is_empty() {
             return (
-                Some(Box::new(SourceErrorChain {
-                    items: Vec::new(),
+                Some(Arc::new(SourceErrorChain {
+                    items: Vec::new().into(),
                     truncated: state.truncated,
                     cycle_detected: state.cycle_detected,
                 })),
@@ -886,16 +921,17 @@ impl SourceErrorChain {
             );
         }
 
-        let mut chain: Option<Box<SourceErrorChain>> = None;
+        let mut chain: Option<Arc<SourceErrorChain>> = None;
         for mut item in items.into_iter().rev() {
             item.source = chain;
-            chain = Some(Box::new(SourceErrorChain {
-                items: vec![item],
+            chain = Some(Arc::new(SourceErrorChain {
+                items: vec![item].into(),
                 truncated: false,
                 cycle_detected: false,
             }));
         }
         if let Some(chain) = chain.as_mut() {
+            let chain = Arc::make_mut(chain);
             chain.truncated = state.truncated;
             chain.cycle_detected = state.cycle_detected;
         }
@@ -937,7 +973,7 @@ where
         visit(current, current_depth);
         for item in current.items.iter().rev() {
             if let Some(source) = item.source.as_ref() {
-                stack.push((source, current_depth + 1));
+                stack.push((source.as_ref(), current_depth + 1));
             }
         }
     }

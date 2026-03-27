@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::string::ToString;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
@@ -16,7 +17,7 @@ use core::fmt::{self, Display, Formatter};
 pub enum AttachmentValue {
     #[default]
     Null,
-    String(Cow<'static, str>),
+    String(Arc<str>),
     Integer(i64),
     Unsigned(u64),
     Float(f64),
@@ -72,13 +73,19 @@ impl Display for AttachmentValue {
 
 impl From<String> for AttachmentValue {
     fn from(value: String) -> Self {
-        Self::String(Cow::Owned(value))
+        Self::String(Arc::from(value))
     }
 }
 
 impl From<&'static str> for AttachmentValue {
     fn from(value: &'static str) -> Self {
-        Self::String(Cow::Borrowed(value))
+        Self::String(Arc::from(value))
+    }
+}
+
+impl From<Arc<str>> for AttachmentValue {
+    fn from(value: Arc<str>) -> Self {
+        Self::String(value)
     }
 }
 
@@ -153,7 +160,7 @@ impl From<Vec<String>> for AttachmentValue {
         Self::Array(
             value
                 .into_iter()
-                .map(|s| Self::String(Cow::Owned(s)))
+                .map(|s| Self::String(Arc::from(s)))
                 .collect(),
         )
     }
@@ -164,7 +171,7 @@ impl From<Vec<&'static str>> for AttachmentValue {
         Self::Array(
             value
                 .into_iter()
-                .map(|s| Self::String(Cow::Borrowed(s)))
+                .map(|s| Self::String(Arc::from(s)))
                 .collect(),
         )
     }
@@ -212,7 +219,7 @@ impl From<serde_json::Value> for AttachmentValue {
                     Self::Float(n.as_f64().unwrap_or(0.0))
                 }
             }
-            serde_json::Value::String(s) => Self::String(Cow::Owned(s)),
+            serde_json::Value::String(s) => Self::String(Arc::from(s)),
             serde_json::Value::Array(arr) => {
                 Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
             }

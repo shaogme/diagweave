@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 
@@ -43,7 +44,7 @@ impl From<TraceEventLevel> for Cow<'static, str> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEventAttribute {
-    pub key: Cow<'static, str>,
+    pub key: Arc<str>,
     pub value: AttachmentValue,
 }
 
@@ -56,13 +57,24 @@ impl Default for TraceEventAttribute {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEvent {
-    pub name: Cow<'static, str>,
+    pub name: Arc<str>,
     pub level: Option<TraceEventLevel>,
     pub timestamp_unix_nano: Option<u64>,
     pub attributes: Vec<TraceEventAttribute>,
+}
+
+impl Default for TraceEvent {
+    fn default() -> Self {
+        Self {
+            name: Arc::from(""),
+            level: None,
+            timestamp_unix_nano: None,
+            attributes: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -72,7 +84,7 @@ pub struct TraceContext {
     pub span_id: Option<SpanId>,
     pub parent_span_id: Option<ParentSpanId>,
     pub sampled: Option<bool>,
-    pub trace_state: Option<Cow<'static, str>>,
+    pub trace_state: Option<Arc<str>>,
     pub flags: Option<u8>,
 }
 
@@ -88,11 +100,20 @@ impl TraceContext {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReportTrace {
     pub context: TraceContext,
     pub events: Vec<TraceEvent>,
+}
+
+impl Default for ReportTrace {
+    fn default() -> Self {
+        Self {
+            context: TraceContext::default(),
+            events: Vec::new(),
+        }
+    }
 }
 
 impl ReportTrace {
@@ -213,7 +234,7 @@ impl<E> Report<E> {
     }
 
     /// Sets the trace state.
-    pub fn with_trace_state(mut self, trace_state: impl Into<Cow<'static, str>>) -> Self {
+    pub fn with_trace_state(mut self, trace_state: impl Into<Arc<str>>) -> Self {
         self.trace_mut().context.trace_state = Some(trace_state.into());
         self
     }
@@ -233,7 +254,7 @@ impl<E> Report<E> {
     }
 
     /// Pushes a trace event with the specified name.
-    pub fn push_trace_event(mut self, name: impl Into<Cow<'static, str>>) -> Self {
+    pub fn push_trace_event(mut self, name: impl Into<Arc<str>>) -> Self {
         self.trace_mut().events.push(TraceEvent {
             name: name.into(),
             ..TraceEvent::default()
@@ -244,7 +265,7 @@ impl<E> Report<E> {
     /// Pushes a trace event with detailed information.
     pub fn push_trace_event_ext(
         mut self,
-        name: impl Into<Cow<'static, str>>,
+        name: impl Into<Arc<str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
@@ -253,7 +274,7 @@ impl<E> Report<E> {
             name: name.into(),
             level,
             timestamp_unix_nano,
-            attributes: attributes.into_iter().collect(),
+            attributes: attributes.into_iter().collect::<Vec<_>>(),
         });
         self
     }

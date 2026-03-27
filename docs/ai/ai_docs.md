@@ -158,6 +158,7 @@ enum FileError {
 
 ### Overview
 The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, display-cause chain, trace info). Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
+Hot path strings such as `category`, `trace_state`, trace event names, and stack trace raw text are stored with shared `Arc<str>` handles once captured.
 
 ### Declaration and Definition
 ```rust
@@ -195,7 +196,7 @@ pub struct Report<E> {
 ### `ErrorCode` Design and Conversions
 - Internal model:
   - `ErrorCode::Integer(i64)` for compact numeric codes
-  - `ErrorCode::String(Cow<'static, str>)` for symbolic or oversized numeric codes
+  - `ErrorCode::String(Arc<str>)` for symbolic or oversized numeric codes
 - Input conversion (`impl Into<ErrorCode>`):
   - Integer inputs (`i8..i128`, `u8..u128`, `isize`, `usize`) attempt `TryInto<i64>`
   - On success: stored as `Integer`
@@ -207,6 +208,8 @@ pub struct Report<E> {
 - Integer extraction errors:
   - `ErrorCodeIntError::InvalidIntegerString`
   - `ErrorCodeIntError::OutOfRange`
+
+`AttachmentValue::String` also uses `Arc<str>` internally, so repeated report wrapping can reuse string payloads without copying.
 
 ### Global Injection
 Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
@@ -232,12 +235,15 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_payload` / `attach_payload` | `(Ident, Value, Option<impl Into<Cow<'static, str>>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
-| `with_category` | `impl Into<Cow<'static, str>>` | Set error category (for monitoring metrics) |
+| `with_category` | `impl Into<Arc<str>>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |
 | `with_source_error` | `impl Error + 'static` | Add one explicit error source object |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
+| `with_trace_state` | `impl Into<Arc<str>>` | Set trace state for correlation metadata |
+| `push_trace_event` | `impl Into<Arc<str>>` | Append a trace event with default fields |
+| `push_trace_event_with` | `(impl Into<Arc<str>>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | Append a fully specified trace event |
 | `capture_stack_trace` | None | (std) Capture current stack trace (skip if already exists) |
 | `force_capture_stack` | None | (std) Force re-capture stack trace |
 | `clear_stack_trace` | None | Remove associated stack trace info |
@@ -388,8 +394,8 @@ use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
 use diagweave::report::{Attachment, CauseTraversalState};
-use std::boxed::Box;
 use std::fmt::Display;
+use std::sync::Arc;
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
@@ -403,7 +409,7 @@ pub struct DiagnosticIr<'a> {
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
-    pub display_causes: &'a [Box<dyn Display + 'static>],
+    pub display_causes: &'a [Arc<dyn Display + 'static>],
     pub display_causes_state: CauseTraversalState,
     pub source_errors: Vec<DiagnosticIrError<'static>>,
     pub source_errors_state: CauseTraversalState,

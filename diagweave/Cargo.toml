@@ -14,7 +14,7 @@ categories = ["rust-patterns", "development-tools::debugging"]
 
 [dependencies]
 diagweave-macros.workspace = true
-serde = { version = "1.0", default-features = false, features = ["derive", "alloc"], optional = true }
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc", "rc"], optional = true }
 serde_json = { workspace = true, features = ["alloc"], optional = true }
 tracing = { workspace = true, optional = true }
 

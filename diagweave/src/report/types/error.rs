@@ -1,5 +1,6 @@
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
+use alloc::sync::Arc;
 use core::convert::TryFrom;
 use core::fmt::{self, Display, Formatter};
 
@@ -79,7 +80,7 @@ pub enum ErrorCode {
     /// An integer error code.
     Integer(i64),
     /// A string error code.
-    String(Cow<'static, str>),
+    String(Arc<str>),
 }
 
 /// Error type for converting an [`ErrorCode`] to an integer.
@@ -215,12 +216,18 @@ impl_try_from_error_code_for_unsigned_int!(u8, u16, u32, u64, usize, u128);
 
 impl From<String> for ErrorCode {
     fn from(v: String) -> Self {
-        Self::String(v.into())
+        Self::String(Arc::from(v))
     }
 }
 
 impl From<&'static str> for ErrorCode {
     fn from(v: &'static str) -> Self {
-        Self::String(v.into())
+        Self::String(Arc::from(v))
+    }
+}
+
+impl From<Arc<str>> for ErrorCode {
+    fn from(v: Arc<str>) -> Self {
+        Self::String(v)
     }
 }

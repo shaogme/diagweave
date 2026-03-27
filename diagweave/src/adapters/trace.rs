@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::render_impl::{
@@ -55,13 +56,13 @@ impl DiagnosticIr<'_> {
         if let Some(severity) = self.metadata.severity {
             fields.push(TracingField {
                 key: "metadata.severity".into(),
-                value: AttachmentValue::String(severity.into()),
+                value: AttachmentValue::String(severity.to_string().into()),
             });
         }
-        if let Some(category) = self.metadata.category {
+        if let Some(category) = self.metadata.category.as_deref() {
             fields.push(TracingField {
                 key: "metadata.category".into(),
-                value: AttachmentValue::String((*category).clone()),
+                value: AttachmentValue::String(category.to_string().into()),
             });
         }
         if let Some(retryable) = self.metadata.retryable {

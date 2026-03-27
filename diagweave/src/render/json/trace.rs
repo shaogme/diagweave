@@ -1,4 +1,5 @@
 use alloc::borrow::Cow;
+use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::report::{AttachmentValue, ReportTrace, TraceContext, TraceEvent, TraceEventAttribute};
@@ -54,14 +55,17 @@ fn build_trace_wire_context_value(context: &TraceContext) -> TraceContextValue {
         span_id: context.span_id.as_ref().map(|v| v.as_cow()),
         parent_span_id: context.parent_span_id.as_ref().map(|v| v.as_cow()),
         sampled: context.sampled,
-        trace_state: context.trace_state.clone(),
+        trace_state: context
+            .trace_state
+            .as_ref()
+            .map(|v| Cow::Owned(v.to_string())),
         flags: context.flags,
     }
 }
 
 fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue {
     TraceEventValue {
-        name: event.name.clone(),
+        name: Cow::Owned(event.name.to_string()),
         level: event.level.map(Cow::from),
         timestamp_unix_nano: event.timestamp_unix_nano,
         attributes: event
@@ -74,7 +78,7 @@ fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue {
 
 fn build_trace_wire_attribute_value(attr: &TraceEventAttribute) -> TraceAttributeValue {
     TraceAttributeValue {
-        key: attr.key.clone(),
+        key: Cow::Owned(attr.key.to_string()),
         value: attr.value.clone(),
     }
 }

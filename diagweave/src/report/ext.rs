@@ -1,5 +1,6 @@
 use alloc::borrow::Cow;
 use alloc::string::String;
+use alloc::sync::Arc;
 use core::fmt::Display;
 
 use super::{Attachment, AttachmentValue, ErrorCode, Report, ReportMetadata, Severity, StackTrace};
@@ -93,7 +94,7 @@ pub trait ReportResultExt<T, E> {
     fn with_trace_sampled(self, sampled: bool) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
+    fn with_trace_state(self, trace_state: impl Into<Arc<str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn with_trace_flags(self, flags: u8) -> Result<T, Report<E>>;
@@ -102,12 +103,12 @@ pub trait ReportResultExt<T, E> {
     fn with_trace_event(self, event: TraceEvent) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
-    fn push_trace_event(self, name: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
+    fn push_trace_event(self, name: impl Into<Arc<str>>) -> Result<T, Report<E>>;
 
     #[cfg(feature = "trace")]
     fn push_trace_event_with(
         self,
-        name: impl Into<Cow<'static, str>>,
+        name: impl Into<Arc<str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
@@ -117,7 +118,7 @@ pub trait ReportResultExt<T, E> {
 
     fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E>>;
 
-    fn with_category(self, category: impl Into<Cow<'static, str>>) -> Result<T, Report<E>>;
+    fn with_category(self, category: impl Into<Arc<str>>) -> Result<T, Report<E>>;
 
     fn with_retryable(self, retryable: bool) -> Result<T, Report<E>>;
 
@@ -239,7 +240,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     }
 
     #[cfg(feature = "trace")]
-    fn with_trace_state(self, trace_state: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
+    fn with_trace_state(self, trace_state: impl Into<Arc<str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_trace_state(trace_state))
     }
 
@@ -254,14 +255,14 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
     }
 
     #[cfg(feature = "trace")]
-    fn push_trace_event(self, name: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
+    fn push_trace_event(self, name: impl Into<Arc<str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.push_trace_event(name))
     }
 
     #[cfg(feature = "trace")]
     fn push_trace_event_with(
         self,
-        name: impl Into<Cow<'static, str>>,
+        name: impl Into<Arc<str>>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
@@ -280,7 +281,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.with_severity(severity))
     }
 
-    fn with_category(self, category: impl Into<Cow<'static, str>>) -> Result<T, Report<E>> {
+    fn with_category(self, category: impl Into<Arc<str>>) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_category(category))
     }
 

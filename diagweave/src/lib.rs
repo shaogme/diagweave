@@ -29,6 +29,7 @@ pub struct AiDoctests;
 #[doc = include_str!("../../docs/ai/ai_docs_cn.md")]
 pub struct AiCnDoctests;
 
+#[cfg(any(feature = "trace", feature = "otel"))]
 pub mod adapters {
     pub use crate::adapters_impl::*;
 }

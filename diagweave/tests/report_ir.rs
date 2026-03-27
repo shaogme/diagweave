@@ -72,6 +72,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     assert_eq!(ir.attachment_count, 2);
 }
 
+#[cfg(feature = "trace")]
 #[test]
 fn source_errors_field_matches_json_shape_in_tracing_fields() {
     let _guard = init_test();

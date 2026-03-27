@@ -10,7 +10,7 @@ use super::{
     write_json_display, write_json_string, write_object_field, write_option_string,
 };
 #[cfg(feature = "trace")]
-use crate::render_impl::{
+use super::trace::{
     TraceAttributeValue, TraceContextValue, TraceEventValue, TraceSectionValue,
     build_trace_section_value,
 };

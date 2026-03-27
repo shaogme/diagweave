@@ -363,7 +363,10 @@ IR and adapters:
 # let report = Report::new(AuthError::invalid_token());
 
 let ir = report.to_diagnostic_ir();
+#[cfg(feature = "trace")]
 let tracing_fields = ir.to_tracing_fields();
+#[cfg(feature = "trace")]
+assert!(!tracing_fields.is_empty());
 #[cfg(feature = "otel")]
 let otel = ir.to_otel_envelope();
 ```

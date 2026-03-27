@@ -31,7 +31,7 @@ pub use trace::{
     TraceEventLevel, TraceId,
 };
 
-use types::{ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, SeenErrorAddrs, SourceErrorFrame};
+use types::{ColdData, DiagnosticBag, EMPTY_REPORT_METADATA};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 pub struct Report<E> {
@@ -424,19 +424,7 @@ impl<E> Report<E> {
         let source_report = Report { inner, cold };
         let source_state = source_errors
             .as_ref()
-            .map(|chain| {
-                let mut state = CauseTraversalState::default();
-                state.truncated = chain.truncated;
-                state.cycle_detected = chain.cycle_detected;
-                for item in chain.iter() {
-                    if let Some(source) = item.source.as_ref() {
-                        let nested = source_errors_state(source);
-                        state.truncated |= nested.truncated;
-                        state.cycle_detected |= nested.cycle_detected;
-                    }
-                }
-                state
-            })
+            .map(SourceErrorChain::state)
             .unwrap_or_default();
         let source_errors = SourceErrorChain {
             items: vec![
@@ -534,21 +522,6 @@ impl<E> Report<E> {
     }
 }
 
-fn source_errors_state(chain: &SourceErrorChain) -> CauseTraversalState {
-    let mut state = CauseTraversalState {
-        truncated: chain.truncated,
-        cycle_detected: chain.cycle_detected,
-    };
-    for item in chain.iter() {
-        if let Some(source) = item.source.as_ref() {
-            let nested = source_errors_state(source);
-            state.truncated |= nested.truncated;
-            state.cycle_detected |= nested.cycle_detected;
-        }
-    }
-    state
-}
-
 /// Context injector type alias for global context providers.
 #[cfg(feature = "std")]
 pub(crate) type ContextInjector = dyn Fn() -> Option<GlobalContext> + Send + Sync + 'static;
@@ -585,22 +558,7 @@ where
 
     /// Iterates source errors using custom collection options.
     pub fn iter_sources_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_> {
-        let mut stack = Vec::new();
-        if let Some(inner_source) = self.inner.source() {
-            stack.push(SourceErrorFrame::error(inner_source, 0));
-        }
-        if let Some(source_errors) = self
-            .diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref())
-        {
-            stack.push(SourceErrorFrame::chain(source_errors.items.iter(), 0));
-        }
-        ReportSourceErrorIter {
-            stack,
-            options,
-            seen: SeenErrorAddrs::new(),
-            state: CauseTraversalState::default(),
-        }
+        ReportSourceErrorIter::new(self, options)
     }
 }
 
@@ -627,42 +585,10 @@ where
                 Some(snapshot)
             }
         }?;
-        limit_source_chain(&mut snapshot, options, 0);
+        snapshot.limit_depth(options, 0);
         if !options.detect_cycle {
-            clear_cycle_flags(&mut snapshot);
+            snapshot.clear_cycle_flags();
         }
         Some(snapshot)
     }
-}
-
-fn clear_cycle_flags(chain: &mut SourceErrorChain) {
-    chain.cycle_detected = false;
-    for item in &mut chain.items {
-        if let Some(source) = item.source.as_mut() {
-            clear_cycle_flags(source);
-        }
-    }
-}
-
-fn limit_source_chain(
-    chain: &mut SourceErrorChain,
-    options: CauseCollectOptions,
-    depth: usize,
-) -> bool {
-    if depth >= options.max_depth {
-        chain.items.clear();
-        chain.truncated = true;
-        return true;
-    }
-
-    let mut truncated = chain.truncated;
-    for item in &mut chain.items {
-        if let Some(source) = item.source.as_mut() {
-            if limit_source_chain(source, options, depth + 1) {
-                truncated = true;
-            }
-        }
-    }
-    chain.truncated = truncated;
-    truncated
 }

@@ -598,6 +598,57 @@ fn source_errors_iterator_only_uses_attached_chain() {
 }
 
 #[test]
+fn source_errors_iterator_preserves_long_attached_chain() {
+    let _guard = init_test();
+
+    #[derive(Debug)]
+    struct ChainLinkError(usize);
+
+    impl std::fmt::Display for ChainLinkError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "link {}", self.0)
+        }
+    }
+
+    impl Error for ChainLinkError {}
+
+    fn build_chain(depth: usize) -> SourceErrorChain {
+        let mut source: Option<Box<SourceErrorChain>> = None;
+        for idx in (0..depth).rev() {
+            source = Some(Box::new(SourceErrorChain {
+                items: vec![SourceErrorItem {
+                    error: Box::new(ChainLinkError(idx)),
+                    type_name: None,
+                    source,
+                }],
+                truncated: false,
+                cycle_detected: false,
+            }));
+        }
+        *source.expect("chain should be created")
+    }
+
+    let chain = build_chain(20);
+    let report = Report::new(ApiError::Unauthorized).with_source_error_chain(chain);
+
+    let collected: Vec<(String, usize)> = report
+        .source_errors()
+        .map(|err| (err.message, err.depth))
+        .collect();
+
+    assert_eq!(collected.len(), 20);
+    assert_eq!(
+        collected.first().map(|(msg, _)| msg.as_str()),
+        Some("link 0")
+    );
+    assert_eq!(
+        collected.last().map(|(msg, _)| msg.as_str()),
+        Some("link 19")
+    );
+    assert_eq!(collected.last().map(|(_, depth)| *depth), Some(19));
+}
+
+#[test]
 fn wrap_preserves_deep_source_chains() {
     let _guard = init_test();
 

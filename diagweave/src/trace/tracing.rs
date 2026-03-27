@@ -19,8 +19,10 @@ impl TracingExporterTrait for TracingExporter {
         let report_level = severity_to_level(ir.metadata.severity);
         let (context_items, attachment_items) = build_context_and_attachments(ir.attachments);
         let stack_trace_value = ir.metadata.stack_trace.map(build_stack_trace_value);
-        let display_causes_value = build_display_causes_value(ir.display_causes);
-        let source_errors_value = build_source_errors_value(ir.source_errors);
+        let display_causes_value =
+            build_display_causes_value(ir.display_causes, ir.display_causes_state);
+        let source_errors_value =
+            build_source_errors_value(&ir.source_errors, ir.source_errors_state);
 
         emit_report_event(
             report_level,
@@ -39,11 +41,6 @@ impl TracingExporterTrait for TracingExporter {
                     trace_level,
                     idx,
                     trace_event,
-                    &context_items,
-                    &attachment_items,
-                    stack_trace_value.as_ref(),
-                    &display_causes_value,
-                    &source_errors_value,
                 );
             }
         }
@@ -79,19 +76,17 @@ macro_rules! report_event {
             error_message = %$ir.error.message,
             error_type = %$ir.error.r#type,
             error_code = ?$ir.metadata.error_code,
-            severity = ?$ir.metadata.severity,
-            category = ?$ir.metadata.category,
-            retryable = ?$ir.metadata.retryable,
+            error_severity = ?$ir.metadata.severity,
+            error_category = ?$ir.metadata.category,
+            error_retryable = ?$ir.metadata.retryable,
             trace_id = ?$ir.trace.as_ref().and_then(|t| t.context.trace_id.as_ref()),
             span_id = ?$ir.trace.as_ref().and_then(|t| t.context.span_id.as_ref()),
             parent_span_id = ?$ir.trace.as_ref().and_then(|t| t.context.parent_span_id.as_ref()),
-            sampled = ?$ir.trace.as_ref().and_then(|t| t.context.sampled),
+            trace_sampled = ?$ir.trace.as_ref().and_then(|t| t.context.sampled),
             trace_state = ?$ir.trace.as_ref().and_then(|t| t.context.trace_state.as_ref()),
             trace_flags = ?$ir.trace.as_ref().and_then(|t| t.context.flags),
-            context_count = $ir.context_count,
-            attachment_count = $ir.attachment_count,
-            stack_trace_present = $ir.metadata.stack_trace.is_some(),
-            stack_trace_frame_count = $ir.metadata.stack_trace.as_ref().map(|x| x.frames.len()).unwrap_or(0),
+            report_context_count = $ir.context_count,
+            report_attachment_count = $ir.attachment_count,
             trace_event_count = $ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0),
             report_context = ?$context,
             report_attachments = ?$attachments,
@@ -162,7 +157,7 @@ fn emit_report_event(
 }
 
 macro_rules! trace_event {
-    ($level:expr, $idx:expr, $event:expr, $context:expr, $attachments:expr, $stack:expr, $display:expr, $sources:expr) => {
+    ($level:expr, $idx:expr, $event:expr) => {
         event!(
             target: "diagweave::trace_event",
             $level,
@@ -171,76 +166,17 @@ macro_rules! trace_event {
             trace_event_level = ?$event.level,
             trace_event_timestamp_unix_nano = ?$event.timestamp_unix_nano,
             trace_event_attributes = ?$event.attributes,
-            report_context = ?$context,
-            report_attachments = ?$attachments,
-            report_stack_trace = ?$stack,
-            report_display_causes = ?$display,
-            report_source_errors = ?$sources,
             "diagweave trace event"
         )
     };
 }
 
-fn emit_trace_event(
-    level: Level,
-    idx: usize,
-    event: &TraceEvent,
-    context: &Vec<AttachmentValue>,
-    attachments: &Vec<AttachmentValue>,
-    stack_trace: Option<&AttachmentValue>,
-    display_causes: &AttachmentValue,
-    source_errors: &AttachmentValue,
-) {
+fn emit_trace_event(level: Level, idx: usize, event: &TraceEvent) {
     match level {
-        Level::TRACE => trace_event!(
-            Level::TRACE,
-            idx,
-            event,
-            context,
-            attachments,
-            stack_trace,
-            display_causes,
-            source_errors
-        ),
-        Level::DEBUG => trace_event!(
-            Level::DEBUG,
-            idx,
-            event,
-            context,
-            attachments,
-            stack_trace,
-            display_causes,
-            source_errors
-        ),
-        Level::INFO => trace_event!(
-            Level::INFO,
-            idx,
-            event,
-            context,
-            attachments,
-            stack_trace,
-            display_causes,
-            source_errors
-        ),
-        Level::WARN => trace_event!(
-            Level::WARN,
-            idx,
-            event,
-            context,
-            attachments,
-            stack_trace,
-            display_causes,
-            source_errors
-        ),
-        Level::ERROR => trace_event!(
-            Level::ERROR,
-            idx,
-            event,
-            context,
-            attachments,
-            stack_trace,
-            display_causes,
-            source_errors
-        ),
+        Level::TRACE => trace_event!(Level::TRACE, idx, event),
+        Level::DEBUG => trace_event!(Level::DEBUG, idx, event),
+        Level::INFO => trace_event!(Level::INFO, idx, event),
+        Level::WARN => trace_event!(Level::WARN, idx, event),
+        Level::ERROR => trace_event!(Level::ERROR, idx, event),
     }
 }

@@ -178,7 +178,7 @@ fn main() {
 fn find_attr<'a>(
     attrs: &'a [diagweave::adapters::OtelAttribute],
     key: &str,
-) -> Option<&'a diagweave::report::AttachmentValue> {
+) -> Option<&'a diagweave::adapters::OtelValue> {
     attrs.iter().find_map(|attr| {
         if attr.key.as_ref() == key {
             Some(&attr.value)
@@ -240,10 +240,10 @@ fn render_report(
     println!("events_count={}", otel.events.len());
     println!(
         "trace_id={:?}",
-        find_attr(&otel.attributes, "trace.trace_id").map(|v| v.to_string())
+        find_attr(&otel.attributes, "trace_id").map(|v| v.to_string())
     );
     println!(
         "span_id={:?}",
-        find_attr(&otel.attributes, "trace.span_id").map(|v| v.to_string())
+        find_attr(&otel.attributes, "span_id").map(|v| v.to_string())
     );
 }

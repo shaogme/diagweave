@@ -1,10 +1,10 @@
 mod report_common;
 use diagweave::prelude::*;
 use report_common::*;
+use diagweave::adapters::OtelValue;
+use std::collections::BTreeMap;
 #[cfg(feature = "tracing")]
 use std::cell::Cell;
-#[cfg(feature = "trace")]
-use std::collections::BTreeMap;
 
 #[test]
 fn cause_tree_supports_multiple_sources_and_events() {
@@ -58,6 +58,129 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     assert_eq!(ir.attachment_count, 2);
 }
 
+#[test]
+fn source_errors_field_matches_json_shape_in_tracing_fields() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_source_error(AuthError::InvalidToken)
+        .with_source_error(std::io::Error::other("network down"));
+
+    let ir = report.to_diagnostic_ir();
+    let fields = ir.to_tracing_fields();
+    let source_errors = fields
+        .iter()
+        .find(|f| f.key == "report_source_errors")
+        .map(|f| &f.value)
+        .expect("report.source_errors field should be present");
+
+    let AttachmentValue::Object(map) = source_errors else {
+        panic!("report.source_errors should be object");
+    };
+    assert_eq!(map.get("truncated"), Some(&AttachmentValue::Bool(false)));
+    assert_eq!(map.get("cycle_detected"), Some(&AttachmentValue::Bool(false)));
+
+    let Some(AttachmentValue::Array(items)) = map.get("items") else {
+        panic!("items should be an array");
+    };
+    assert_eq!(items.len(), 2);
+    let AttachmentValue::Object(first) = &items[0] else {
+        panic!("first source error should be object");
+    };
+    assert_eq!(
+        first.get("message"),
+        Some(&AttachmentValue::String("auth invalid token".into()))
+    );
+}
+
+#[test]
+fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() {
+    let _guard = init_test();
+
+    let nested = AttachmentValue::Object(BTreeMap::from([
+        ("a".to_owned(), AttachmentValue::Unsigned(u64::MAX)),
+        (
+            "b".to_owned(),
+            AttachmentValue::Array(vec![
+                AttachmentValue::Bool(true),
+                AttachmentValue::Object(BTreeMap::from([(
+                    "inner".to_owned(),
+                    AttachmentValue::String("ok".into()),
+                )])),
+            ]),
+        ),
+    ]));
+
+    let report = Report::new(ApiError::Unauthorized)
+        .attach("overflow", AttachmentValue::Unsigned(u64::MAX))
+        .attach(
+            "secret",
+            AttachmentValue::Redacted {
+                kind: Some("token".into()),
+                reason: Some("sensitive".into()),
+            },
+        )
+        .attach_payload("nested", nested, Some("application/json"));
+
+    let otel = report.to_diagnostic_ir().to_otel_envelope();
+
+    let overflow_ctx = otel
+        .context
+        .iter()
+        .find(|v| v.key == "overflow")
+        .expect("overflow context should exist");
+    assert_eq!(
+        overflow_ctx.value,
+        OtelValue::String(u64::MAX.to_string().into())
+    );
+
+    let secret_ctx = otel
+        .context
+        .iter()
+        .find(|v| v.key == "secret")
+        .expect("secret context should exist");
+    match &secret_ctx.value {
+        OtelValue::KvList(attrs) => {
+            assert!(attrs.iter().any(|a| a.key == "kind"));
+            assert!(attrs.iter().any(|a| a.key == "reason"));
+        }
+        other => panic!("expected redacted to convert into kvlist, got: {other:?}"),
+    }
+
+    let nested_payload = otel
+        .attachments
+        .iter()
+        .find_map(|a| match a {
+            diagweave::adapters::OtelAttachment::Payload { name, value, .. } if name == "nested" => {
+                Some(value)
+            }
+            _ => None,
+        })
+        .expect("nested payload should exist");
+    match nested_payload {
+        OtelValue::KvList(attrs) => {
+            let a_value = attrs
+                .iter()
+                .find(|a| a.key == "a")
+                .map(|a| &a.value)
+                .expect("nested.a should exist");
+            assert_eq!(a_value, &OtelValue::String(u64::MAX.to_string().into()));
+            let b_value = attrs
+                .iter()
+                .find(|a| a.key == "b")
+                .map(|a| &a.value)
+                .expect("nested.b should exist");
+            match b_value {
+                OtelValue::Array(items) => {
+                    assert_eq!(items.len(), 2);
+                }
+                other => panic!("nested.b should be array, got: {other:?}"),
+            }
+        }
+        other => panic!("nested payload should be kvlist, got: {other:?}"),
+    }
+}
+
 #[cfg(feature = "trace")]
 #[test]
 fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
@@ -107,25 +230,25 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     let tracing_fields = ir.to_tracing_fields();
     assert!(tracing_fields.iter().any(|f| f.key == "error.message"));
     assert!(tracing_fields.iter().any(|f| f.key == "error.code"));
-    assert!(tracing_fields.iter().any(|f| f.key == "trace.trace_id"));
-    assert!(tracing_fields.iter().any(|f| f.key == "trace.event.0.name"));
+    assert!(tracing_fields.iter().any(|f| f.key == "trace_id"));
+    assert!(tracing_fields.iter().any(|f| f.key == "trace_event.0.name"));
     assert!(
         tracing_fields
             .iter()
-            .any(|f| f.key == "report.context_count")
+            .any(|f| f.key == "report_context_count")
     );
     assert!(
         tracing_fields
             .iter()
-            .any(|f| f.key == "report.attachment_count")
+            .any(|f| f.key == "report_attachment_count")
     );
     let otel = ir.to_otel_envelope();
     assert!(
         otel.attributes
             .iter()
-            .any(|a| a.key == "stack_trace.present")
+            .any(|a| a.key == "report_display_causes")
     );
-    assert!(otel.attributes.iter().any(|a| a.key == "trace.event_count"));
+    assert!(otel.attributes.iter().any(|a| a.key == "trace_event_count"));
     assert!(otel.events.iter().any(|e| e.name == "trace.event"));
 }
 

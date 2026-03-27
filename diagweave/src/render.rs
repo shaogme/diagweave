@@ -16,8 +16,8 @@ use core::fmt::{self, Display, Formatter};
 #[cfg(feature = "trace")]
 use crate::report::ReportTrace;
 use crate::report::{
-    Attachment, AttachmentValue, AttachmentVisit, ErrorCode, Report, Severity, StackFrame,
-    StackTrace,
+    Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseTraversalState,
+    ErrorCode, Report, Severity, StackFrame, StackTrace,
 };
 
 pub use pretty::Pretty;
@@ -172,7 +172,9 @@ pub struct DiagnosticIr<'a> {
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Box<dyn Display + 'static>],
-    pub source_errors: &'a [Box<dyn Error + 'static>],
+    pub display_causes_state: CauseTraversalState,
+    pub source_errors: Vec<String>,
+    pub source_errors_state: CauseTraversalState,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -215,6 +217,16 @@ where
     pub fn to_diagnostic_ir(&self) -> DiagnosticIr<'_> {
         let metadata = self.metadata();
         let (context_count, attachment_count) = count_attachments(self);
+        let display_causes_state = self
+            .visit_causes_ext(CauseCollectOptions::default(), |_| Ok(()))
+            .unwrap_or_default();
+        let mut source_errors = Vec::new();
+        let source_errors_state = self
+            .visit_sources_ext(CauseCollectOptions::default(), |err| {
+                source_errors.push(err.to_string());
+                Ok(())
+            })
+            .unwrap_or_default();
 
         DiagnosticIr {
             #[cfg(feature = "json")]
@@ -234,7 +246,9 @@ where
             trace: self.trace(),
             attachments: self.attachments(),
             display_causes: self.display_causes(),
-            source_errors: self.source_errors(),
+            display_causes_state,
+            source_errors,
+            source_errors_state,
             context_count,
             attachment_count,
         }
@@ -379,24 +393,59 @@ fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
 
 pub(crate) fn build_display_causes_value(
     display_causes: &[Box<dyn Display + 'static>],
+    state: CauseTraversalState,
 ) -> AttachmentValue {
-    AttachmentValue::Array(
-        display_causes
-            .iter()
-            .map(|v| AttachmentValue::String(v.to_string().into()))
-            .collect(),
-    )
+    let mut map = BTreeMap::new();
+    map.insert(
+        "items".to_string(),
+        AttachmentValue::Array(
+            display_causes
+                .iter()
+                .map(|v| AttachmentValue::String(v.to_string().into()))
+                .collect(),
+        ),
+    );
+    map.insert(
+        "truncated".to_string(),
+        AttachmentValue::Bool(state.truncated),
+    );
+    map.insert(
+        "cycle_detected".to_string(),
+        AttachmentValue::Bool(state.cycle_detected),
+    );
+    AttachmentValue::Object(map)
 }
 
 pub(crate) fn build_source_errors_value(
-    source_errors: &[Box<dyn Error + 'static>],
+    source_errors: &[String],
+    state: CauseTraversalState,
 ) -> AttachmentValue {
-    AttachmentValue::Array(
-        source_errors
-            .iter()
-            .map(|v| AttachmentValue::String(v.to_string().into()))
-            .collect(),
-    )
+    let mut map = BTreeMap::new();
+    map.insert(
+        "items".to_string(),
+        AttachmentValue::Array(
+            source_errors
+                .iter()
+                .map(|message| {
+                    let mut item = BTreeMap::new();
+                    item.insert(
+                        "message".to_string(),
+                        AttachmentValue::String(message.clone().into()),
+                    );
+                    AttachmentValue::Object(item)
+                })
+                .collect(),
+        ),
+    );
+    map.insert(
+        "truncated".to_string(),
+        AttachmentValue::Bool(state.truncated),
+    );
+    map.insert(
+        "cycle_detected".to_string(),
+        AttachmentValue::Bool(state.cycle_detected),
+    );
+    AttachmentValue::Object(map)
 }
 
 /// A report that has been paired with a renderer, implementing `Display`.

@@ -2,6 +2,7 @@ use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
 
 use crate::report::Attachment;
+use crate::report::SourceErrorChain;
 
 use super::Report;
 
@@ -181,11 +182,9 @@ where
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
             .and_then(|diag| {
-                diag.origin_source_errors.as_ref().and_then(|v| {
-                    v.items
-                        .first()
-                        .map(|err| err.error.as_ref() as &(dyn Error + 'static))
-                })
+                diag.origin_source_errors
+                    .as_ref()
+                    .and_then(SourceErrorChain::first_error)
             })
             .or_else(|| self.inner().source())
     }

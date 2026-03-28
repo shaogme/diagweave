@@ -89,7 +89,15 @@ where
         && (options.show_empty_sections || has_origin_source_errors(report))
     {
         write_object_field(f, pretty, depth, &mut first, "origin_source_errors", |f| {
-            write_origin_source_errors(f, pretty, depth + 1, report, options)
+            write_source_errors_field(
+                f,
+                pretty,
+                depth + 1,
+                report,
+                options,
+                true,
+                Report::origin_source_errors_view,
+            )
         })?;
     }
     if options.show_cause_chains_section
@@ -101,7 +109,17 @@ where
             depth,
             &mut first,
             "diagnostic_source_errors",
-            |f| write_diagnostic_source_errors(f, pretty, depth + 1, report, options),
+            |f| {
+                write_source_errors_field(
+                    f,
+                    pretty,
+                    depth + 1,
+                    report,
+                    options,
+                    false,
+                    Report::diagnostic_source_errors_view,
+                )
+            },
         )?;
     }
     close_object(f, pretty, depth, first)
@@ -207,62 +225,55 @@ fn write_display_causes(
     close_object(f, pretty, depth, first)
 }
 
-fn write_origin_source_errors(
+fn write_source_errors_field<E, F>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<impl Error + 'static>,
+    report: &Report<E>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+    hide_report_wrapper_types: bool,
+    source_chain: F,
+) -> fmt::Result
+where
+    E: Error + 'static,
+    F: FnOnce(&Report<E>, CauseCollectOptions) -> Option<crate::report::SourceErrorChain>,
+{
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let Some(source_errors) = report.origin_source_errors_view(traversal_options) else {
+    let Some(source_errors) = source_chain(report, traversal_options) else {
         return f.write_str("null");
     };
-    write_source_errors_chain(f, pretty, depth, &source_errors)
-}
-
-fn write_diagnostic_source_errors(
-    f: &mut Formatter<'_>,
-    pretty: bool,
-    depth: usize,
-    report: &Report<impl Error + 'static>,
-    options: ReportRenderOptions,
-) -> fmt::Result {
-    let traversal_options = CauseCollectOptions {
-        max_depth: options.max_source_depth,
-        detect_cycle: options.detect_source_cycle,
-    };
-    let Some(source_errors) = report.diagnostic_source_errors_view(traversal_options) else {
-        return f.write_str("null");
-    };
-    write_source_errors_chain(f, pretty, depth, &source_errors)
+    write_source_errors_chain(f, pretty, depth, &source_errors, hide_report_wrapper_types)
 }
 
 fn write_source_error_object(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    item: &crate::report::SourceErrorItem,
+    message: &str,
+    type_name: Option<&str>,
+    source_roots: &[usize],
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "message", |f| {
-        write_json_display(f, item.error.as_ref())
+        write_json_string(f, message)
     })?;
-    write_object_field(f, pretty, depth, &mut first, "type", |f| {
-        match item.display_type_name() {
-            Some(type_name) => write_json_string(f, type_name),
-            None => f.write_str("null"),
+    write_object_field(f, pretty, depth, &mut first, "type", |f| match type_name {
+        Some(type_name) => write_json_string(f, type_name),
+        None => f.write_str("null"),
+    })?;
+    write_object_field(f, pretty, depth, &mut first, "source_roots", |f| {
+        let mut array_first = true;
+        f.write_char('[')?;
+        for &source_id in source_roots {
+            write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
+            write!(f, "{source_id}")?;
         }
+        close_array(f, pretty, depth + 1, array_first)
     })?;
-    if let Some(source) = item.source.as_ref() {
-        write_object_field(f, pretty, depth, &mut first, "source", |f| {
-            write_source_errors_chain(f, pretty, depth + 1, source)
-        })?;
-    }
     close_object(f, pretty, depth, first)
 }
 
@@ -271,23 +282,42 @@ fn write_source_errors_chain(
     pretty: bool,
     depth: usize,
     source_errors: &crate::report::SourceErrorChain,
+    hide_report_wrapper_types: bool,
 ) -> fmt::Result {
+    let exported = source_errors.export_with_options(hide_report_wrapper_types);
+
     let mut first = true;
     f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "items", |f| {
+    write_object_field(f, pretty, depth, &mut first, "roots", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        for item in source_errors.items.iter() {
+        for &node_id in exported.roots.as_slice() {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            write_source_error_object(f, pretty, depth + 2, item)?;
+            write!(f, "{node_id}")?;
+        }
+        close_array(f, pretty, depth + 1, array_first)
+    })?;
+    write_object_field(f, pretty, depth, &mut first, "nodes", |f| {
+        let mut array_first = true;
+        f.write_char('[')?;
+        for node in exported.nodes.iter() {
+            write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
+            write_source_error_object(
+                f,
+                pretty,
+                depth + 2,
+                &node.message,
+                node.type_name.as_deref(),
+                node.source_roots.as_slice(),
+            )?;
         }
         close_array(f, pretty, depth + 1, array_first)
     })?;
     write_object_field(f, pretty, depth, &mut first, "truncated", |f| {
-        write!(f, "{}", source_errors.truncated)
+        write!(f, "{}", exported.truncated)
     })?;
     write_object_field(f, pretty, depth, &mut first, "cycle_detected", |f| {
-        write!(f, "{}", source_errors.cycle_detected)
+        write!(f, "{}", exported.cycle_detected)
     })?;
     close_object(f, pretty, depth, first)
 }

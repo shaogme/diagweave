@@ -186,10 +186,14 @@ pub struct Report<E> {
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
 | `report.visit_causes(visit)` | Streams display causes with default options |
 | `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
-| `report.visit_origin_sources(visit)` | Streams source errors with default options |
-| `report.visit_origin_sources_ext(options, visit)` | Streams source errors with custom options |
-| `report.iter_origin_sources()` | Iterates source errors with default options |
-| `report.iter_origin_sources_ext(options)` | Iterates source errors with custom options |
+| `report.visit_origin_sources(visit)` | Streams origin source errors with default options |
+| `report.visit_origin_sources_ext(options, visit)` | Streams origin source errors with custom options |
+| `report.visit_diagnostic_sources(visit)` | Streams diagnostic source errors with default options |
+| `report.visit_diagnostic_sources_ext(options, visit)` | Streams diagnostic source errors with custom options |
+| `report.iter_origin_sources()` | Iterates origin source errors with default options |
+| `report.iter_origin_sources_ext(options)` | Iterates origin source errors with custom options |
+| `report.iter_diagnostic_sources()` | Iterates diagnostic source errors with default options |
+| `report.iter_diagnostic_sources_ext(options)` | Iterates diagnostic source errors with custom options |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
@@ -388,12 +392,14 @@ Converts `Report` with rich metadata into displayable strings or structured data
 
 
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)
-Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir()` to a stable IR structure. The IR keeps the error node, metadata, trace reference, attachments, display causes, source errors, and aggregate counters for attachment-related sections.
+Renderers don't process `Report` directly, but first convert it via `to_diagnostic_ir()` to a stable IR structure. The IR keeps the error node, metadata, trace reference, attachments, display causes, origin source errors, diagnostic source errors, and aggregate counters for attachment-related sections.
 ```rust
 use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
-use diagweave::report::{Attachment, CauseTraversalState};
+use diagweave::report::{
+    Attachment, CauseTraversalState, SourceErrorChain,
+};
 use std::fmt::Display;
 use std::sync::Arc;
 #[cfg(feature = "trace")]
@@ -411,8 +417,8 @@ pub struct DiagnosticIr<'a> {
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
-    pub source_errors: Vec<DiagnosticIrError<'static>>,
-    pub source_errors_state: CauseTraversalState,
+    pub origin_source_errors: Option<SourceErrorChain>,
+    pub diagnostic_source_errors: Option<SourceErrorChain>,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -447,7 +453,7 @@ let attachment_count = ir.attachment_count;
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIr` keeps `display_causes` and `source_errors` as structured data. `source_errors` use the same `message`/`type` error-node shape as the root error, while `DiagnosticIrMetadata` still does not expose the chains directly.
+`DiagnosticIr` keeps `display_causes` plus both source chains as structured data. In the JSON contract, both `origin_source_errors.type` and `diagnostic_source_errors.type` are `string | null`; `origin` commonly hits `null` due to natural `Error::source()` lossiness.
 The IR and adapter layers are borrow-first: error/type/trace string projections prefer `RefStr<'a>` so `to_tracing_fields()` and `to_otel_envelope()` avoid unnecessary `String` materialization on hot paths.
 
 ### Usage Example

@@ -56,19 +56,26 @@
     "source_error_node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["message", "type"],
+      "required": ["message", "type", "source_roots"],
       "properties": {
         "message": { "type": "string" },
         "type": { "type": ["string", "null"] },
-        "source": { "$ref": "#/$defs/source_error_chain" }
+        "source_roots": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
       }
     },
     "source_error_chain": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["items", "truncated", "cycle_detected"],
+      "required": ["roots", "nodes", "truncated", "cycle_detected"],
       "properties": {
-        "items": {
+        "roots": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "nodes": {
           "type": "array",
           "items": { "$ref": "#/$defs/source_error_node" }
         },

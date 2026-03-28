@@ -33,19 +33,19 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `diagnostic_bag.display_causes.truncated: boolean`
 - `diagnostic_bag.display_causes.cycle_detected: boolean`
 
-## Origin SourceErrorChain model
+## SourceErrorChain model
 
-- `diagnostic_bag.origin_source_errors.items[*].message: string`
-- `diagnostic_bag.origin_source_errors.items[*].type: string|null`
-- `diagnostic_bag.origin_source_errors.items[*].source: SourceErrorChain|null`
+- `diagnostic_bag.origin_source_errors.roots[*]: integer` (node ids of top-level roots)
+- `diagnostic_bag.origin_source_errors.nodes[*].message: string`
+- `diagnostic_bag.origin_source_errors.nodes[*].type: string|null`
+- `diagnostic_bag.origin_source_errors.nodes[*].source_roots[*]: integer` (node ids of children)
 - `diagnostic_bag.origin_source_errors.truncated: boolean`
 - `diagnostic_bag.origin_source_errors.cycle_detected: boolean`
 
-## Diagnostic SourceErrorChain model
-
-- `diagnostic_bag.diagnostic_source_errors.items[*].message: string`
-- `diagnostic_bag.diagnostic_source_errors.items[*].type: string|null`
-- `diagnostic_bag.diagnostic_source_errors.items[*].source: SourceErrorChain|null`
+- `diagnostic_bag.diagnostic_source_errors.roots[*]: integer` (node ids of top-level roots)
+- `diagnostic_bag.diagnostic_source_errors.nodes[*].message: string`
+- `diagnostic_bag.diagnostic_source_errors.nodes[*].type: string|null`
+- `diagnostic_bag.diagnostic_source_errors.nodes[*].source_roots[*]: integer` (node ids of children)
 - `diagnostic_bag.diagnostic_source_errors.truncated: boolean`
 - `diagnostic_bag.diagnostic_source_errors.cycle_detected: boolean`
 

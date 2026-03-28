@@ -3,8 +3,9 @@ use alloc::vec::Vec;
 use ref_str::RefStr;
 
 use crate::render_impl::{
-    DiagnosticIr, build_ctx_and_attachments, build_display_causes, build_error_value,
-    build_source_errors_value, build_stack_trace_value, build_trace_value,
+    DiagnosticIr, build_ctx_and_attachments, build_diagnostic_source_errors_value,
+    build_display_causes, build_error_value, build_origin_source_errors_value,
+    build_stack_trace_value, build_trace_value,
 };
 use crate::report::AttachmentValue;
 use crate::report::ErrorCode;
@@ -106,13 +107,13 @@ impl DiagnosticIr<'_> {
         if let Some(source_errors) = self.origin_source_errors.as_ref() {
             fields.push(TracingField {
                 key: "diagnostic_bag.origin_source_errors".into(),
-                value: build_source_errors_value(source_errors),
+                value: build_origin_source_errors_value(source_errors),
             });
         }
         if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
             fields.push(TracingField {
                 key: "diagnostic_bag.diagnostic_source_errors".into(),
-                value: build_source_errors_value(source_errors),
+                value: build_diagnostic_source_errors_value(source_errors),
             });
         }
     }

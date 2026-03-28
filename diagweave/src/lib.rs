@@ -10,6 +10,7 @@ mod report_impl;
 #[cfg(feature = "trace")]
 #[path = "trace.rs"]
 mod trace_impl;
+mod utils;
 
 pub use diagweave_macros::{Error, set, union};
 pub use ref_str::{RefStr, StaticRefStr};

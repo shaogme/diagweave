@@ -85,12 +85,12 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
     let fields = ir.to_tracing_fields();
     let source_errors = fields
         .iter()
-        .find(|f| f.key == "diagnostic_bag.source_errors")
+        .find(|f| f.key == "diagnostic_bag.diagnostic_source_errors")
         .map(|f| &f.value)
-        .expect("report.source_errors field should be present");
+        .expect("report.diagnostic_source_errors field should be present");
 
     let AttachmentValue::Object(map) = source_errors else {
-        panic!("report.source_errors should be object");
+        panic!("report.diagnostic_source_errors should be object");
     };
     assert_eq!(map.get("truncated"), Some(&AttachmentValue::Bool(false)));
     assert_eq!(
@@ -98,11 +98,18 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
         Some(&AttachmentValue::Bool(false))
     );
 
-    let Some(AttachmentValue::Array(items)) = map.get("items") else {
-        panic!("items should be an array");
+    let Some(AttachmentValue::Array(roots)) = map.get("roots") else {
+        panic!("roots should be an array");
     };
-    assert_eq!(items.len(), 2);
-    let AttachmentValue::Object(first) = &items[0] else {
+    assert_eq!(roots.len(), 2);
+    assert_eq!(roots[0], AttachmentValue::Integer(0));
+    assert_eq!(roots[1], AttachmentValue::Integer(1));
+
+    let Some(AttachmentValue::Array(nodes)) = map.get("nodes") else {
+        panic!("nodes should be an array");
+    };
+    assert_eq!(nodes.len(), 2);
+    let AttachmentValue::Object(first) = &nodes[0] else {
         panic!("first source error should be object");
     };
     assert_eq!(
@@ -115,6 +122,10 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
             std::any::type_name::<AuthError>().into()
         ))
     );
+    assert_eq!(
+        first.get("source_roots"),
+        Some(&AttachmentValue::Array(Vec::new()))
+    );
 }
 
 #[cfg(feature = "otel")]
@@ -122,13 +133,13 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
 fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() {
     let _guard = init_test();
 
-    let nested = AttachmentValue::Object(BTreeMap::from([
+    let nested = AttachmentValue::from(BTreeMap::from([
         ("a".to_owned(), AttachmentValue::Unsigned(u64::MAX)),
         (
             "b".to_owned(),
             AttachmentValue::Array(vec![
                 AttachmentValue::Bool(true),
-                AttachmentValue::Object(BTreeMap::from([(
+                AttachmentValue::from(BTreeMap::from([(
                     "inner".to_owned(),
                     AttachmentValue::String("ok".into()),
                 )])),
@@ -244,7 +255,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .attach_printable("attachment-note")
         .attach_payload(
             "payload",
-            AttachmentValue::Object(BTreeMap::from([
+            AttachmentValue::from(BTreeMap::from([
                 ("path".into(), AttachmentValue::from("/health")),
                 ("status".into(), AttachmentValue::Unsigned(401)),
             ])),

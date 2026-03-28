@@ -13,38 +13,40 @@ fn source_errors_iterator_preserves_long_attached_chain() {
     let _guard = init_test();
 
     #[derive(Debug)]
-    struct ChainLinkError(usize);
+    struct ChainLinkError {
+        idx: usize,
+        source: Option<Box<dyn Error + Send + Sync + 'static>>,
+    }
 
     impl std::fmt::Display for ChainLinkError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "link {}", self.0)
+            write!(f, "link {}", self.idx)
         }
     }
 
-    impl Error for ChainLinkError {}
+    impl Error for ChainLinkError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            self.source.as_deref().map(|v| v as &(dyn Error + 'static))
+        }
+    }
 
-    fn build_chain(depth: usize) -> SourceErrorChain {
-        let mut source: Option<std::sync::Arc<SourceErrorChain>> = None;
+    fn build_chain_error(depth: usize) -> ChainLinkError {
+        let mut source: Option<Box<dyn Error + Send + Sync + 'static>> = None;
         for idx in (0..depth).rev() {
-            source = Some(std::sync::Arc::new(SourceErrorChain {
-                items: vec![SourceErrorItem {
-                    error: std::sync::Arc::new(ChainLinkError(idx)),
-                    type_name: None,
-                    source,
-                }]
-                .into(),
-                truncated: false,
-                cycle_detected: false,
-            }));
+            source = Some(Box::new(ChainLinkError { idx, source }));
         }
-        (*source.expect("chain should be created")).clone()
+        let root = source.expect("chain should be created");
+        let root: Box<ChainLinkError> = root
+            .downcast::<ChainLinkError>()
+            .expect("root type should be ChainLinkError");
+        *root
     }
 
-    let chain = build_chain(20);
-    let report = Report::new(ApiError::Unauthorized).set_diagnostic_source_errors(chain);
+    let report =
+        Report::new(ApiError::Unauthorized).with_diagnostic_source_error(build_chain_error(20));
 
     let collected: Vec<(String, usize)> = report
-        .origin_source_errors()
+        .diagnostic_source_errors()
         .map(|err| (err.message, err.depth))
         .collect();
 

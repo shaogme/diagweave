@@ -44,7 +44,8 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(json.contains("\"attachments\""));
         assert!(json.contains("\"stack_trace\""));
         assert!(json.contains("\"display_causes\""));
-        assert!(json.contains("\"source_errors\""));
+        assert!(json.contains("\"origin_source_errors\""));
+        assert!(json.contains("\"diagnostic_source_errors\""));
 
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
         assert_eq!(parsed["schema_version"], REPORT_JSON_SCHEMA_VERSION);
@@ -53,7 +54,7 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(parsed["metadata"]["retryable"].is_null());
         assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
         assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
-        assert!(parsed["diagnostic_bag"]["source_errors"].is_object());
+        assert!(parsed["diagnostic_bag"]["origin_source_errors"].is_object());
         #[cfg(feature = "trace")]
         assert!(parsed["trace"].is_null());
         assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(0));
@@ -99,7 +100,8 @@ fn json_document_carries_metadata_and_structured_attachments() {
     assert_eq!(parsed["metadata"]["retryable"].as_bool(), Some(false));
     assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
     assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
-    assert!(parsed["diagnostic_bag"]["source_errors"].is_null());
+    assert!(parsed["diagnostic_bag"]["origin_source_errors"].is_null());
+    assert!(parsed["diagnostic_bag"]["diagnostic_source_errors"].is_null());
     #[cfg(feature = "trace")]
     assert!(parsed["trace"].is_null());
     assert_eq!(parsed["context"].as_array().map(|a| a.len()), Some(1));
@@ -117,10 +119,11 @@ fn json_preserves_empty_cause_chains_with_state() {
             truncated: true,
             cycle_detected: true,
         })
-        .set_diagnostic_source_errors(SourceErrorChain {
-            items: vec![].into(),
-            truncated: true,
-            cycle_detected: true,
+        .set_diagnostic_source_errors({
+            let mut chain = SourceErrorChain::default();
+            chain.truncated = true;
+            chain.cycle_detected = true;
+            chain
         });
 
     let json = report.render(Json::default()).to_string();
@@ -132,9 +135,10 @@ fn json_preserves_empty_cause_chains_with_state() {
     assert_eq!(display["truncated"].as_bool(), Some(true));
     assert_eq!(display["cycle_detected"].as_bool(), Some(true));
 
-    let source = &parsed["diagnostic_bag"]["source_errors"];
+    let source = &parsed["diagnostic_bag"]["diagnostic_source_errors"];
     assert!(source.is_object());
-    assert_eq!(source["items"].as_array().map(|a| a.len()), Some(0));
+    assert_eq!(source["roots"].as_array().map(|a| a.len()), Some(0));
+    assert_eq!(source["nodes"].as_array().map(|a| a.len()), Some(0));
     assert_eq!(source["truncated"].as_bool(), Some(true));
     assert_eq!(source["cycle_detected"].as_bool(), Some(true));
 }
@@ -150,12 +154,12 @@ fn json_source_errors_include_error_type() {
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
-    let source = &parsed["diagnostic_bag"]["source_errors"];
+    let source = &parsed["diagnostic_bag"]["diagnostic_source_errors"];
 
-    let items = source["items"].as_array().expect("items should be array");
-    assert_eq!(items.len(), 2);
-    assert_eq!(items[0]["message"], "auth invalid token");
-    assert_eq!(items[0]["type"], std::any::type_name::<AuthError>());
+    let nodes = source["nodes"].as_array().expect("nodes should be array");
+    assert_eq!(nodes.len(), 2);
+    assert_eq!(nodes[0]["message"], "auth invalid token");
+    assert_eq!(nodes[0]["type"], std::any::type_name::<AuthError>());
 }
 
 #[cfg(feature = "json")]
@@ -167,9 +171,9 @@ fn json_source_errors_without_concrete_type_emit_null() {
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
-    let source = &parsed["diagnostic_bag"]["source_errors"];
-    let items = source["items"].as_array().expect("items should be array");
-    assert_eq!(items[0]["type"], serde_json::Value::Null);
+    let source = &parsed["diagnostic_bag"]["origin_source_errors"];
+    let nodes = source["nodes"].as_array().expect("nodes should be array");
+    assert_eq!(nodes[0]["type"], serde_json::Value::Null);
 }
 
 #[cfg(feature = "json")]
@@ -181,9 +185,66 @@ fn json_source_errors_hide_internal_report_wrapper_types() {
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
-    let source = &parsed["diagnostic_bag"]["source_errors"];
-    let items = source["items"].as_array().expect("items should be array");
-    assert_eq!(items[0]["type"], serde_json::Value::Null);
+    let source = &parsed["diagnostic_bag"]["origin_source_errors"];
+    let nodes = source["nodes"].as_array().expect("nodes should be array");
+    assert_eq!(nodes[0]["type"], serde_json::Value::Null);
+}
+
+#[cfg(feature = "json")]
+#[test]
+fn json_source_errors_remap_roots_and_children_to_dense_indices() {
+    let _guard = init_test();
+
+    #[derive(Debug)]
+    struct ChainLinkError {
+        label: &'static str,
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
+    }
+
+    impl std::fmt::Display for ChainLinkError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.label)
+        }
+    }
+
+    impl std::error::Error for ChainLinkError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.source
+                .as_deref()
+                .map(|v| v as &(dyn std::error::Error + 'static))
+        }
+    }
+
+    fn chain(root: &'static str, child: &'static str) -> ChainLinkError {
+        ChainLinkError {
+            label: root,
+            source: Some(Box::new(ChainLinkError {
+                label: child,
+                source: None,
+            })),
+        }
+    }
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_diagnostic_source_error(chain("left-root", "left-child"))
+        .with_diagnostic_source_error(chain("right-root", "right-child"));
+
+    let json = report
+        .render(Json::new(ReportRenderOptions {
+            max_source_depth: 1,
+            ..ReportRenderOptions::default()
+        }))
+        .to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+    let source = &parsed["diagnostic_bag"]["diagnostic_source_errors"];
+
+    assert_eq!(source["roots"], serde_json::json!([0, 1]));
+    let nodes = source["nodes"].as_array().expect("nodes should be array");
+    assert_eq!(nodes.len(), 2);
+    assert_eq!(nodes[0]["message"], "left-root");
+    assert_eq!(nodes[1]["message"], "right-root");
+    assert_eq!(nodes[0]["source_roots"], serde_json::json!([]));
+    assert_eq!(nodes[1]["source_roots"], serde_json::json!([]));
 }
 
 #[cfg(feature = "json")]

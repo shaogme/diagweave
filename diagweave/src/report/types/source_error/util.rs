@@ -1,23 +1,9 @@
 use super::*;
+use crate::utils::fast_set_new;
+use alloc::borrow::ToOwned;
 
-pub(super) fn error_addr(error: &dyn Error) -> usize {
-    let ptr = (error as *const dyn Error) as *const ();
-    ptr as usize
-}
-
-pub(super) fn walk_source_chains<F>(chain: &SourceErrorChain, depth: usize, visit: &mut F)
-where
-    F: FnMut(&SourceErrorChain, usize),
-{
-    let mut stack = vec![(chain, depth)];
-    while let Some((current, current_depth)) = stack.pop() {
-        visit(current, current_depth);
-        for item in current.items.iter().rev() {
-            if let Some(source) = item.source.as_ref() {
-                stack.push((source.as_ref(), current_depth + 1));
-            }
-        }
-    }
+pub(super) fn error_addr(error: &dyn Error) -> ErrorIdentity {
+    ErrorIdentity::from_error(error)
 }
 
 pub(super) fn is_report_wrapper_type(type_name: &str) -> bool {
@@ -29,10 +15,113 @@ pub(super) fn is_report_wrapper_type(type_name: &str) -> bool {
     type_name.starts_with(report_prefix) && type_name[report_prefix.len()..].starts_with('<')
 }
 
-fn collect_borrowed_items(
+trait ArenaItemLike: Clone {
+    fn from_borrowed_message(message: String) -> Self;
+    fn source_roots(&self) -> &[SourceNodeId];
+    fn source_roots_mut(&mut self) -> &mut Vec<SourceNodeId>;
+    fn message_string(&self) -> String;
+    fn type_name_str(&self) -> Option<&str>;
+}
+
+trait ArenaChainLike: Sized {
+    type Item: ArenaItemLike;
+
+    fn from_parts(
+        nodes: Arc<[Self::Item]>,
+        roots: Arc<[SourceNodeId]>,
+        truncated: bool,
+        cycle_detected: bool,
+    ) -> Self;
+    fn nodes(&self) -> &Arc<[Self::Item]>;
+    fn nodes_mut(&mut self) -> &mut Arc<[Self::Item]>;
+    fn roots(&self) -> &Arc<[SourceNodeId]>;
+    fn roots_mut(&mut self) -> &mut Arc<[SourceNodeId]>;
+    fn truncated(&self) -> bool;
+    fn set_truncated(&mut self, value: bool);
+    fn cycle_detected(&self) -> bool;
+    fn set_cycle_detected(&mut self, value: bool);
+}
+
+impl ArenaItemLike for SourceErrorItem {
+    fn from_borrowed_message(message: String) -> Self {
+        Self {
+            error: Arc::new(StringError(message)),
+            type_name: None,
+            source_roots: Vec::new(),
+        }
+    }
+
+    fn source_roots(&self) -> &[SourceNodeId] {
+        &self.source_roots
+    }
+
+    fn source_roots_mut(&mut self) -> &mut Vec<SourceNodeId> {
+        &mut self.source_roots
+    }
+
+    fn message_string(&self) -> String {
+        self.error.to_string()
+    }
+
+    fn type_name_str(&self) -> Option<&str> {
+        self.type_name.as_deref()
+    }
+}
+
+impl ArenaChainLike for SourceErrorChain {
+    type Item = SourceErrorItem;
+
+    fn from_parts(
+        nodes: Arc<[Self::Item]>,
+        roots: Arc<[SourceNodeId]>,
+        truncated: bool,
+        cycle_detected: bool,
+    ) -> Self {
+        Self {
+            nodes,
+            roots,
+            truncated,
+            cycle_detected,
+        }
+    }
+
+    fn nodes(&self) -> &Arc<[Self::Item]> {
+        &self.nodes
+    }
+
+    fn nodes_mut(&mut self) -> &mut Arc<[Self::Item]> {
+        &mut self.nodes
+    }
+
+    fn roots(&self) -> &Arc<[SourceNodeId]> {
+        &self.roots
+    }
+
+    fn roots_mut(&mut self) -> &mut Arc<[SourceNodeId]> {
+        &mut self.roots
+    }
+
+    fn truncated(&self) -> bool {
+        self.truncated
+    }
+
+    fn set_truncated(&mut self, value: bool) {
+        self.truncated = value;
+    }
+
+    fn cycle_detected(&self) -> bool {
+        self.cycle_detected
+    }
+
+    fn set_cycle_detected(&mut self, value: bool) {
+        self.cycle_detected = value;
+    }
+}
+
+fn collect_borrowed_items<I: ArenaItemLike>(
     next: Option<&dyn Error>,
     options: CauseCollectOptions,
-) -> (Vec<SourceErrorItem>, CauseTraversalState) {
+) -> (Vec<I>, CauseTraversalState) {
     let Some(mut current) = next else {
         return (Vec::new(), CauseTraversalState::default());
     };
@@ -48,20 +137,15 @@ fn collect_borrowed_items(
             break;
         }
 
-        let addr = error_addr(current);
-        if options.detect_cycle && seen.contains(addr) {
-            state.cycle_detected = true;
-            break;
-        }
         if options.detect_cycle {
-            let _ = seen.insert(addr);
+            let addr = error_addr(current);
+            if !seen.insert(addr) {
+                state.cycle_detected = true;
+                break;
+            }
         }
 
-        items.push(SourceErrorItem {
-            error: Arc::new(StringError(current.to_string())),
-            type_name: None,
-            source: None,
-        });
+        items.push(I::from_borrowed_message(current.to_string()));
 
         let Some(next) = current.source() else {
             break;
@@ -73,70 +157,193 @@ fn collect_borrowed_items(
     (items, state)
 }
 
-fn chain_from_reversed_items(
-    items: Vec<SourceErrorItem>,
-    state: &CauseTraversalState,
-) -> Option<Arc<SourceErrorChain>> {
+fn chain_from_linear<C>(mut items: Vec<C::Item>, state: &CauseTraversalState) -> Option<Arc<C>>
+where
+    C: ArenaChainLike,
+{
     if items.is_empty() {
-        return Some(Arc::new(SourceErrorChain {
-            items: Vec::new().into(),
-            truncated: state.truncated,
-            cycle_detected: state.cycle_detected,
-        }));
+        return None;
     }
-
-    let mut chain: Option<Arc<SourceErrorChain>> = None;
-    for mut item in items.into_iter().rev() {
-        item.source = chain;
-        chain = Some(Arc::new(SourceErrorChain {
-            items: vec![item].into(),
-            truncated: false,
-            cycle_detected: false,
-        }));
+    let len = items.len();
+    for (idx, item) in items.iter_mut().enumerate() {
+        if idx + 1 < len {
+            *item.source_roots_mut() = vec![idx + 1];
+        }
     }
-    if let Some(chain) = chain.as_mut() {
-        let chain = Arc::make_mut(chain);
-        chain.truncated = state.truncated;
-        chain.cycle_detected = state.cycle_detected;
-    }
-    chain
+    Some(Arc::new(C::from_parts(
+        items.into(),
+        vec![0].into(),
+        state.truncated,
+        state.cycle_detected,
+    )))
 }
 
-fn source_error_debug_items(items: &[SourceErrorItem]) -> Vec<(String, Option<String>)> {
-    items
-        .iter()
-        .map(|item| {
-            (
-                item.error.to_string(),
-                item.type_name
-                    .as_ref()
-                    .map(|type_name| type_name.to_string()),
-            )
-        })
-        .collect()
+fn shift_item<I: ArenaItemLike>(mut item: I, offset: usize) -> I {
+    for id in item.source_roots_mut() {
+        *id += offset;
+    }
+    item
 }
 
-fn source_error_eq_items(
-    items: &[SourceErrorItem],
-) -> Vec<(String, Option<String>, Option<&SourceErrorChain>)> {
-    items
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NormalizedNode {
+    message: String,
+    type_name: Option<String>,
+    source_roots: Vec<Option<usize>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NormalizedChain {
+    roots: Vec<Option<usize>>,
+    nodes: Vec<NormalizedNode>,
+    truncated: bool,
+    cycle_detected: bool,
+}
+
+fn normalize_chain<C>(chain: &C) -> NormalizedChain
+where
+    C: ArenaChainLike,
+{
+    let nodes = chain.nodes();
+    let mut order = Vec::with_capacity(nodes.len());
+    let mut visited = vec![false; nodes.len()];
+    let mut stack = Vec::new();
+
+    for &root in chain.roots().iter().rev() {
+        stack.push(root);
+        while let Some(id) = stack.pop() {
+            let Some(node) = nodes.get(id) else {
+                continue;
+            };
+            if visited[id] {
+                continue;
+            }
+            visited[id] = true;
+            order.push(id);
+            for &child in node.source_roots().iter().rev() {
+                if child < nodes.len() && !visited[child] {
+                    stack.push(child);
+                }
+            }
+        }
+    }
+
+    for (id, seen) in visited.iter().enumerate() {
+        if !seen {
+            order.push(id);
+        }
+    }
+
+    let mut remap = vec![None; nodes.len()];
+    for (new_id, &old_id) in order.iter().enumerate() {
+        remap[old_id] = Some(new_id);
+    }
+
+    let map_id =
+        |id: SourceNodeId| -> Option<usize> { if id < remap.len() { remap[id] } else { None } };
+
+    let normalized_nodes = order
         .iter()
-        .map(|item| {
-            (
-                item.error.to_string(),
-                item.type_name
-                    .as_ref()
-                    .map(|type_name| type_name.to_string()),
-                item.source.as_deref(),
-            )
+        .map(|&old_id| {
+            let node = &nodes[old_id];
+            NormalizedNode {
+                message: node.message_string(),
+                type_name: node.type_name_str().map(ToOwned::to_owned),
+                source_roots: node.source_roots().iter().map(|&id| map_id(id)).collect(),
+            }
         })
-        .collect()
+        .collect();
+
+    let roots = chain.roots().iter().map(|&id| map_id(id)).collect();
+
+    NormalizedChain {
+        roots,
+        nodes: normalized_nodes,
+        truncated: chain.truncated(),
+        cycle_detected: chain.cycle_detected(),
+    }
+}
+
+fn chain_eq<C>(left: &C, right: &C) -> bool
+where
+    C: ArenaChainLike,
+{
+    normalize_chain(left) == normalize_chain(right)
+}
+
+fn append_chain<C>(this: &mut C, other: C)
+where
+    C: ArenaChainLike,
+{
+    this.set_truncated(this.truncated() | other.truncated());
+    this.set_cycle_detected(this.cycle_detected() | other.cycle_detected());
+
+    if this.roots().is_empty() {
+        *this = other;
+        return;
+    }
+    if other.roots().is_empty() {
+        return;
+    }
+
+    let base = this.nodes().len();
+    let mut nodes = Vec::with_capacity(this.nodes().len() + other.nodes().len());
+    nodes.extend(this.nodes().iter().cloned());
+    nodes.extend(other.nodes().iter().cloned().map(|n| shift_item(n, base)));
+
+    let mut roots = Vec::with_capacity(this.roots().len() + other.roots().len());
+    roots.extend(this.roots().iter().copied());
+    roots.extend(other.roots().iter().map(|id| id + base));
+
+    *this.nodes_mut() = nodes.into();
+    *this.roots_mut() = roots.into();
+}
+
+fn limit_depth_chain<C>(chain: &mut C, options: CauseCollectOptions, depth: usize) -> bool
+where
+    C: ArenaChainLike,
+{
+    if depth >= options.max_depth {
+        *chain.roots_mut() = Vec::new().into();
+        chain.set_truncated(true);
+        return true;
+    }
+
+    let mut truncated = chain.truncated();
+    let roots = chain.roots().clone();
+    let nodes = Arc::make_mut(chain.nodes_mut());
+    let mut stack: Vec<(SourceNodeId, usize)> =
+        roots.iter().copied().map(|id| (id, depth)).collect();
+    let mut visited = fast_set_new();
+
+    while let Some((id, d)) = stack.pop() {
+        if !visited.insert((id, d)) {
+            continue;
+        }
+        let Some(node) = nodes.get_mut(id) else {
+            continue;
+        };
+        if d + 1 >= options.max_depth {
+            if !node.source_roots().is_empty() {
+                node.source_roots_mut().clear();
+                truncated = true;
+            }
+            continue;
+        }
+        for &child in node.source_roots().iter() {
+            stack.push((child, d + 1));
+        }
+    }
+
+    chain.set_truncated(truncated);
+    truncated
 }
 
 impl Clone for SourceErrorChain {
     fn clone(&self) -> Self {
         Self {
-            items: self.items.clone(),
+            nodes: self.nodes.clone(),
+            roots: self.roots.clone(),
             truncated: self.truncated,
             cycle_detected: self.cycle_detected,
         }
@@ -145,9 +352,9 @@ impl Clone for SourceErrorChain {
 
 impl core::fmt::Debug for SourceErrorChain {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let items = source_error_debug_items(&self.items);
         f.debug_struct("SourceErrorChain")
-            .field("items", &items)
+            .field("nodes_len", &self.nodes.len())
+            .field("roots_len", &self.roots.len())
             .field("truncated", &self.truncated)
             .field("cycle_detected", &self.cycle_detected)
             .finish()
@@ -156,9 +363,7 @@ impl core::fmt::Debug for SourceErrorChain {
 
 impl PartialEq for SourceErrorChain {
     fn eq(&self, other: &Self) -> bool {
-        source_error_eq_items(&self.items) == source_error_eq_items(&other.items)
-            && self.truncated == other.truncated
-            && self.cycle_detected == other.cycle_detected
+        chain_eq(self, other)
     }
 }
 
@@ -176,20 +381,79 @@ impl Display for StringError {
 impl Error for StringError {}
 
 impl SourceErrorChain {
-    pub(crate) fn from_error<T>(error: T) -> Self
-    where
-        T: Error + Send + Sync + 'static,
-    {
-        let (item, cycle_detected) = SourceErrorItem::from_error(
-            error,
-            CauseCollectOptions {
-                max_depth: usize::MAX,
-                detect_cycle: true,
-            },
-        );
+    #[cfg(any(feature = "json", feature = "trace", feature = "otel"))]
+    pub(crate) fn export_with_options(
+        &self,
+        hide_report_wrapper_types: bool,
+    ) -> ExportedSourceErrorChain {
+        let mut ids = Vec::new();
+        let mut remap = vec![None; self.nodes.len()];
+        let mut visited = fast_set_new();
+        let mut stack: Vec<SourceNodeId> = self.roots.iter().copied().rev().collect();
+
+        while let Some(id) = stack.pop() {
+            if id >= self.nodes.len() || !visited.insert(id) {
+                continue;
+            }
+            remap[id] = Some(ids.len());
+            ids.push(id);
+            for &child in self.nodes[id].source_roots.iter().rev() {
+                stack.push(child);
+            }
+        }
+
+        let roots = self
+            .roots
+            .iter()
+            .filter_map(|&id| remap.get(id).copied().flatten())
+            .collect();
+        let nodes = ids
+            .iter()
+            .map(|&id| {
+                let item = &self.nodes[id];
+                ExportedSourceErrorNode {
+                    message: item.error.to_string(),
+                    type_name: item
+                        .type_name_for_display(hide_report_wrapper_types)
+                        .map(ToOwned::to_owned),
+                    source_roots: item
+                        .source_roots
+                        .iter()
+                        .filter_map(|&child| remap.get(child).copied().flatten())
+                        .collect(),
+                }
+            })
+            .collect();
+
+        ExportedSourceErrorChain {
+            roots,
+            nodes,
+            truncated: self.truncated,
+            cycle_detected: self.cycle_detected,
+        }
+    }
+
+    fn build_chain_with_root(
+        root: SourceErrorItem,
+        source: Option<&SourceErrorChain>,
+        state: CauseTraversalState,
+    ) -> Self {
+        let mut nodes = vec![root];
+        let mut truncated = state.truncated;
+        let mut cycle_detected = state.cycle_detected;
+
+        if let Some(source) = source {
+            let offset = nodes.len();
+            nodes[0].source_roots = source.roots.iter().map(|id| id + offset).collect();
+            nodes.extend(source.nodes.iter().cloned().map(|n| shift_item(n, offset)));
+            truncated |= source.truncated;
+            cycle_detected |= source.cycle_detected;
+        }
+
         Self {
-            items: vec![item].into(),
-            truncated: false,
+            nodes: nodes.into(),
+            roots: vec![0].into(),
+            truncated,
             cycle_detected,
         }
     }
@@ -198,114 +462,100 @@ impl SourceErrorChain {
         Self::from_borrowed_error(error, options)
     }
 
+    pub(crate) fn from_root_with_source<T>(
+        error: T,
+        source: Option<SourceErrorChain>,
+        state: CauseTraversalState,
+    ) -> Self
+    where
+        T: Error + Send + Sync + 'static,
+    {
+        Self::build_chain_with_root(SourceErrorItem::new(error), source.as_ref(), state)
+    }
+
+    pub(crate) fn from_error<T>(error: T) -> Self
+    where
+        T: Error + Send + Sync + 'static,
+    {
+        let (source, state) = Self::from_borrowed_srcs(
+            error.source(),
+            CauseCollectOptions {
+                max_depth: usize::MAX,
+                detect_cycle: true,
+            },
+        );
+        Self::build_chain_with_root(SourceErrorItem::new(error), source.as_deref(), state)
+    }
+
     pub(crate) fn append(&mut self, other: SourceErrorChain) {
-        let state = other.state();
-        self.truncated |= state.truncated;
-        self.cycle_detected |= state.cycle_detected;
-        if self.items.is_empty() {
-            self.items = other.items;
-            return;
-        }
-        if other.items.is_empty() {
-            return;
-        }
-        let mut items = Vec::with_capacity(self.items.len() + other.items.len());
-        items.extend(self.items.iter().cloned());
-        items.extend(other.items.iter().cloned());
-        self.items = items.into();
+        append_chain(self, other);
     }
 
-    /// Returns `true` when the chain has no items.
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.roots.is_empty()
     }
 
-    /// Returns an iterator over flattened source-error entries.
     pub fn iter_entries(&self) -> SourceErrorChainEntries<'_> {
-        SourceErrorChainEntries::new(self)
+        SourceErrorChainEntries::new(self, false)
     }
 
-    /// Returns a direct iterator over top-level source-error items.
-    pub fn iter(&self) -> core::slice::Iter<'_, SourceErrorItem> {
-        self.items.iter()
+    pub(crate) fn iter_entries_origin(&self) -> SourceErrorChainEntries<'_> {
+        SourceErrorChainEntries::new(self, true)
+    }
+
+    pub fn iter(&self) -> SourceErrorItemIter<'_> {
+        SourceErrorItemIter {
+            chain: self,
+            index: 0,
+        }
+    }
+
+    pub(crate) fn first_error(&self) -> Option<&(dyn Error + 'static)> {
+        let id = *self.roots.first()?;
+        self.nodes
+            .get(id)
+            .map(|item| item.error.as_ref() as &(dyn Error + 'static))
+    }
+
+    pub(crate) fn roots_slice(&self) -> &[SourceNodeId] {
+        &self.roots
+    }
+
+    pub(crate) fn node(&self, id: SourceNodeId) -> Option<&SourceErrorItem> {
+        self.nodes.get(id)
     }
 
     pub(crate) fn state(&self) -> CauseTraversalState {
-        let mut state = CauseTraversalState {
+        CauseTraversalState {
             truncated: self.truncated,
             cycle_detected: self.cycle_detected,
-        };
-        walk_source_chains(self, 0, &mut |chain, _depth| {
-            state.truncated |= chain.truncated;
-            state.cycle_detected |= chain.cycle_detected;
-        });
-        state
+        }
     }
 
     pub(crate) fn clear_cycle_flags(&mut self) {
         self.cycle_detected = false;
-        let items = self
-            .items
-            .iter()
-            .map(|item| {
-                let mut item = item.clone();
-                if let Some(source) = item.source.as_ref() {
-                    let mut source = (**source).clone();
-                    source.clear_cycle_flags();
-                    item.source = Some(Arc::new(source));
-                }
-                item
-            })
-            .collect::<Vec<_>>();
-        self.items = items.into();
     }
 
     pub(crate) fn limit_depth(&mut self, options: CauseCollectOptions, depth: usize) -> bool {
-        let mut truncated = self.truncated;
-        if depth >= options.max_depth {
-            self.items = Vec::new().into();
-            self.truncated = true;
-            return true;
-        }
-
-        let items = self
-            .items
-            .iter()
-            .map(|item| {
-                let mut item = item.clone();
-                if let Some(source) = item.source.as_ref() {
-                    let mut source = (**source).clone();
-                    truncated |= source.limit_depth(options, depth + 1);
-                    item.source = Some(Arc::new(source));
-                }
-                item
-            })
-            .collect::<Vec<_>>();
-        self.items = items.into();
-        self.truncated = truncated;
-        truncated
+        limit_depth_chain(self, options, depth)
     }
 
     pub(super) fn from_borrowed_error(error: &dyn Error, options: CauseCollectOptions) -> Self {
         let (source, state) = Self::from_borrowed_srcs(error.source(), options);
-        Self {
-            items: vec![SourceErrorItem {
-                error: Arc::new(StringError(error.to_string())),
-                type_name: None,
-                source,
-            }]
-            .into(),
-            truncated: state.truncated,
-            cycle_detected: state.cycle_detected,
-        }
+        let root = SourceErrorItem {
+            error: Arc::new(StringError(error.to_string())),
+            type_name: None,
+            source_roots: Vec::new(),
+        };
+        Self::build_chain_with_root(root, source.as_deref(), state)
     }
 
     pub(super) fn from_borrowed_srcs(
         next: Option<&dyn Error>,
         options: CauseCollectOptions,
     ) -> (Option<Arc<SourceErrorChain>>, CauseTraversalState) {
-        let (items, state) = collect_borrowed_items(next, options);
-        (chain_from_reversed_items(items, &state), state)
+        let (items, state) = collect_borrowed_items::<SourceErrorItem>(next, options);
+        (chain_from_linear::<SourceErrorChain>(items, &state), state)
     }
 }
 
@@ -334,17 +584,18 @@ impl serde::Serialize for DisplayCauseChain {
 
 #[cfg(feature = "json")]
 #[derive(serde::Serialize)]
-struct SourceErrorChainSerdeItem {
+struct SourceArenaNodeSerde {
     message: String,
     #[serde(rename = "type")]
     type_name: Option<String>,
-    source: Option<Box<SourceErrorChainSerdeHelper>>,
+    source_roots: Vec<usize>,
 }
 
 #[cfg(feature = "json")]
 #[derive(serde::Serialize)]
-struct SourceErrorChainSerdeHelper {
-    items: Vec<SourceErrorChainSerdeItem>,
+struct SourceArenaSerdeHelper {
+    roots: Vec<usize>,
+    nodes: Vec<SourceArenaNodeSerde>,
     truncated: bool,
     cycle_detected: bool,
 }
@@ -355,25 +606,21 @@ impl serde::Serialize for SourceErrorChain {
     where
         S: serde::Serializer,
     {
-        fn serialize_chain(chain: &SourceErrorChain) -> SourceErrorChainSerdeHelper {
-            SourceErrorChainSerdeHelper {
-                items: chain
-                    .items
-                    .iter()
-                    .map(|v| SourceErrorChainSerdeItem {
-                        message: v.error.to_string(),
-                        type_name: v.type_name.as_ref().map(|type_name| type_name.to_string()),
-                        source: v
-                            .source
-                            .as_ref()
-                            .map(|source| Box::new(serialize_chain(source))),
-                    })
-                    .collect(),
-                truncated: chain.truncated,
-                cycle_detected: chain.cycle_detected,
-            }
+        let exported = self.export_with_options(false);
+        SourceArenaSerdeHelper {
+            roots: exported.roots,
+            nodes: exported
+                .nodes
+                .into_iter()
+                .map(|n| SourceArenaNodeSerde {
+                    message: n.message,
+                    type_name: n.type_name,
+                    source_roots: n.source_roots,
+                })
+                .collect(),
+            truncated: exported.truncated,
+            cycle_detected: exported.cycle_detected,
         }
-
-        serialize_chain(self).serialize(serializer)
+        .serialize(serializer)
     }
 }

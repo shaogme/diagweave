@@ -1,10 +1,13 @@
 use alloc::boxed::Box;
-use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
+
+use crate::utils::FastMap;
+#[cfg(feature = "json")]
+use crate::utils::fast_map_with_capacity;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
@@ -22,7 +25,7 @@ pub enum AttachmentValue {
     Float(f64),
     Bool(bool),
     Array(Vec<AttachmentValue>),
-    Object(BTreeMap<String, AttachmentValue>),
+    Object(FastMap<String, AttachmentValue>),
     Bytes(Vec<u8>),
     Redacted {
         kind: Option<StaticRefStr>,
@@ -51,7 +54,9 @@ impl Display for AttachmentValue {
             }
             Self::Object(values) => {
                 write!(f, "{{")?;
-                for (idx, (key, value)) in values.iter().enumerate() {
+                let mut entries: Vec<_> = values.iter().collect();
+                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                for (idx, (key, value)) in entries.into_iter().enumerate() {
                     if idx > 0 {
                         write!(f, ", ")?;
                     }
@@ -184,11 +189,21 @@ where
     }
 }
 
-impl<V> From<BTreeMap<String, V>> for AttachmentValue
+impl<V> From<FastMap<String, V>> for AttachmentValue
 where
     V: Into<AttachmentValue>,
 {
-    fn from(value: BTreeMap<String, V>) -> Self {
+    fn from(value: FastMap<String, V>) -> Self {
+        Self::Object(value.into_iter().map(|(k, v)| (k, v.into())).collect())
+    }
+}
+
+#[cfg(feature = "std")]
+impl<V> From<alloc::collections::BTreeMap<String, V>> for AttachmentValue
+where
+    V: Into<AttachmentValue>,
+{
+    fn from(value: alloc::collections::BTreeMap<String, V>) -> Self {
         Self::Object(value.into_iter().map(|(k, v)| (k, v.into())).collect())
     }
 }
@@ -213,7 +228,7 @@ impl From<serde_json::Value> for AttachmentValue {
                 Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
             }
             serde_json::Value::Object(obj) => {
-                let mut map = BTreeMap::new();
+                let mut map = fast_map_with_capacity(obj.len());
                 for (k, v) in obj {
                     map.insert(k, AttachmentValue::from(v));
                 }

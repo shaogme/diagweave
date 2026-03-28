@@ -1,3 +1,4 @@
+use alloc::vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
@@ -46,8 +47,22 @@ where
         render_stack_trace(f, report, options)?;
         render_attachments(f, report, options)?;
         render_display_causes(f, report, options)?;
-        render_origin_source_errors(f, report, options)?;
-        render_diagnostic_source_errors(f, report, options)?;
+        render_source_errors_section(
+            f,
+            report,
+            options,
+            "Origin Source Errors:",
+            true,
+            Report::origin_source_errors_view,
+        )?;
+        render_source_errors_section(
+            f,
+            report,
+            options,
+            "Diagnostic Source Errors:",
+            false,
+            Report::diagnostic_source_errors_view,
+        )?;
         Ok(())
     }
 }
@@ -396,11 +411,21 @@ fn render_display_causes(
     Ok(())
 }
 
-fn render_origin_source_errors(
+fn render_source_errors_section<E, F>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<E>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+    title: &str,
+    hide_report_wrapper_types: bool,
+    source_chain: F,
+) -> fmt::Result
+where
+    E: Error + 'static,
+    F: FnOnce(
+        &Report<E>,
+        crate::report::CauseCollectOptions,
+    ) -> Option<crate::report::SourceErrorChain>,
+{
     if !options.show_cause_chains_section {
         return Ok(());
     }
@@ -409,9 +434,9 @@ fn render_origin_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let Some(source_errors) = report.origin_source_errors_view(traversal_options) else {
+    let Some(source_errors) = source_chain(report, traversal_options) else {
         if options.show_empty_sections {
-            writeln!(f, "Origin Source Errors:")?;
+            writeln!(f, "{title}")?;
             write_indent(f, options.pretty_indent)?;
             writeln!(f, "- (none)")?;
         }
@@ -423,7 +448,7 @@ fn render_origin_source_errors(
         || source_errors.truncated
         || source_errors.cycle_detected
     {
-        writeln!(f, "Origin Source Errors:")?;
+        writeln!(f, "{title}")?;
     }
     if source_errors.is_empty() {
         if options.show_empty_sections {
@@ -437,6 +462,7 @@ fn render_origin_source_errors(
             options.pretty_indent,
             1,
             options.show_type_name,
+            hide_report_wrapper_types,
         )?;
     }
     if source_errors.truncated {
@@ -445,61 +471,7 @@ fn render_origin_source_errors(
     }
     if source_errors.cycle_detected {
         write_indent(f, options.pretty_indent)?;
-        writeln!(f, "- ... cycle detected and traversal stopped")?;
-    }
-    Ok(())
-}
-
-fn render_diagnostic_source_errors(
-    f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
-    options: ReportRenderOptions,
-) -> fmt::Result {
-    if !options.show_cause_chains_section {
-        return Ok(());
-    }
-
-    let traversal_options = crate::report::CauseCollectOptions {
-        max_depth: options.max_source_depth,
-        detect_cycle: options.detect_source_cycle,
-    };
-    let Some(source_errors) = report.diagnostic_source_errors_view(traversal_options) else {
-        if options.show_empty_sections {
-            writeln!(f, "Diagnostic Source Errors:")?;
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
-        }
-        return Ok(());
-    };
-
-    if options.show_empty_sections
-        || !source_errors.is_empty()
-        || source_errors.truncated
-        || source_errors.cycle_detected
-    {
-        writeln!(f, "Diagnostic Source Errors:")?;
-    }
-    if source_errors.is_empty() {
-        if options.show_empty_sections {
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
-        }
-    } else {
-        render_source_error_chain(
-            f,
-            &source_errors,
-            options.pretty_indent,
-            1,
-            options.show_type_name,
-        )?;
-    }
-    if source_errors.truncated {
-        write_indent(f, options.pretty_indent)?;
-        writeln!(f, "- ... truncated by max_source_depth")?;
-    }
-    if source_errors.cycle_detected {
-        write_indent(f, options.pretty_indent)?;
-        writeln!(f, "- ... cycle detected and traversal stopped")?;
+        writeln!(f, "- ... cycle detected and repeated branch skipped")?;
     }
     Ok(())
 }
@@ -510,18 +482,32 @@ fn render_source_error_chain(
     indent: PrettyIndent,
     depth: usize,
     show_type_name: bool,
+    hide_report_wrapper_types: bool,
 ) -> fmt::Result {
-    for item in source_errors.items.iter() {
-        write_depth_indent(f, indent, depth)?;
+    let mut stack = vec![(source_errors.roots_slice(), 0usize, depth)];
+    while let Some((ids, mut index, current_depth)) = stack.pop() {
+        if index >= ids.len() {
+            continue;
+        }
+        let node_id = ids[index];
+        index += 1;
+        stack.push((ids, index, current_depth));
+
+        let Some(item) = source_errors.node(node_id) else {
+            continue;
+        };
+        write_depth_indent(f, indent, current_depth)?;
         writeln!(f, "- message: {}", item.error)?;
         if show_type_name {
-            write_depth_indent(f, indent, depth)?;
-            writeln!(f, "- type: {}", item.display_type_name().unwrap_or("null"))?;
+            let type_name = item.type_name_for_display(hide_report_wrapper_types);
+            write_depth_indent(f, indent, current_depth)?;
+            writeln!(f, "- type: {}", type_name.unwrap_or("null"))?;
         }
-        if let Some(source) = item.source.as_ref() {
-            write_depth_indent(f, indent, depth + 1)?;
+        let source_ids = item.source_roots.as_slice();
+        if !source_ids.is_empty() {
+            write_depth_indent(f, indent, current_depth + 1)?;
             writeln!(f, "- source:")?;
-            render_source_error_chain(f, source, indent, depth + 1, show_type_name)?;
+            stack.push((source_ids, 0, current_depth + 1));
         }
     }
     Ok(())

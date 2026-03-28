@@ -24,7 +24,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
         .attach_printable("check authorization flow")
         .attach_payload(
             "auth_payload",
-            AttachmentValue::Object(payload),
+            AttachmentValue::from(payload),
             Some("application/json"),
         );
 
@@ -327,7 +327,7 @@ fn pretty_stops_on_cycle() {
     let pretty = report
         .render(Pretty::new(ReportRenderOptions::default()))
         .to_string();
-    assert!(pretty.contains("cycle detected and traversal stopped"));
+    assert!(pretty.contains("cycle detected and repeated branch skipped"));
 }
 
 #[test]
@@ -438,20 +438,30 @@ fn public_cause_visit_apis_are_accessible() {
             Ok(())
         })
         .expect("display causes");
-    let mut source = Vec::new();
-    let source_state = report
+    let mut origin_source = Vec::new();
+    let origin_source_state = report
         .visit_origin_sources(|err| {
-            source.push(err.message);
+            origin_source.push(err.message);
             Ok(())
         })
-        .expect("source errors");
+        .expect("origin source errors");
+    let mut diagnostic_source = Vec::new();
+    let diagnostic_source_state = report
+        .visit_diagnostic_sources(|err| {
+            diagnostic_source.push(err.message);
+            Ok(())
+        })
+        .expect("diagnostic source errors");
 
     assert_eq!(display, vec!["token stale".to_owned()]);
-    assert_eq!(source, vec!["api unauthorized".to_owned()]);
+    assert!(origin_source.is_empty());
+    assert_eq!(diagnostic_source, vec!["api unauthorized".to_owned()]);
     assert!(!display_state.truncated);
     assert!(!display_state.cycle_detected);
-    assert!(!source_state.truncated);
-    assert!(!source_state.cycle_detected);
+    assert!(!origin_source_state.truncated);
+    assert!(!origin_source_state.cycle_detected);
+    assert!(!diagnostic_source_state.truncated);
+    assert!(!diagnostic_source_state.cycle_detected);
 
     let cycle = Report::new(LoopError)
         .visit_origin_sources_ext(
@@ -464,7 +474,7 @@ fn public_cause_visit_apis_are_accessible() {
         .expect("cycle traversal");
     assert!(cycle.cycle_detected);
 
-    let mut iter = report.iter_origin_sources_ext(CauseCollectOptions {
+    let mut iter = report.iter_diagnostic_sources_ext(CauseCollectOptions {
         max_depth: 4,
         detect_cycle: true,
     });
@@ -544,8 +554,8 @@ fn wrap_keeps_explicit_source_chain_isolated_from_inner_source() {
         .map(|entry| entry.message)
         .collect();
 
-    assert!(messages.iter().any(|message| message == "api unauthorized"));
-    assert!(!messages.iter().any(|message| message == "natural source"));
+    assert!(!messages.iter().any(|message| message == "api unauthorized"));
+    assert!(messages.iter().any(|message| message == "natural source"));
 }
 
 #[test]
@@ -556,7 +566,7 @@ fn source_iteration_keeps_top_level_siblings_at_same_depth() {
         .with_diagnostic_source_error(AuthError::InvalidToken)
         .with_diagnostic_source_error(std::io::Error::other("network down"));
     let collected: Vec<(String, usize)> = report
-        .iter_origin_sources_ext(CauseCollectOptions {
+        .iter_diagnostic_sources_ext(CauseCollectOptions {
             max_depth: 4,
             detect_cycle: true,
         })
@@ -582,7 +592,7 @@ fn source_iteration_keeps_siblings_after_truncation() {
         .with_diagnostic_source_error(std::io::Error::other("network down"));
 
     let collected: Vec<String> = report
-        .iter_origin_sources_ext(CauseCollectOptions {
+        .iter_diagnostic_sources_ext(CauseCollectOptions {
             max_depth: 1,
             detect_cycle: true,
         })
@@ -616,7 +626,7 @@ fn source_errors_iterator_only_uses_attached_chain() {
     let report =
         Report::new(NaturalSourceError).with_diagnostic_source_error(AuthError::InvalidToken);
     let collected: Vec<String> = report
-        .origin_source_errors()
+        .diagnostic_source_errors()
         .map(|err| err.message)
         .collect();
 

@@ -17,10 +17,14 @@
     },
     "otel_attribute": {
       "type": "object",
+      "description": "OTEL attribute key/value pair. For diagnostic source chains, diagweave emits `diagnostic_bag.origin_source_errors` and `diagnostic_bag.diagnostic_source_errors` as structured OtelValue objects with roots/nodes/source_roots/truncated/cycle_detected fields.",
       "additionalProperties": false,
       "required": ["key", "value"],
       "properties": {
-        "key": { "type": "string" },
+        "key": {
+          "type": "string",
+          "description": "Examples include `exception.type`, `diagnostic_bag.display_causes`, `diagnostic_bag.origin_source_errors`, and `diagnostic_bag.diagnostic_source_errors`."
+        },
         "value": { "$ref": "#/$defs/otel_value" }
       }
     },

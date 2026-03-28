@@ -10,7 +10,6 @@ mod types;
 
 use alloc::boxed::Box;
 use alloc::sync::Arc;
-use alloc::vec;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
@@ -129,7 +128,7 @@ impl<E> Report<E> {
         E: Error + 'static,
     {
         self.origin_source_errors_view(CauseCollectOptions::default())
-            .map(|chain| chain.iter_entries().collect::<Vec<_>>())
+            .map(|chain| chain.iter_entries_origin().collect::<Vec<_>>())
             .unwrap_or_default()
             .into_iter()
     }
@@ -445,14 +444,11 @@ impl<E> Report<E> {
             .as_ref()
             .map(SourceErrorChain::state)
             .unwrap_or_default();
-        let origin_source_errors = SourceErrorChain {
-            items: vec![
-                SourceErrorItem::new(source_report).with_source(origin_source_errors.map(Arc::new)),
-            ]
-            .into(),
-            truncated: source_state.truncated,
-            cycle_detected: source_state.cycle_detected,
-        };
+        let origin_source_errors = SourceErrorChain::from_root_with_source(
+            source_report,
+            origin_source_errors,
+            source_state,
+        );
         Report {
             inner: outer,
             cold: Some(Box::new(ColdData {
@@ -629,25 +625,23 @@ impl<E> Report<E>
 where
     E: Error + 'static,
 {
-    pub(crate) fn origin_source_errors_view(
+    fn source_errors_view(
         &self,
+        stored: Option<&SourceErrorChain>,
+        include_inner_source: bool,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
-        let stored = self
-            .diagnostics()
-            .and_then(|diag| diag.origin_source_errors.as_ref());
-        let inner_source = self.inner.source();
+        let mut snapshot = stored.cloned();
 
-        let mut snapshot = match (stored, inner_source) {
-            (None, None) => None,
-            (Some(chain), None) => Some(chain.clone()),
-            (None, Some(source)) => Some(SourceErrorChain::from_source(source, options)),
-            (Some(chain), Some(source)) => {
-                let mut snapshot = chain.clone();
-                snapshot.append(SourceErrorChain::from_source(source, options));
-                Some(snapshot)
+        if include_inner_source && let Some(source) = self.inner.source() {
+            let source_chain = SourceErrorChain::from_source(source, options);
+            match snapshot.as_mut() {
+                Some(existing) => existing.append(source_chain),
+                None => snapshot = Some(source_chain),
             }
-        }?;
+        }
+
+        let mut snapshot = snapshot?;
         snapshot.limit_depth(options, 0);
         if !options.detect_cycle {
             snapshot.clear_cycle_flags();
@@ -655,18 +649,27 @@ where
         Some(snapshot)
     }
 
+    pub(crate) fn origin_source_errors_view(
+        &self,
+        options: CauseCollectOptions,
+    ) -> Option<SourceErrorChain> {
+        self.source_errors_view(
+            self.diagnostics()
+                .and_then(|diag| diag.origin_source_errors.as_ref()),
+            true,
+            options,
+        )
+    }
+
     pub(crate) fn diagnostic_source_errors_view(
         &self,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
-        let mut snapshot = self
-            .diagnostics()
-            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
-            .cloned()?;
-        snapshot.limit_depth(options, 0);
-        if !options.detect_cycle {
-            snapshot.clear_cycle_flags();
-        }
-        Some(snapshot)
+        self.source_errors_view(
+            self.diagnostics()
+                .and_then(|diag| diag.diagnostic_source_errors.as_ref()),
+            false,
+            options,
+        )
     }
 }

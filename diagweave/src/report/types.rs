@@ -17,8 +17,6 @@ use ref_str::StaticRefStr;
 
 #[cfg(feature = "trace")]
 use super::trace::{ParentSpanId, ReportTrace, SpanId, TraceId};
-#[cfg(feature = "json")]
-use alloc::boxed::Box;
 
 pub use attachment::*;
 pub use error::*;

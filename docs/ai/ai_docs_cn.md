@@ -186,10 +186,14 @@ pub struct Report<E> {
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
 | `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
 | `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
-| `report.visit_origin_sources(visit)` | 使用默认选项流式遍历错误源链 |
-| `report.visit_origin_sources_ext(options, visit)` | 使用自定义选项流式遍历错误源链 |
-| `report.iter_origin_sources()` | 使用默认选项迭代错误源链 |
-| `report.iter_origin_sources_ext(options)` | 使用自定义选项迭代错误源链 |
+| `report.visit_origin_sources(visit)` | 使用默认选项流式遍历原生传播链 |
+| `report.visit_origin_sources_ext(options, visit)` | 使用自定义选项流式遍历原生传播链 |
+| `report.visit_diagnostic_sources(visit)` | 使用默认选项流式遍历诊断补充链 |
+| `report.visit_diagnostic_sources_ext(options, visit)` | 使用自定义选项流式遍历诊断补充链 |
+| `report.iter_origin_sources()` | 使用默认选项迭代原生传播链 |
+| `report.iter_origin_sources_ext(options)` | 使用自定义选项迭代原生传播链 |
+| `report.iter_diagnostic_sources()` | 使用默认选项迭代诊断补充链 |
+| `report.iter_diagnostic_sources_ext(options)` | 使用自定义选项迭代诊断补充链 |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
@@ -388,12 +392,14 @@ Note 附件读取：
 
 
 ### 诊断中间表示 (`DiagnosticIr`)
-渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir()` 转换为稳定的 IR 结构。该 IR 保留错误节点、元数据、trace 引用、附件、展示原因、source 错误，以及附件相关部分的聚合计数。
+渲染器不直接处理 `Report`，而是先通过 `to_diagnostic_ir()` 转换为稳定的 IR 结构。该 IR 保留错误节点、元数据、trace 引用、附件、展示原因、原生传播链、诊断补充链，以及附件相关部分的聚合计数。
 ```rust
 use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
-use diagweave::report::{Attachment, CauseTraversalState};
+use diagweave::report::{
+    Attachment, CauseTraversalState, SourceErrorChain,
+};
 use std::fmt::Display;
 use std::sync::Arc;
 #[cfg(feature = "trace")]
@@ -411,8 +417,8 @@ pub struct DiagnosticIr<'a> {
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
-    pub source_errors: Vec<DiagnosticIrError<'static>>,
-    pub source_errors_state: CauseTraversalState,
+    pub origin_source_errors: Option<SourceErrorChain>,
+    pub diagnostic_source_errors: Option<SourceErrorChain>,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -447,7 +453,7 @@ let attachment_count = ir.attachment_count;
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
-`DiagnosticIr` 会保留 `display_causes` 和 `source_errors` 作为结构化数据。`source_errors` 与根错误使用相同的 `message` / `type` 节点形状，而 `DiagnosticIrMetadata` 本身仍不直接暴露这些链。
+`DiagnosticIr` 会保留 `display_causes` 以及两条 source 链作为结构化数据。在 JSON 契约中，`origin_source_errors.type` 与 `diagnostic_source_errors.type` 都是 `string | null`；其中 `origin` 更常见 `null`，因为自然 `Error::source()` 会有信息损耗。
 IR 与适配器层采用借用优先策略：错误/type/trace 等字符串投影尽量使用 `RefStr<'a>`，因此 `to_tracing_fields()` 和 `to_otel_envelope()` 在热点路径上会减少不必要的 `String` 物化。
 
 ### 用法示例

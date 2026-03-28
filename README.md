@@ -286,7 +286,9 @@ Read APIs on `Report<E>`:
 - `error_code()`, `severity()`, `category()`, `retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
 - `visit_origin_sources(visit)` / `visit_origin_sources_ext(options, visit)`
+- `visit_diagnostic_sources(visit)` / `visit_diagnostic_sources_ext(options, visit)`
 - `iter_origin_sources()` / `iter_origin_sources_ext(options)`
+- `iter_diagnostic_sources()` / `iter_diagnostic_sources_ext(options)`
 
 Attachment note access:
 
@@ -312,8 +314,8 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
-- `with_diagnostic_source_error` appends explicit error objects into the report diagnostic bag source chain, requiring `impl Error + Send + Sync + 'static`.
-- Error source propagation is maintained by `with_diagnostic_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
+- `with_diagnostic_source_error` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
+- Origin source propagation is maintained by `wrap` / `wrap_with` and `Error::source()`, while diagnostic source propagation is maintained by `with_diagnostic_source_error`.
 
 Global context injector (`std`):
 
@@ -444,7 +446,7 @@ The OTEL adapter keeps the report tree structured where possible:
 
 - the main `exception` record carries a structured `body` instead of a plain string
 - `exception.stacktrace` is exported as a `KvList`
-- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` preserves both `message` and `type`
+- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` preserve `message`; both `origin.type` and `diagnostic.type` are `string | null` in the JSON contract
 - empty `trace` / `context` / `attachments` sections are omitted
 
 Tracing export:

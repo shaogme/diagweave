@@ -6,8 +6,8 @@ use alloc::vec::Vec;
 use ref_str::RefStr;
 
 use crate::render_impl::{
-    DiagnosticIr, build_display_causes, build_error_value, build_source_errors_value,
-    build_stack_trace_value,
+    DiagnosticIr, build_diagnostic_source_errors_value, build_display_causes, build_error_value,
+    build_origin_source_errors_value, build_stack_trace_value,
 };
 use crate::report::{Attachment, AttachmentValue, ErrorCode};
 
@@ -96,8 +96,10 @@ impl<'a> From<&'a AttachmentValue> for OtelValue<'a> {
                 Self::Array(values.iter().map(OtelValue::from).collect())
             }
             AttachmentValue::Object(values) => {
-                let attrs = values
-                    .iter()
+                let mut entries: Vec<_> = values.iter().collect();
+                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                let attrs = entries
+                    .into_iter()
                     .map(|(k, v)| OtelAttribute {
                         key: k.clone().into(),
                         value: OtelValue::from(v),
@@ -274,13 +276,13 @@ impl<'a> DiagnosticIr<'a> {
         if let Some(source_errors) = self.origin_source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.origin_source_errors".into(),
-                value: otel_value_from_owned(build_source_errors_value(source_errors)),
+                value: otel_value_from_owned(build_origin_source_errors_value(source_errors)),
             });
         }
         if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.diagnostic_source_errors".into(),
-                value: otel_value_from_owned(build_source_errors_value(source_errors)),
+                value: otel_value_from_owned(build_diagnostic_source_errors_value(source_errors)),
             });
         }
     }
@@ -416,15 +418,19 @@ fn otel_value_from_owned(value: AttachmentValue) -> OtelValue<'static> {
         AttachmentValue::Array(values) => {
             OtelValue::Array(values.into_iter().map(otel_value_from_owned).collect())
         }
-        AttachmentValue::Object(values) => OtelValue::KvList(
-            values
-                .into_iter()
-                .map(|(key, value)| OtelAttribute {
-                    key: key.into(),
-                    value: otel_value_from_owned(value),
-                })
-                .collect(),
-        ),
+        AttachmentValue::Object(values) => {
+            let mut entries: Vec<_> = values.into_iter().collect();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            OtelValue::KvList(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| OtelAttribute {
+                        key: key.into(),
+                        value: otel_value_from_owned(value),
+                    })
+                    .collect(),
+            )
+        }
         AttachmentValue::Bytes(v) => OtelValue::Bytes(v),
         AttachmentValue::Redacted { kind, reason } => OtelValue::KvList(
             [("kind", kind), ("reason", reason)]

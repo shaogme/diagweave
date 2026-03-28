@@ -61,7 +61,8 @@ Current exporters populate these keys:
 - `trace.parent_span_id`
 - `trace.state`
 - `diagnostic_bag.display_causes`
-- `diagnostic_bag.source_errors`
+- `diagnostic_bag.origin_source_errors`
+- `diagnostic_bag.diagnostic_source_errors`
 - `attachment.note`
 - `attachment.payload.{name}`
 - `attachment.payload.{name}.media_type`
@@ -69,7 +70,13 @@ Current exporters populate these keys:
 Notes:
 
 - `exception.stacktrace` is emitted as a structured `KvList` value, not a flattened string.
-- `diagnostic_bag.source_errors` items preserve `message`, `type`, and nested `source` fields.
+- `diagnostic_bag.origin_source_errors` and `diagnostic_bag.diagnostic_source_errors` use the same arena shape as JSON:
+  - `roots: integer[]`
+  - `nodes[*].message: string`
+  - `nodes[*].type: string|null`
+  - `nodes[*].source_roots: integer[]`
+  - `truncated: boolean`
+  - `cycle_detected: boolean`
 - Empty trace, context, and attachment sections are omitted by default when they carry no data.
 
 ## Rust type definitions

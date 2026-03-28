@@ -24,8 +24,7 @@ use crate::report::{
 #[cfg(feature = "trace")]
 use crate::report::{ReportTrace, TraceContext, TraceEvent};
 #[cfg(any(feature = "trace", feature = "otel"))]
-use alloc::collections::BTreeMap;
-
+use crate::utils::fast_map_new;
 /// A structured diagnostic error node shared by renderers and adapters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize))]
@@ -190,13 +189,13 @@ pub(crate) fn build_ctx_and_attachments(
     for attachment in attachments {
         match attachment {
             Attachment::Context { key, value } => {
-                let mut map = BTreeMap::new();
+                let mut map = fast_map_new();
                 map.insert("key".to_string(), AttachmentValue::String(key.clone()));
                 map.insert("value".to_string(), value.clone());
                 context_items.push(AttachmentValue::Object(map));
             }
             Attachment::Note { message } => {
-                let mut map = BTreeMap::new();
+                let mut map = fast_map_new();
                 map.insert("kind".to_string(), AttachmentValue::String("note".into()));
                 map.insert(
                     "message".to_string(),
@@ -209,7 +208,7 @@ pub(crate) fn build_ctx_and_attachments(
                 value,
                 media_type,
             } => {
-                let mut map = BTreeMap::new();
+                let mut map = fast_map_new();
                 map.insert(
                     "kind".to_string(),
                     AttachmentValue::String("payload".into()),
@@ -233,7 +232,7 @@ pub(crate) fn build_ctx_and_attachments(
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+    let mut map = fast_map_new();
     map.insert(
         "message".to_string(),
         AttachmentValue::String(error.message.to_string_owned().into()),
@@ -250,7 +249,7 @@ pub(crate) fn build_trace_value(
     trace: &ReportTrace,
     error: &DiagnosticIrError<'_>,
 ) -> AttachmentValue {
-    let mut trace_obj = BTreeMap::new();
+    let mut trace_obj = fast_map_new();
     trace_obj.insert("error".to_string(), build_error_value(error));
     trace_obj.insert("context".to_string(), build_trace_ctx_value(&trace.context));
     trace_obj.insert(
@@ -262,7 +261,7 @@ pub(crate) fn build_trace_value(
 
 #[cfg(feature = "trace")]
 fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
-    let mut ctx = BTreeMap::new();
+    let mut ctx = fast_map_new();
     ctx.insert(
         "trace_id".to_string(),
         context
@@ -314,7 +313,7 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
 
 #[cfg(feature = "trace")]
 fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+    let mut map = fast_map_new();
     map.insert(
         "name".to_string(),
         AttachmentValue::String(event.name.clone()),
@@ -340,7 +339,7 @@ fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
                 .attributes
                 .iter()
                 .map(|attr| {
-                    let mut kv = BTreeMap::new();
+                    let mut kv = fast_map_new();
                     kv.insert("key".to_string(), AttachmentValue::String(attr.key.clone()));
                     kv.insert("value".to_string(), attr.value.clone());
                     AttachmentValue::Object(kv)
@@ -353,7 +352,7 @@ fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+    let mut map = fast_map_new();
     let format = match stack_trace.format {
         crate::report::StackTraceFormat::Native => "native",
         crate::report::StackTraceFormat::Raw => "raw",
@@ -382,7 +381,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+    let mut map = fast_map_new();
     map.insert(
         "symbol".to_string(),
         frame
@@ -429,7 +428,7 @@ pub(crate) fn build_display_causes(
     display_causes: &[Arc<dyn Display + Send + Sync + 'static>],
     state: CauseTraversalState,
 ) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+    let mut map = fast_map_new();
     map.insert(
         "items".to_string(),
         AttachmentValue::Array(
@@ -451,42 +450,90 @@ pub(crate) fn build_display_causes(
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
-pub(crate) fn build_source_errors_value(source_errors: &SourceErrorChain) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+pub(crate) fn build_origin_source_errors_value(
+    source_errors: &SourceErrorChain,
+) -> AttachmentValue {
+    build_source_errors_value(source_errors, true)
+}
+
+#[cfg(any(feature = "trace", feature = "otel"))]
+pub(crate) fn build_diagnostic_source_errors_value(
+    source_errors: &SourceErrorChain,
+) -> AttachmentValue {
+    build_source_errors_value(source_errors, false)
+}
+
+#[cfg(any(feature = "trace", feature = "otel"))]
+fn build_source_errors_value(
+    source_errors: &SourceErrorChain,
+    hide_report_wrapper_types: bool,
+) -> AttachmentValue {
+    let exported = source_errors.export_with_options(hide_report_wrapper_types);
+    let mut map = fast_map_new();
     map.insert(
-        "items".to_string(),
-        AttachmentValue::Array(source_errors.iter().map(build_source_err_node).collect()),
+        "roots".to_string(),
+        AttachmentValue::Array(
+            exported
+                .roots
+                .iter()
+                .copied()
+                .map(|id| AttachmentValue::Integer(id as i64))
+                .collect(),
+        ),
+    );
+    map.insert(
+        "nodes".to_string(),
+        AttachmentValue::Array(
+            exported
+                .nodes
+                .iter()
+                .map(|node| {
+                    build_source_err_node(
+                        &node.message,
+                        node.type_name.as_deref(),
+                        node.source_roots.as_slice(),
+                    )
+                })
+                .collect(),
+        ),
     );
     map.insert(
         "truncated".to_string(),
-        AttachmentValue::Bool(source_errors.truncated),
+        AttachmentValue::Bool(exported.truncated),
     );
     map.insert(
         "cycle_detected".to_string(),
-        AttachmentValue::Bool(source_errors.cycle_detected),
+        AttachmentValue::Bool(exported.cycle_detected),
     );
     AttachmentValue::Object(map)
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
-fn build_source_err_node(error: &crate::report::SourceErrorItem) -> AttachmentValue {
-    let mut map = BTreeMap::new();
+fn build_source_err_node(
+    message: &str,
+    type_name: Option<&str>,
+    source_roots: &[usize],
+) -> AttachmentValue {
+    let mut map = fast_map_new();
     map.insert(
         "message".to_string(),
-        AttachmentValue::String(error.error.to_string().into()),
+        AttachmentValue::String(message.to_string().into()),
     );
     map.insert(
         "type".to_string(),
-        error
-            .display_type_name()
+        type_name
             .map(|type_name| AttachmentValue::String(type_name.to_string().into()))
             .unwrap_or(AttachmentValue::Null),
     );
-    if let Some(source) = error.source.as_ref() {
-        map.insert(
-            "source".to_string(),
-            build_source_errors_value(source.as_ref()),
-        );
-    }
+    map.insert(
+        "source_roots".to_string(),
+        AttachmentValue::Array(
+            source_roots
+                .iter()
+                .copied()
+                .map(|id| AttachmentValue::Integer(id as i64))
+                .collect(),
+        ),
+    );
     AttachmentValue::Object(map)
 }

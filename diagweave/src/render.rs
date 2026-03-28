@@ -18,7 +18,10 @@ pub(crate) use ir::build_error_value;
 pub(crate) use ir::build_trace_value;
 pub use ir::{DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata};
 #[cfg(any(feature = "trace", feature = "otel"))]
-pub(crate) use ir::{build_display_causes, build_source_errors_value, build_stack_trace_value};
+pub(crate) use ir::{
+    build_diagnostic_source_errors_value, build_display_causes, build_origin_source_errors_value,
+    build_stack_trace_value,
+};
 pub use pretty::Pretty;
 
 #[cfg(feature = "json")]

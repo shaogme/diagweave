@@ -12,6 +12,7 @@ mod report_impl;
 mod trace_impl;
 
 pub use diagweave_macros::{Error, set, union};
+pub use ref_str::{RefStr, StaticRefStr};
 
 #[cfg(doctest)]
 #[doc = include_str!("../../README.md")]
@@ -81,5 +82,5 @@ pub mod prelude {
     pub use crate::report::{
         ParentSpanId, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
     };
-    pub use crate::{Error, set, union};
+    pub use crate::{Error, RefStr, StaticRefStr, set, union};
 }

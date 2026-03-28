@@ -158,7 +158,7 @@ enum FileError {
 
 ### Overview
 The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, display-cause chain, trace info). Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
-Hot path strings such as `category`, `trace_state`, trace event names, and stack trace raw text are stored with shared `Arc<str>` handles once captured.
+Hot path strings such as `category`, `trace_state`, trace event names, and stack trace raw text are stored with shared `StaticRefStr` handles once captured.
 
 ### Declaration and Definition
 ```rust
@@ -196,7 +196,7 @@ pub struct Report<E> {
 ### `ErrorCode` Design and Conversions
 - Internal model:
   - `ErrorCode::Integer(i64)` for compact numeric codes
-  - `ErrorCode::String(Arc<str>)` for symbolic or oversized numeric codes
+  - `ErrorCode::String(StaticRefStr)` for symbolic or oversized numeric codes
 - Input conversion (`impl Into<ErrorCode>`):
   - Integer inputs (`i8..i128`, `u8..u128`, `isize`, `usize`) attempt `TryInto<i64>`
   - On success: stored as `Integer`
@@ -209,7 +209,7 @@ pub struct Report<E> {
   - `ErrorCodeIntError::InvalidIntegerString`
   - `ErrorCodeIntError::OutOfRange`
 
-`AttachmentValue::String` also uses `Arc<str>` internally, so repeated report wrapping can reuse string payloads without copying.
+`AttachmentValue::String` also uses `StaticRefStr` internally, so repeated report wrapping can reuse string payloads without copying. Stored attachment keys, payload names/media types, global context keys, and trace/category metadata follow the same storage rule.
 
 ### Global Injection
 Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
@@ -218,7 +218,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 
 | GlobalContext Field | Description |
 | :--- | :--- |
-| `context` | `Vec<(Cow<'static, str>, AttachmentValue)>` globally associated key-value pairs |
+| `context` | `Vec<(StaticRefStr, AttachmentValue)>` globally associated key-value pairs |
 | `trace_id` | `Option<TraceId>` Automatically bound Trace ID |
 | `span_id` | `Option<SpanId>` Automatically bound Span ID |
 | `parent_span_id` | `Option<ParentSpanId>` Automatically bound parent Span ID |
@@ -230,20 +230,20 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 ### Chained Configuration Methods
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
-| `with_context` / `attach` | `(Ident, impl Into<AttachmentValue>)` | Add context key-value pairs |
+| `with_context` / `attach` | `(impl Into<StaticRefStr>, impl Into<AttachmentValue>)` | Add context key-value pairs |
 | `with_note` / `attach_printable` | `impl Display + 'static` | Add remarks or resolution suggestions |
-| `with_payload` / `attach_payload` | `(Ident, Value, Option<impl Into<Cow<'static, str>>>)` | Attach named payload (supports media types) |
+| `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
-| `with_category` | `impl Into<Arc<str>>` | Set error category (for monitoring metrics) |
+| `with_category` | `impl Into<StaticRefStr>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |
 | `with_source_error` | `impl Error + 'static` | Add one explicit error source object |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
-| `with_trace_state` | `impl Into<Arc<str>>` | Set trace state for correlation metadata |
-| `push_trace_event` | `impl Into<Arc<str>>` | Append a trace event with default fields |
-| `push_trace_event_with` | `(impl Into<Arc<str>>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | Append a fully specified trace event |
+| `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata |
+| `push_trace_event` | `impl Into<StaticRefStr>` | Append a trace event with default fields |
+| `push_trace_event_with` | `(impl Into<StaticRefStr>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | Append a fully specified trace event |
 | `capture_stack_trace` | None | (std) Capture current stack trace (skip if already exists) |
 | `force_capture_stack` | None | (std) Force re-capture stack trace |
 | `clear_stack_trace` | None | Remove associated stack trace info |
@@ -399,11 +399,11 @@ use std::sync::Arc;
 #[cfg(feature = "trace")]
 use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
-use std::borrow::Cow;
+use diagweave::StaticRefStr;
 
 pub struct DiagnosticIr<'a> {
     #[cfg(feature = "json")]
-    pub schema_version: Cow<'static, str>,
+    pub schema_version: StaticRefStr,
     pub error: DiagnosticIrError<'a>,
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
@@ -448,6 +448,7 @@ println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
 `DiagnosticIr` keeps `display_causes` and `source_errors` as structured data. `source_errors` use the same `message`/`type` error-node shape as the root error, while `DiagnosticIrMetadata` still does not expose the chains directly.
+The IR and adapter layers are borrow-first: error/type/trace string projections prefer `RefStr<'a>` so `to_tracing_fields()` and `to_otel_envelope()` avoid unnecessary `String` materialization on hot paths.
 
 ### Usage Example
 ```rust
@@ -552,8 +553,8 @@ report.emit_tracing_with(&MyCustomExporter);
 ### Conversion API
 | Method Declaration | Return Type | Description |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope` | OTLP-style batch of log/event records |
-| `ir.to_tracing_fields()` | `Vec<TracingField>` | Converts to KV pairs for Tracing/Logging fields |
+| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | OTLP-style batch of log/event records |
+| `ir.to_tracing_fields()` | `Vec<TracingField<'a>>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
 1. **Record fields**: The primary report becomes a log record with severity, timestamp-ready metadata, trace correlation fields, and a structured `body` error node.

@@ -3,7 +3,6 @@ pub mod attachment;
 #[path = "types/error.rs"]
 pub mod error;
 
-use alloc::borrow::Cow;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::sync::Arc;
@@ -12,6 +11,7 @@ use alloc::vec::Vec;
 use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
+use ref_str::StaticRefStr;
 
 #[cfg(feature = "trace")]
 use super::trace::{ParentSpanId, ReportTrace, SpanId, TraceId};
@@ -26,7 +26,7 @@ pub use error::*;
 pub struct ReportMetadata {
     pub error_code: Option<ErrorCode>,
     pub severity: Option<Severity>,
-    pub category: Option<Arc<str>>,
+    pub category: Option<StaticRefStr>,
     pub retryable: Option<bool>,
 }
 
@@ -41,9 +41,9 @@ pub enum StackTraceFormat {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct StackFrame {
-    pub symbol: Option<String>,
-    pub module_path: Option<String>,
-    pub file: Option<String>,
+    pub symbol: Option<StaticRefStr>,
+    pub module_path: Option<StaticRefStr>,
+    pub file: Option<StaticRefStr>,
     pub line: Option<u32>,
     pub column: Option<u32>,
 }
@@ -53,7 +53,7 @@ pub struct StackFrame {
 pub struct StackTrace {
     pub format: StackTraceFormat,
     pub frames: Arc<[StackFrame]>,
-    pub raw: Option<Arc<str>>,
+    pub raw: Option<StaticRefStr>,
 }
 
 impl Default for StackTrace {
@@ -82,7 +82,7 @@ impl StackTrace {
     }
 
     /// Sets the raw stack trace string.
-    pub fn with_raw(mut self, raw: impl Into<Arc<str>>) -> Self {
+    pub fn with_raw(mut self, raw: impl Into<StaticRefStr>) -> Self {
         self.raw = Some(raw.into());
         self
     }
@@ -94,7 +94,7 @@ impl StackTrace {
         Self {
             format: StackTraceFormat::Raw,
             frames: Vec::new().into(),
-            raw: Some(Arc::from(backtrace.to_string())),
+            raw: Some(backtrace.to_string().into()),
         }
     }
 }
@@ -111,16 +111,16 @@ pub struct CauseTraversalState {
 /// A streamed attachment item for visitor-based traversal.
 pub enum AttachmentVisit<'a> {
     Context {
-        key: &'a Cow<'static, str>,
+        key: &'a StaticRefStr,
         value: &'a AttachmentValue,
     },
     Note {
         message: &'a (dyn Display + 'static),
     },
     Payload {
-        name: &'a Cow<'static, str>,
+        name: &'a StaticRefStr,
         value: &'a AttachmentValue,
-        media_type: Option<&'a Cow<'static, str>>,
+        media_type: Option<&'a StaticRefStr>,
     },
 }
 
@@ -456,7 +456,7 @@ pub(crate) const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
 #[derive(Debug, Clone, Default)]
 pub struct GlobalContext {
     /// Context key-value pairs.
-    pub context: Vec<(Cow<'static, str>, AttachmentValue)>,
+    pub context: Vec<(StaticRefStr, AttachmentValue)>,
     /// Global trace ID if available.
     #[cfg(feature = "trace")]
     pub trace_id: Option<TraceId>,
@@ -612,7 +612,7 @@ impl Error for StringError {}
 #[derive(Debug, Clone)]
 pub struct SourceErrorItem {
     pub error: Arc<dyn Error + 'static>,
-    pub type_name: Option<Cow<'static, str>>,
+    pub type_name: Option<StaticRefStr>,
     pub source: Option<Arc<SourceErrorChain>>,
 }
 
@@ -623,7 +623,7 @@ impl SourceErrorItem {
     {
         Self {
             error: Arc::new(error),
-            type_name: Some(Cow::Borrowed(any::type_name::<T>())),
+            type_name: Some(any::type_name::<T>().into()),
             source: None,
         }
     }

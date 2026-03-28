@@ -126,14 +126,16 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         ("a".to_owned(), AttachmentValue::Unsigned(u64::MAX)),
         (
             "b".to_owned(),
-            AttachmentValue::Array(vec![
-                AttachmentValue::Bool(true),
-                AttachmentValue::Object(BTreeMap::from([(
-                    "inner".to_owned(),
-                    AttachmentValue::String("ok".into()),
-                )])),
-            ]
-            .into()),
+            AttachmentValue::Array(
+                vec![
+                    AttachmentValue::Bool(true),
+                    AttachmentValue::Object(BTreeMap::from([(
+                        "inner".to_owned(),
+                        AttachmentValue::String("ok".into()),
+                    )])),
+                ]
+                .into(),
+            ),
         ),
     ]));
 
@@ -148,7 +150,8 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         )
         .attach_payload("nested", nested, Some("application/json"));
 
-    let otel = report.to_diagnostic_ir().to_otel_envelope();
+    let ir = report.to_diagnostic_ir();
+    let otel = ir.to_otel_envelope();
     let record = otel.records.first().expect("report record should exist");
     assert_eq!(record.name, "exception");
     assert_eq!(record.severity_text.as_deref(), Some("error"));
@@ -329,7 +332,8 @@ fn tracing_exporter_skips_empty_trace_section() {
 
     let report =
         Report::new(ApiError::Unauthorized).with_trace(diagweave::report::ReportTrace::default());
-    let fields = report.to_diagnostic_ir().to_tracing_fields();
+    let ir = report.to_diagnostic_ir();
+    let fields = ir.to_tracing_fields();
     assert!(fields.iter().all(|field| field.key != "trace"));
 }
 
@@ -363,7 +367,8 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
             .into(),
         });
 
-    let otel = report.to_diagnostic_ir().to_otel_envelope();
+    let ir = report.to_diagnostic_ir();
+    let otel = ir.to_otel_envelope();
     let json = serde_json::to_value(&otel).expect("otel envelope should serialize");
 
     assert_eq!(

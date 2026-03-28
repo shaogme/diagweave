@@ -1,6 +1,6 @@
-use alloc::borrow::Cow;
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use ref_str::RefStr;
 
 use crate::render_impl::{
     DiagnosticIr, build_context_and_attachments, build_display_causes_value, build_error_value,
@@ -19,14 +19,15 @@ fn error_code_value(value: &ErrorCode) -> AttachmentValue {
 /// A key-value pair for Tracing fields.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub struct TracingField {
-    pub key: Cow<'static, str>,
+#[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
+pub struct TracingField<'a> {
+    pub key: RefStr<'a>,
     pub value: AttachmentValue,
 }
 
 impl DiagnosticIr<'_> {
     /// Converts the diagnostic IR to a vector of tracing fields.
-    pub fn to_tracing_fields(&self) -> Vec<TracingField> {
+    pub fn to_tracing_fields(&self) -> Vec<TracingField<'_>> {
         let mut fields = Vec::new();
 
         self.tracing_error(&mut fields);
@@ -39,14 +40,14 @@ impl DiagnosticIr<'_> {
         fields
     }
 
-    fn tracing_error(&self, fields: &mut Vec<TracingField>) {
+    fn tracing_error(&self, fields: &mut Vec<TracingField<'_>>) {
         fields.push(TracingField {
             key: "error".into(),
             value: build_error_value(&self.error),
         });
     }
 
-    fn tracing_meta(&self, fields: &mut Vec<TracingField>) {
+    fn tracing_meta(&self, fields: &mut Vec<TracingField<'_>>) {
         if let Some(error_code) = &self.metadata.error_code {
             fields.push(TracingField {
                 key: "metadata.error_code".into(),
@@ -74,7 +75,7 @@ impl DiagnosticIr<'_> {
     }
 
     #[cfg(feature = "trace")]
-    fn tracing_trace(&self, fields: &mut Vec<TracingField>) {
+    fn tracing_trace(&self, fields: &mut Vec<TracingField<'_>>) {
         let trace = match self.trace {
             Some(t) => t,
             None => return,
@@ -89,7 +90,7 @@ impl DiagnosticIr<'_> {
         });
     }
 
-    fn tracing_stack_trace_and_causes(&self, fields: &mut Vec<TracingField>) {
+    fn tracing_stack_trace_and_causes(&self, fields: &mut Vec<TracingField<'_>>) {
         if let Some(stack_trace) = &self.metadata.stack_trace {
             fields.push(TracingField {
                 key: "diagnostic_bag.stack_trace".into(),
@@ -110,7 +111,7 @@ impl DiagnosticIr<'_> {
         }
     }
 
-    fn tracing_context_and_attachments(&self, fields: &mut Vec<TracingField>) {
+    fn tracing_context_and_attachments(&self, fields: &mut Vec<TracingField<'_>>) {
         let (context_items, attachment_items) = build_context_and_attachments(self.attachments);
 
         if !context_items.is_empty() {

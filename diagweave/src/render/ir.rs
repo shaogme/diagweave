@@ -1,12 +1,14 @@
-use alloc::borrow::Cow;
 use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 #[cfg(feature = "trace")]
 use alloc::vec::Vec;
+#[cfg(feature = "json")]
+use ref_str::StaticRefStr;
 use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
+use ref_str::RefStr;
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 use crate::report::AttachmentValue;
@@ -27,7 +29,7 @@ use alloc::collections::BTreeMap;
 #[cfg_attr(feature = "json", derive(serde::Serialize))]
 pub struct DiagnosticIrErrorNode<'a> {
     pub message: DiagnosticIrMessage<'a>,
-    pub r#type: Cow<'a, str>,
+    pub r#type: RefStr<'a>,
 }
 
 pub type DiagnosticIrError<'a> = DiagnosticIrErrorNode<'a>;
@@ -36,7 +38,7 @@ pub type DiagnosticIrError<'a> = DiagnosticIrErrorNode<'a>;
 #[derive(Clone)]
 pub enum DiagnosticIrMessage<'a> {
     Borrowed(&'a str),
-    Owned(Cow<'a, str>),
+    Owned(RefStr<'a>),
     Display(&'a (dyn Display + 'a)),
 }
 
@@ -44,7 +46,7 @@ impl DiagnosticIrMessage<'_> {
     pub fn to_string_owned(&self) -> String {
         match self {
             Self::Borrowed(v) => (*v).to_owned(),
-            Self::Owned(v) => v.as_ref().to_owned(),
+            Self::Owned(v) => v.to_string(),
             Self::Display(v) => v.to_string(),
         }
     }
@@ -54,7 +56,7 @@ impl Display for DiagnosticIrMessage<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Borrowed(v) => f.write_str(v),
-            Self::Owned(v) => f.write_str(v.as_ref()),
+            Self::Owned(v) => f.write_str(v.as_str()),
             Self::Display(v) => write!(f, "{v}"),
         }
     }
@@ -78,7 +80,7 @@ impl PartialEq<&str> for DiagnosticIrMessage<'_> {
     fn eq(&self, other: &&str) -> bool {
         match self {
             Self::Borrowed(v) => v == other,
-            Self::Owned(v) => v.as_ref() == *other,
+            Self::Owned(v) => v.as_str() == *other,
             Self::Display(v) => v.to_string() == *other,
         }
     }
@@ -106,7 +108,7 @@ pub struct DiagnosticIrMetadata<'a> {
 /// A platform-agnostic intermediate representation of a diagnostic report.
 pub struct DiagnosticIr<'a> {
     #[cfg(feature = "json")]
-    pub schema_version: Cow<'static, str>,
+    pub schema_version: StaticRefStr,
     pub error: DiagnosticIrError<'a>,
     pub metadata: DiagnosticIrMetadata<'a>,
     #[cfg(feature = "trace")]
@@ -131,10 +133,10 @@ impl<E> Report<E> {
             .unwrap_or_default();
         DiagnosticIr {
             #[cfg(feature = "json")]
-            schema_version: Cow::Borrowed(crate::render_impl::REPORT_JSON_SCHEMA_VERSION),
+            schema_version: crate::render_impl::REPORT_JSON_SCHEMA_VERSION.into(),
             error: DiagnosticIrErrorNode {
                 message: DiagnosticIrMessage::Display(self.inner()),
-                r#type: Cow::Borrowed(any::type_name::<E>()),
+                r#type: any::type_name::<E>().into(),
             },
             metadata: DiagnosticIrMetadata {
                 error_code: metadata.error_code.as_ref(),
@@ -183,7 +185,7 @@ pub(crate) fn build_context_and_attachments(
                 let mut map = BTreeMap::new();
                 map.insert(
                     "key".to_string(),
-                    AttachmentValue::String(Arc::from(key.as_ref())),
+                    AttachmentValue::String(key.clone().into()),
                 );
                 map.insert("value".to_string(), value.clone());
                 context_items.push(AttachmentValue::Object(map));
@@ -209,14 +211,14 @@ pub(crate) fn build_context_and_attachments(
                 );
                 map.insert(
                     "name".to_string(),
-                    AttachmentValue::String(Arc::from(name.as_ref())),
+                    AttachmentValue::String(name.clone().into()),
                 );
                 map.insert("value".to_string(), value.clone());
                 map.insert(
                     "media_type".to_string(),
                     media_type
                         .as_ref()
-                        .map(|v| AttachmentValue::String(Arc::from(v.as_ref())))
+                        .map(|v| AttachmentValue::String(v.clone().into()))
                         .unwrap_or(AttachmentValue::Null),
                 );
                 attachment_items.push(AttachmentValue::Object(map));
@@ -236,7 +238,7 @@ pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValu
     );
     map.insert(
         "type".to_string(),
-        AttachmentValue::String(Arc::from(error.r#type.as_ref())),
+        AttachmentValue::String(error.r#type.to_string().into()),
     );
     AttachmentValue::Object(map)
 }
@@ -304,7 +306,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .trace_state
             .as_ref()
-            .map(|v| AttachmentValue::String(v.to_string().into()))
+            .map(|v| AttachmentValue::String(v.clone().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -322,7 +324,7 @@ fn build_trace_attachment_event_value(event: &TraceEvent) -> AttachmentValue {
     let mut map = BTreeMap::new();
     map.insert(
         "name".to_string(),
-        AttachmentValue::String(event.name.to_string().into()),
+        AttachmentValue::String(event.name.clone().into()),
     );
     map.insert(
         "level".to_string(),
@@ -346,7 +348,10 @@ fn build_trace_attachment_event_value(event: &TraceEvent) -> AttachmentValue {
                 .iter()
                 .map(|attr| {
                     let mut kv = BTreeMap::new();
-                    kv.insert("key".to_string(), AttachmentValue::String(attr.key.clone()));
+                    kv.insert(
+                        "key".to_string(),
+                        AttachmentValue::String(attr.key.clone().into()),
+                    );
                     kv.insert("value".to_string(), attr.value.clone());
                     AttachmentValue::Object(kv)
                 })

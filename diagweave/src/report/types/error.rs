@@ -1,8 +1,8 @@
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
-use alloc::sync::Arc;
 use core::convert::TryFrom;
 use core::fmt::{self, Display, Formatter};
+use ref_str::StaticRefStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
@@ -80,7 +80,7 @@ pub enum ErrorCode {
     /// An integer error code.
     Integer(i64),
     /// A string error code.
-    String(Arc<str>),
+    String(StaticRefStr),
 }
 
 /// Error type for converting an [`ErrorCode`] to an integer.
@@ -216,18 +216,18 @@ impl_try_from_error_code_for_unsigned_int!(u8, u16, u32, u64, usize, u128);
 
 impl From<String> for ErrorCode {
     fn from(v: String) -> Self {
-        Self::String(Arc::from(v))
+        Self::String(v.into())
     }
 }
 
 impl From<&'static str> for ErrorCode {
     fn from(v: &'static str) -> Self {
-        Self::String(Arc::from(v))
+        Self::String(v.into())
     }
 }
 
-impl From<Arc<str>> for ErrorCode {
-    fn from(v: Arc<str>) -> Self {
+impl From<StaticRefStr> for ErrorCode {
+    fn from(v: StaticRefStr) -> Self {
         Self::String(v)
     }
 }

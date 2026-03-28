@@ -1,44 +1,47 @@
-use alloc::borrow::Cow;
-use alloc::string::ToString;
 use alloc::vec::Vec;
+use ref_str::{RefStr, StaticRefStr};
 
 use crate::report::{AttachmentValue, ReportTrace, TraceContext, TraceEvent, TraceEventAttribute};
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub(super) struct TraceSectionValue {
-    pub context: TraceContextValue,
-    pub events: Vec<TraceEventValue>,
+#[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
+pub(super) struct TraceSectionValue<'a> {
+    pub context: TraceContextValue<'a>,
+    pub events: Vec<TraceEventValue<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub(super) struct TraceContextValue {
-    pub trace_id: Option<Cow<'static, str>>,
-    pub span_id: Option<Cow<'static, str>>,
-    pub parent_span_id: Option<Cow<'static, str>>,
+#[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
+pub(super) struct TraceContextValue<'a> {
+    pub trace_id: Option<RefStr<'a>>,
+    pub span_id: Option<RefStr<'a>>,
+    pub parent_span_id: Option<RefStr<'a>>,
     pub sampled: Option<bool>,
-    pub trace_state: Option<Cow<'static, str>>,
+    pub trace_state: Option<RefStr<'a>>,
     pub flags: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub(super) struct TraceEventValue {
-    pub name: Cow<'static, str>,
-    pub level: Option<Cow<'static, str>>,
+#[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
+pub(super) struct TraceEventValue<'a> {
+    pub name: RefStr<'a>,
+    pub level: Option<StaticRefStr>,
     pub timestamp_unix_nano: Option<u64>,
-    pub attributes: Vec<TraceAttributeValue>,
+    pub attributes: Vec<TraceAttributeValue<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub(super) struct TraceAttributeValue {
-    pub key: Cow<'static, str>,
+#[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
+pub(super) struct TraceAttributeValue<'a> {
+    pub key: RefStr<'a>,
     pub value: AttachmentValue,
 }
 
-pub(super) fn build_trace_section_value(trace: &ReportTrace) -> TraceSectionValue {
+pub(super) fn build_trace_section_value(trace: &ReportTrace) -> TraceSectionValue<'_> {
     TraceSectionValue {
         context: build_trace_wire_context_value(&trace.context),
         events: trace
@@ -49,24 +52,21 @@ pub(super) fn build_trace_section_value(trace: &ReportTrace) -> TraceSectionValu
     }
 }
 
-fn build_trace_wire_context_value(context: &TraceContext) -> TraceContextValue {
+fn build_trace_wire_context_value(context: &TraceContext) -> TraceContextValue<'_> {
     TraceContextValue {
-        trace_id: context.trace_id.as_ref().map(|v| v.as_cow()),
-        span_id: context.span_id.as_ref().map(|v| v.as_cow()),
-        parent_span_id: context.parent_span_id.as_ref().map(|v| v.as_cow()),
+        trace_id: context.trace_id.as_ref().map(|v| v.as_ref().into()),
+        span_id: context.span_id.as_ref().map(|v| v.as_ref().into()),
+        parent_span_id: context.parent_span_id.as_ref().map(|v| v.as_ref().into()),
         sampled: context.sampled,
-        trace_state: context
-            .trace_state
-            .as_ref()
-            .map(|v| Cow::Owned(v.to_string())),
+        trace_state: context.trace_state.as_ref().map(|v| v.as_str().into()),
         flags: context.flags,
     }
 }
 
-fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue {
+fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue<'_> {
     TraceEventValue {
-        name: Cow::Owned(event.name.to_string()),
-        level: event.level.map(Cow::from),
+        name: event.name.clone().into(),
+        level: event.level.map(trace_event_level_ref),
         timestamp_unix_nano: event.timestamp_unix_nano,
         attributes: event
             .attributes
@@ -76,9 +76,19 @@ fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue {
     }
 }
 
-fn build_trace_wire_attribute_value(attr: &TraceEventAttribute) -> TraceAttributeValue {
+fn build_trace_wire_attribute_value(attr: &TraceEventAttribute) -> TraceAttributeValue<'_> {
     TraceAttributeValue {
-        key: Cow::Owned(attr.key.to_string()),
+        key: attr.key.clone().into(),
         value: attr.value.clone(),
+    }
+}
+
+fn trace_event_level_ref(level: crate::report::TraceEventLevel) -> StaticRefStr {
+    match level {
+        crate::report::TraceEventLevel::Trace => "trace".into(),
+        crate::report::TraceEventLevel::Debug => "debug".into(),
+        crate::report::TraceEventLevel::Info => "info".into(),
+        crate::report::TraceEventLevel::Warn => "warn".into(),
+        crate::report::TraceEventLevel::Error => "error".into(),
     }
 }

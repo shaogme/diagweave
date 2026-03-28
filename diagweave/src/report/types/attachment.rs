@@ -3,9 +3,9 @@ use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::string::ToString;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
+use ref_str::StaticRefStr;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
@@ -17,7 +17,7 @@ use core::fmt::{self, Display, Formatter};
 pub enum AttachmentValue {
     #[default]
     Null,
-    String(Arc<str>),
+    String(StaticRefStr),
     Integer(i64),
     Unsigned(u64),
     Float(f64),
@@ -26,8 +26,8 @@ pub enum AttachmentValue {
     Object(BTreeMap<String, AttachmentValue>),
     Bytes(Vec<u8>),
     Redacted {
-        kind: Option<Cow<'static, str>>,
-        reason: Option<Cow<'static, str>>,
+        kind: Option<StaticRefStr>,
+        reason: Option<StaticRefStr>,
     },
 }
 
@@ -73,18 +73,18 @@ impl Display for AttachmentValue {
 
 impl From<String> for AttachmentValue {
     fn from(value: String) -> Self {
-        Self::String(Arc::from(value))
+        Self::String(value.into())
     }
 }
 
 impl From<&'static str> for AttachmentValue {
     fn from(value: &'static str) -> Self {
-        Self::String(Arc::from(value))
+        Self::String(value.into())
     }
 }
 
-impl From<Arc<str>> for AttachmentValue {
-    fn from(value: Arc<str>) -> Self {
+impl From<StaticRefStr> for AttachmentValue {
+    fn from(value: StaticRefStr) -> Self {
         Self::String(value)
     }
 }
@@ -157,23 +157,13 @@ impl From<f64> for AttachmentValue {
 
 impl From<Vec<String>> for AttachmentValue {
     fn from(value: Vec<String>) -> Self {
-        Self::Array(
-            value
-                .into_iter()
-                .map(|s| Self::String(Arc::from(s)))
-                .collect(),
-        )
+        Self::Array(value.into_iter().map(|s| Self::String(s.into())).collect())
     }
 }
 
 impl From<Vec<&'static str>> for AttachmentValue {
     fn from(value: Vec<&'static str>) -> Self {
-        Self::Array(
-            value
-                .into_iter()
-                .map(|s| Self::String(Arc::from(s)))
-                .collect(),
-        )
+        Self::Array(value.into_iter().map(|s| Self::String(s.into())).collect())
     }
 }
 
@@ -219,7 +209,7 @@ impl From<serde_json::Value> for AttachmentValue {
                     Self::Float(n.as_f64().unwrap_or(0.0))
                 }
             }
-            serde_json::Value::String(s) => Self::String(Arc::from(s)),
+            serde_json::Value::String(s) => Self::String(s.into()),
             serde_json::Value::Array(arr) => {
                 Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
             }
@@ -237,16 +227,16 @@ impl From<serde_json::Value> for AttachmentValue {
 /// Represents an attachment to a diagnostic report, such as context, notes, or payloads.
 pub enum Attachment {
     Context {
-        key: Cow<'static, str>,
+        key: StaticRefStr,
         value: AttachmentValue,
     },
     Note {
         message: Box<dyn Display + 'static>,
     },
     Payload {
-        name: Cow<'static, str>,
+        name: StaticRefStr,
         value: AttachmentValue,
-        media_type: Option<Cow<'static, str>>,
+        media_type: Option<StaticRefStr>,
     },
 }
 
@@ -337,16 +327,16 @@ impl core::fmt::Debug for Attachment {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum AttachmentSerde {
     Context {
-        key: Cow<'static, str>,
+        key: StaticRefStr,
         value: AttachmentValue,
     },
     Note {
         message: String,
     },
     Payload {
-        name: Cow<'static, str>,
+        name: StaticRefStr,
         value: AttachmentValue,
-        media_type: Option<Cow<'static, str>>,
+        media_type: Option<StaticRefStr>,
     },
 }
 
@@ -405,7 +395,7 @@ impl<'de> serde::Deserialize<'de> for Attachment {
 
 impl Attachment {
     /// Creates a new context attachment with a key and value.
-    pub fn context(key: impl Into<Cow<'static, str>>, value: impl Into<AttachmentValue>) -> Self {
+    pub fn context(key: impl Into<StaticRefStr>, value: impl Into<AttachmentValue>) -> Self {
         Self::Context {
             key: key.into(),
             value: value.into(),
@@ -421,9 +411,9 @@ impl Attachment {
 
     /// Creates a new payload attachment with a name, value, and optional media type.
     pub fn payload(
-        name: impl Into<Cow<'static, str>>,
+        name: impl Into<StaticRefStr>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<impl Into<Cow<'static, str>>>,
+        media_type: Option<impl Into<StaticRefStr>>,
     ) -> Self {
         Self::Payload {
             name: name.into(),
@@ -435,7 +425,7 @@ impl Attachment {
     /// Attempts to interpret the attachment as a context entry.
     pub fn as_context(&self) -> Option<(&str, &AttachmentValue)> {
         match self {
-            Self::Context { key, value } => Some((key.as_ref(), value)),
+            Self::Context { key, value } => Some((key.as_str(), value)),
             Self::Note { .. } | Self::Payload { .. } => None,
         }
     }
@@ -463,7 +453,7 @@ impl Attachment {
                 name,
                 value,
                 media_type,
-            } => Some((name.as_ref(), value, media_type.as_deref())),
+            } => Some((name.as_str(), value, media_type.as_ref().map(|v| v.as_str()))),
             Self::Context { .. } | Self::Note { .. } => None,
         }
     }

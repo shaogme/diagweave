@@ -8,13 +8,13 @@ mod trace;
 #[path = "report/types.rs"]
 mod types;
 
-use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
+use ref_str::StaticRefStr;
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
@@ -242,7 +242,7 @@ impl<E> Report<E> {
     /// Attaches a context key-value pair to the report.
     pub fn attach(
         mut self,
-        key: impl Into<Cow<'static, str>>,
+        key: impl Into<StaticRefStr>,
         value: impl Into<AttachmentValue>,
     ) -> Self {
         self.diagnostics_mut()
@@ -262,9 +262,9 @@ impl<E> Report<E> {
     /// Attaches a payload with an optional media type to the report.
     pub fn attach_payload(
         mut self,
-        name: impl Into<Cow<'static, str>>,
+        name: impl Into<StaticRefStr>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<impl Into<Cow<'static, str>>>,
+        media_type: Option<impl Into<StaticRefStr>>,
     ) -> Self {
         self.diagnostics_mut().attachments.push(Attachment::payload(
             name,
@@ -277,7 +277,7 @@ impl<E> Report<E> {
     /// Adds context to the report (alias for `attach`).
     pub fn with_context(
         self,
-        key: impl Into<Cow<'static, str>>,
+        key: impl Into<StaticRefStr>,
         value: impl Into<AttachmentValue>,
     ) -> Self {
         self.attach(key, value)
@@ -291,9 +291,9 @@ impl<E> Report<E> {
     /// Adds a payload to the report (alias for `attach_payload`).
     pub fn with_payload(
         self,
-        name: impl Into<Cow<'static, str>>,
+        name: impl Into<StaticRefStr>,
         value: impl Into<AttachmentValue>,
-        media_type: Option<impl Into<Cow<'static, str>>>,
+        media_type: Option<impl Into<StaticRefStr>>,
     ) -> Self {
         self.attach_payload(name, value, media_type)
     }
@@ -317,7 +317,7 @@ impl<E> Report<E> {
     }
 
     /// Sets the category for the report.
-    pub fn with_category(mut self, category: impl Into<Arc<str>>) -> Self {
+    pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
         self.ensure_cold().metadata.category = Some(category.into());
         self
     }

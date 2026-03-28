@@ -13,11 +13,13 @@ fn render_format_supports_compact_pretty_and_json() {
         .attach("request_id", "tx-json")
         .attach_payload(
             "http.request",
-            AttachmentValue::Array(vec![
-                AttachmentValue::from("GET"),
-                AttachmentValue::from("/session"),
-            ]
-            .into()),
+            AttachmentValue::Array(
+                vec![
+                    AttachmentValue::from("GET"),
+                    AttachmentValue::from("/session"),
+                ]
+                .into(),
+            ),
             Some("application/x.debug".to_owned()),
         )
         .wrap(ApiError::Unauthorized);

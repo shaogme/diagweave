@@ -162,7 +162,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
         .with_payload(
             "request_meta",
             serde_json::json!({ "version": "v1", "retry": 3 }),
-            Some("application/json".to_owned()),
+            Some("application/json"),
         )
         .with_error_code("ERR_AUTH_001")
         .with_severity(Severity::Fatal)

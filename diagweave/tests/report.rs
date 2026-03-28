@@ -25,14 +25,14 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
         .attach_payload(
             "auth_payload",
             AttachmentValue::Object(payload),
-            Some("application/json".to_owned()),
+            Some("application/json"),
         );
 
     assert_eq!(report.attachments().len(), 3);
     assert!(matches!(
         &report.attachments()[0],
         Attachment::Context { key, value: AttachmentValue::String(value) }
-            if key == "request_id" && value.as_ref() == "tx-100"
+            if key == "request_id" && value == "tx-100"
     ));
     assert_eq!(
         report.attachments()[0].as_context(),
@@ -146,6 +146,28 @@ fn result_ext_builds_report_chain() {
 }
 
 #[test]
+fn result_ext_with_payload_accepts_dynamic_media_type() {
+    let _guard = init_test();
+
+    let media_type = "application/json".to_owned();
+    let err = fail_auth()
+        .diag()
+        .with_payload("body", AttachmentValue::from("ok"), Some(media_type))
+        .expect_err("should fail");
+
+    assert!(matches!(
+        &err.attachments()[0],
+        Attachment::Payload {
+            name,
+            value: AttachmentValue::String(value),
+            media_type: Some(media_type),
+        } if name == "body"
+            && value == "ok"
+            && media_type == "application/json"
+    ));
+}
+
+#[test]
 #[cfg(feature = "std")]
 fn global_context_injector_applies_to_new_reports() {
     let _guard = init_test();
@@ -166,7 +188,7 @@ fn global_context_injector_applies_to_new_reports() {
     assert!(matches!(
         &report.attachments()[0],
         Attachment::Context { key, value: AttachmentValue::String(value) }
-            if key == "request_id" && value.as_ref() == "req-42"
+            if key == "request_id" && value == "req-42"
     ));
     #[cfg(feature = "trace")]
     {

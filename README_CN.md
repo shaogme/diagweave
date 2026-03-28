@@ -276,8 +276,9 @@ pub enum MyError {
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
 
-`category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `Arc<str>` 共享存储。
-对应的设置接口也接受 `impl Into<Arc<str>>`，可以直接传入共享字符串而不再额外拷贝。
+`category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `StaticRefStr` 共享存储。
+附件 key、payload 名称、payload media type、全局上下文 key 等持久化字符串也统一使用 `StaticRefStr`。
+对应的设置接口也接受 `impl Into<StaticRefStr>`，可以直接传入共享字符串而不再额外拷贝。
 
 `Report<E>` 的读取接口：
 
@@ -299,14 +300,14 @@ Note 附件读取：
 
 `ErrorCode` 设计：
 
-- 双表示：`Integer(i64)` 或 `String(Arc<str>)`
+- 双表示：`Integer(i64)` 或 `String(StaticRefStr)`
 - 写入路径：`with_error_code(x)` 接收 `impl Into<ErrorCode>`
 - 整型输入若可放入 `i64` 则存为 `Integer`；超范围自动降级为十进制字符串 `String`
 - 读取路径：支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
 - 字符串路径：同时支持 `Into<String>` 与 `to_string()`
 - 整型解析失败错误：`ErrorCodeIntError::{InvalidIntegerString, OutOfRange}`
 
-`AttachmentValue::String` 也使用 `Arc<str>` 作为内部存储，重复包装同一份 report 时可以减少字符串拷贝。
+`AttachmentValue::String` 也使用 `StaticRefStr` 作为内部存储，重复包装同一份 report 时可以减少字符串拷贝。
 
 原因语义说明：
 
@@ -375,6 +376,8 @@ assert!(!tracing_fields.is_empty());
 #[cfg(feature = "otel")]
 let otel = ir.to_otel_envelope();
 ```
+
+`DiagnosticIr` 以及 tracing/OTEL 适配器输出现在优先采用借用视图：能借用 report 内部字符串时使用 `RefStr<'a>`，只有在无法安全借用的投影值上才物化 owned 字符串。
 
 `DiagnosticIr` 主要包含稳定的头部/元数据和聚合计数：
 

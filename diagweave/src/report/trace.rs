@@ -1,7 +1,7 @@
 use alloc::borrow::Cow;
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
+use ref_str::StaticRefStr;
 
 use super::{Report, types::AttachmentValue};
 
@@ -44,7 +44,7 @@ impl From<TraceEventLevel> for Cow<'static, str> {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEventAttribute {
-    pub key: Arc<str>,
+    pub key: StaticRefStr,
     pub value: AttachmentValue,
 }
 
@@ -60,7 +60,7 @@ impl Default for TraceEventAttribute {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEvent {
-    pub name: Arc<str>,
+    pub name: StaticRefStr,
     pub level: Option<TraceEventLevel>,
     pub timestamp_unix_nano: Option<u64>,
     pub attributes: Vec<TraceEventAttribute>,
@@ -69,7 +69,7 @@ pub struct TraceEvent {
 impl Default for TraceEvent {
     fn default() -> Self {
         Self {
-            name: Arc::from(""),
+            name: "".into(),
             level: None,
             timestamp_unix_nano: None,
             attributes: Vec::new(),
@@ -84,7 +84,7 @@ pub struct TraceContext {
     pub span_id: Option<SpanId>,
     pub parent_span_id: Option<ParentSpanId>,
     pub sampled: Option<bool>,
-    pub trace_state: Option<Arc<str>>,
+    pub trace_state: Option<StaticRefStr>,
     pub flags: Option<u8>,
 }
 
@@ -124,19 +124,19 @@ impl ReportTrace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HexId<const N: usize>(Cow<'static, str>);
+pub struct HexId<const N: usize>(StaticRefStr);
 
 impl<const N: usize> HexId<N> {
-    pub fn new(value: impl Into<Cow<'static, str>>) -> Result<Self, ()> {
+    pub fn new(value: impl Into<StaticRefStr>) -> Result<Self, ()> {
         let value = value.into();
-        if Self::is_valid(value.as_ref()) {
+        if Self::is_valid(value.as_str()) {
             Ok(Self(value))
         } else {
             Err(())
         }
     }
 
-    pub unsafe fn new_unchecked(value: impl Into<Cow<'static, str>>) -> Self {
+    pub unsafe fn new_unchecked(value: impl Into<StaticRefStr>) -> Self {
         Self(value.into())
     }
 
@@ -153,13 +153,13 @@ impl<const N: usize> HexId<N> {
     }
 
     pub fn as_cow(&self) -> Cow<'static, str> {
-        self.0.clone()
+        self.0.as_cow()
     }
 }
 
 impl<const N: usize> AsRef<str> for HexId<N> {
     fn as_ref(&self) -> &str {
-        self.0.as_ref()
+        self.0.as_str()
     }
 }
 
@@ -186,8 +186,8 @@ impl<'de, const N: usize> serde::Deserialize<'de> for HexId<N> {
         D: serde::Deserializer<'de>,
     {
         let value = <Cow<'de, str> as serde::Deserialize<'de>>::deserialize(deserializer)?;
-        let value: Cow<'static, str> = value.into_owned().into();
-        if Self::is_valid(value.as_ref()) {
+        let value: StaticRefStr = value.into_owned().into();
+        if Self::is_valid(value.as_str()) {
             Ok(Self(value))
         } else {
             Err(serde::de::Error::custom("invalid hex id"))
@@ -234,7 +234,7 @@ impl<E> Report<E> {
     }
 
     /// Sets the trace state.
-    pub fn with_trace_state(mut self, trace_state: impl Into<Arc<str>>) -> Self {
+    pub fn with_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
         self.trace_mut().context.trace_state = Some(trace_state.into());
         self
     }
@@ -254,7 +254,7 @@ impl<E> Report<E> {
     }
 
     /// Pushes a trace event with the specified name.
-    pub fn push_trace_event(mut self, name: impl Into<Arc<str>>) -> Self {
+    pub fn push_trace_event(mut self, name: impl Into<StaticRefStr>) -> Self {
         self.trace_mut().events.push(TraceEvent {
             name: name.into(),
             ..TraceEvent::default()
@@ -265,7 +265,7 @@ impl<E> Report<E> {
     /// Pushes a trace event with detailed information.
     pub fn push_trace_event_ext(
         mut self,
-        name: impl Into<Arc<str>>,
+        name: impl Into<StaticRefStr>,
         level: Option<TraceEventLevel>,
         timestamp_unix_nano: Option<u64>,
         attributes: impl IntoIterator<Item = TraceEventAttribute>,

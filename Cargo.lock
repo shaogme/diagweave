@@ -23,6 +23,7 @@ name = "diagweave"
 version = "0.1.0"
 dependencies = [
  "diagweave-macros",
+ "ref_str",
  "serde",
  "serde_json",
  "tracing",
@@ -128,6 +129,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "ref_str"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "376dc588f36c9b812d90bc793bc6cf64911df109d8ed65c287d7dbb5debf262c"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

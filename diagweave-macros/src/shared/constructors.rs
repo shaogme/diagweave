@@ -51,7 +51,7 @@ pub(crate) fn expand_constructor_fields(
     }
 }
 
-pub(crate) fn generate_variant_constructors(
+pub(crate) fn gen_variant_ctors(
     enum_ident: &Ident,
     variants: &[Variant],
     report_path: &Path,
@@ -76,7 +76,7 @@ pub(crate) fn generate_variant_constructors(
     Ok(constructors)
 }
 
-pub(crate) fn generate_variant_constructors_simple(
+pub(crate) fn gen_variant_ctors_simple(
     enum_ident: &Ident,
     variants: &[Variant],
     report_path: &Path,

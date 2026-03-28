@@ -408,7 +408,7 @@ fn render_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let Some(source_errors) = report.source_errors_snapshot(traversal_options) else {
+    let Some(source_errors) = report.source_errors_view(traversal_options) else {
         if options.show_empty_sections {
             writeln!(f, "Source Errors:")?;
             write_indent(f, options.pretty_indent)?;

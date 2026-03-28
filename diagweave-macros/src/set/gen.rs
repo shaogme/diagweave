@@ -6,7 +6,7 @@ use syn::{Error, Ident, Result, Variant};
 use crate::set::parser::SetOptions;
 use crate::set::resolver::{ResolvedSet, ResolvedVariant};
 use crate::shared::codegen::enum_impl_helpers;
-use crate::shared::constructors::generate_variant_constructors;
+use crate::shared::constructors::gen_variant_ctors;
 use crate::shared::derive::merge_debug_derive;
 use crate::shared::display::display_arm;
 use crate::shared::from_attr::{from_variant_source, is_from_variant};
@@ -26,7 +26,7 @@ pub(crate) fn generate_enum_impl(set: &ResolvedSet, options: &SetOptions) -> Res
         .map(|v| display_arm(enum_ident, &v.variant))
         .collect::<Result<Vec<_>>>()?;
     let raw_variants: Vec<Variant> = set.variants.iter().map(|v| v.variant.clone()).collect();
-    let constructors = generate_variant_constructors(
+    let constructors = gen_variant_ctors(
         enum_ident,
         &raw_variants,
         &options.report_path,

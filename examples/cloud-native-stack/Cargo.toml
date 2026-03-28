@@ -1,8 +1,10 @@
-﻿[package]
+[package]
 name = "cloud-native-stack"
 version = "0.1.0"
 edition = "2024"
 publish = false
+description = "Cloud-native error handling showcase for diagweave"
+license = "MIT"
 
 [dependencies]
 diagweave = { workspace = true, features = ["json", "trace", "otel", "tracing"] }

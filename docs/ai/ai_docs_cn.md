@@ -231,15 +231,15 @@ pub struct Report<E> {
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(impl Into<StaticRefStr>, impl Into<AttachmentValue>)` | 添加上下文键值对 |
-| `with_note` / `attach_printable` | `impl Display + 'static` | 添加备注或解决建议 |
+| `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
 | `with_category` | `impl Into<StaticRefStr>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
-| `with_display_cause` | `impl Display` | 添加单个展示原因字符串 |
-| `with_display_causes` | `impl IntoIterator<Item = impl Display>` | 批量添加展示原因字符串 |
-| `with_source_error` | `impl Error + 'static` | 添加单个显式错误源对象 |
+| `with_display_cause` | `impl Display + Send + Sync + 'static` | 添加单个展示原因字符串 |
+| `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | 批量添加展示原因字符串 |
+| `with_source_error` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |
 | `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
 | `with_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state 用于关联元数据 |
 | `push_trace_event` | `impl Into<StaticRefStr>` | 追加一个默认字段的 trace 事件 |
@@ -340,7 +340,7 @@ fn process() -> Result<(), Report<io::Error>> {
 ### 展示原因数据
 | 类型名 | 说明 |
 | :--- | :--- |
-| `DisplayCauseChain` | 运行时展示原因链摘要，包含 `items: Vec<Box<dyn Display>>`、`truncated` 与 `cycle_detected`。 |
+| `DisplayCauseChain` | 运行时展示原因链摘要，包含 `items: Vec<Arc<dyn Display + Send + Sync + 'static>>`、`truncated` 与 `cycle_detected`。 |
 
 ### 核心数据转换：`AttachmentValue`
 `Report` 附件支持的强类型值，支持自动从基础类型转换：
@@ -359,7 +359,7 @@ fn process() -> Result<(), Report<io::Error>> {
 
 Note 附件读取：
 - `Attachment::as_note() -> Option<String>`：返回物化后的 note 文本。
-- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`：返回零分配的显示引用。
+- `Attachment::as_note_display() -> Option<&(dyn Display + Send + Sync + 'static)>`：返回零分配的显示引用。
 
 ---
 
@@ -409,7 +409,7 @@ pub struct DiagnosticIr<'a> {
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
-    pub display_causes: &'a [Arc<dyn Display + 'static>],
+    pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
     pub source_errors: Vec<DiagnosticIrError<'static>>,
     pub source_errors_state: CauseTraversalState,

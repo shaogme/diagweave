@@ -291,7 +291,7 @@ pub enum MyError {
 Note 附件读取：
 
 - `Attachment::as_note() -> Option<String>`（物化后的文本视图）
-- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`（零分配显示视图）
+- `Attachment::as_note_display() -> Option<&(dyn Display + Send + Sync + 'static)>`（零分配显示视图）
 
 `Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
 
@@ -311,8 +311,8 @@ Note 附件读取：
 
 原因语义说明：
 
-- `with_display_cause` / `with_display_causes` 接收 `impl Display`，并追加到展示原因字符串链（用于渲染与 IR）。
-- `with_source_error` 用于显式追加错误对象到 source 链元数据。
+- `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
+- `with_source_error` 用于显式追加错误对象到 source 链元数据，参数要求 `impl Error + Send + Sync + 'static`。
 - 真正的错误传播链由 `with_source_error`、`wrap` / `wrap_with` 与 `Error::source()` 共同维护。
 
 全局上下文注入（`std`）：

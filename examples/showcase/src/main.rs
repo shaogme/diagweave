@@ -157,6 +157,19 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
 }
 
 fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
+    let trace_id = match TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736") {
+        Ok(v) => v,
+        Err(()) => return Err(Report::new(ApiError::retry_later(1))),
+    };
+    let span_id = match SpanId::new("00f067aa0ba902b7") {
+        Ok(v) => v,
+        Err(()) => return Err(Report::new(ApiError::retry_later(1))),
+    };
+    let parent_span_id = match ParentSpanId::new("1111111111111111") {
+        Ok(v) => v,
+        Err(()) => return Err(Report::new(ApiError::retry_later(1))),
+    };
+
     service_layer(1001)
         .with_context("request_id", request_id)
         .with_payload(
@@ -168,11 +181,8 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
         .with_severity(Severity::Fatal)
         .with_category("auth")
         .with_retryable(false)
-        .with_trace_ids(
-            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
-            SpanId::new("00f067aa0ba902b7").unwrap(),
-        )
-        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
+        .with_trace_ids(trace_id, span_id)
+        .with_parent_span_id(parent_span_id)
         .with_trace_sampled(true)
         .with_trace_state("service=api")
         .with_trace_flags(1)
@@ -189,8 +199,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
                     key: "component".into(),
                     value: AttachmentValue::from("gateway"),
                 },
-            ]
-            .into(),
+            ],
         })
         .wrap_with(ApiError::App)?;
 
@@ -382,8 +391,8 @@ fn init_global_context() {
         let mut ctx = GlobalContext::default();
         ctx.context
             .push(("global_request_id".into(), "req-global-001".into()));
-        ctx.trace_id = Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap());
-        ctx.span_id = Some(SpanId::new("00f067aa0ba902b7").unwrap());
+        ctx.trace_id = Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok()?);
+        ctx.span_id = Some(SpanId::new("00f067aa0ba902b7").ok()?);
         Some(ctx)
     });
 }

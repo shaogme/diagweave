@@ -230,7 +230,7 @@ pub enum Attachment {
         value: AttachmentValue,
     },
     Note {
-        message: Box<dyn Display + 'static>,
+        message: Box<dyn Display + Send + Sync + 'static>,
     },
     Payload {
         name: StaticRefStr,
@@ -402,7 +402,7 @@ impl Attachment {
     }
 
     /// Creates a new note attachment with a message.
-    pub fn note(message: impl Display + 'static) -> Self {
+    pub fn note(message: impl Display + Send + Sync + 'static) -> Self {
         Self::Note {
             message: Box::new(message),
         }
@@ -438,7 +438,7 @@ impl Attachment {
     }
 
     /// Returns the note as `Display` for zero-allocation access.
-    pub fn as_note_display(&self) -> Option<&(dyn Display + 'static)> {
+    pub fn as_note_display(&self) -> Option<&(dyn Display + Send + Sync + 'static)> {
         match self {
             Self::Note { message } => Some(message.as_ref()),
             Self::Context { .. } | Self::Payload { .. } => None,
@@ -452,7 +452,11 @@ impl Attachment {
                 name,
                 value,
                 media_type,
-            } => Some((name.as_str(), value, media_type.as_ref().map(|v| v.as_str()))),
+            } => Some((
+                name.as_str(),
+                value,
+                media_type.as_ref().map(|v| v.as_str()),
+            )),
             Self::Context { .. } | Self::Note { .. } => None,
         }
     }

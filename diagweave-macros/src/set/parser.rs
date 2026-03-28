@@ -4,7 +4,7 @@ use syn::{
     punctuated::Punctuated,
 };
 
-use crate::shared::options::{DiagweaveOptions, parse_diagweave_options};
+use crate::shared::options::DiagweaveOptions;
 
 pub(crate) struct SetInput {
     pub(crate) attrs: Vec<Attribute>,
@@ -37,10 +37,6 @@ impl Parse for SetInput {
 }
 
 pub(crate) type SetOptions = DiagweaveOptions;
-
-pub(crate) fn parse_set_options(attrs: &[Attribute]) -> Result<SetOptions> {
-    parse_diagweave_options(attrs)
-}
 
 #[derive(Clone)]
 pub(crate) struct SetDecl {

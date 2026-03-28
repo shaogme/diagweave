@@ -291,7 +291,7 @@ Read APIs on `Report<E>`:
 Attachment note access:
 
 - `Attachment::as_note() -> Option<String>` (materialized text view)
-- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` (zero-allocation display view)
+- `Attachment::as_note_display() -> Option<&(dyn Display + Send + Sync + 'static)>` (zero-allocation display view)
 
 Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
@@ -311,8 +311,8 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
 Cause semantics:
 
-- `with_display_cause` / `with_display_causes` accept `impl Display` and append display-cause strings (for rendering/IR).
-- `with_source_error` appends explicit error objects into the report diagnostic bag source chain.
+- `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
+- `with_source_error` appends explicit error objects into the report diagnostic bag source chain, requiring `impl Error + Send + Sync + 'static`.
 - Error source propagation is maintained by `with_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
 
 Global context injector (`std`):

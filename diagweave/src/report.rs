@@ -105,7 +105,7 @@ impl<E> Report<E> {
     }
 
     /// Returns the display causes associated with the report.
-    pub fn display_causes(&self) -> &[Arc<dyn Display + 'static>] {
+    pub fn display_causes(&self) -> &[Arc<dyn Display + Send + Sync + 'static>] {
         match self.diagnostics() {
             Some(diag) => diag
                 .display_causes
@@ -252,7 +252,7 @@ impl<E> Report<E> {
     }
 
     /// Attaches a printable note to the report.
-    pub fn attach_printable(mut self, message: impl Display + 'static) -> Self {
+    pub fn attach_printable(mut self, message: impl Display + Send + Sync + 'static) -> Self {
         self.diagnostics_mut()
             .attachments
             .push(Attachment::note(message));
@@ -284,7 +284,7 @@ impl<E> Report<E> {
     }
 
     /// Adds a note to the report (alias for `attach_printable`).
-    pub fn with_note(self, message: impl Display + 'static) -> Self {
+    pub fn with_note(self, message: impl Display + Send + Sync + 'static) -> Self {
         self.attach_printable(message)
     }
 
@@ -357,17 +357,17 @@ impl<E> Report<E> {
     }
 
     /// Adds a display cause to the report.
-    pub fn with_display_cause(mut self, cause: impl Display + 'static) -> Self {
+    pub fn with_display_cause(mut self, cause: impl Display + Send + Sync + 'static) -> Self {
         self.diagnostics_mut()
             .display_causes
             .get_or_insert_with(DisplayCauseChain::default)
             .items
-            .push(Arc::new(cause) as Arc<dyn Display + 'static>);
+            .push(Arc::new(cause) as Arc<dyn Display + Send + Sync + 'static>);
         self
     }
 
     /// Replaces the display-cause chain for the report.
-    pub fn with_display_cause_chain(mut self, display_causes: DisplayCauseChain) -> Self {
+    pub fn set_display_causes(mut self, display_causes: DisplayCauseChain) -> Self {
         self.diagnostics_mut().display_causes = Some(display_causes);
         self
     }
@@ -376,7 +376,7 @@ impl<E> Report<E> {
     pub fn with_display_causes<I, T>(mut self, causes: I) -> Self
     where
         I: IntoIterator<Item = T>,
-        T: Display + 'static,
+        T: Display + Send + Sync + 'static,
     {
         self.diagnostics_mut()
             .display_causes
@@ -385,13 +385,13 @@ impl<E> Report<E> {
             .extend(
                 causes
                     .into_iter()
-                    .map(|cause| Arc::new(cause) as Arc<dyn Display + 'static>),
+                    .map(|cause| Arc::new(cause) as Arc<dyn Display + Send + Sync + 'static>),
             );
         self
     }
 
     /// Adds an error source to the report's error chain.
-    pub fn with_source_error(mut self, err: impl Error + 'static) -> Self {
+    pub fn with_source_error(mut self, err: impl Error + Send + Sync + 'static) -> Self {
         self.diagnostics_mut()
             .source_errors
             .get_or_insert_with(SourceErrorChain::default)
@@ -400,7 +400,7 @@ impl<E> Report<E> {
     }
 
     /// Replaces the source-error chain for the report.
-    pub fn with_source_error_chain(mut self, source_errors: SourceErrorChain) -> Self {
+    pub fn set_source_errors(mut self, source_errors: SourceErrorChain) -> Self {
         self.diagnostics_mut().source_errors = Some(source_errors);
         self
     }
@@ -408,15 +408,15 @@ impl<E> Report<E> {
     /// Wraps the report into another error type.
     pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer>
     where
-        Self: Error + 'static,
-        E: Error + 'static,
+        Self: Error + Send + Sync + 'static,
+        E: Error + Send + Sync + 'static,
     {
         let source_errors = match self
             .diagnostics()
             .and_then(|diag| diag.source_errors.as_ref())
         {
             Some(source_errors) => Some(source_errors.clone()),
-            None => self.source_errors_snapshot(CauseCollectOptions {
+            None => self.source_errors_view(CauseCollectOptions {
                 max_depth: usize::MAX,
                 detect_cycle: true,
             }),
@@ -568,7 +568,7 @@ impl<E> Report<E>
 where
     E: Error + 'static,
 {
-    pub(crate) fn source_errors_snapshot(
+    pub(crate) fn source_errors_view(
         &self,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {

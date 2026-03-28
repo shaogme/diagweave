@@ -35,6 +35,7 @@ impl Display for DbError {
 impl Error for DbError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Simple wrapper error used in union macro tests.
 pub struct SimpleError(&'static str);
 
 impl Display for SimpleError {

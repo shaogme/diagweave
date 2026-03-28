@@ -29,7 +29,10 @@ pub trait Diagnostic {
         self.diag().with_context(key, value)
     }
 
-    fn diag_note(self, message: impl Display + 'static) -> Result<Self::Value, Report<Self::Error>>
+    fn diag_note(
+        self,
+        message: impl Display + Send + Sync + 'static,
+    ) -> Result<Self::Value, Report<Self::Error>>
     where
         Self: Sized,
     {
@@ -54,7 +57,10 @@ pub trait ReportResultExt<T, E> {
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>>;
 
-    fn attach_printable(self, message: impl Display + 'static) -> Result<T, Report<E>>;
+    fn attach_printable(
+        self,
+        message: impl Display + Send + Sync + 'static,
+    ) -> Result<T, Report<E>>;
 
     fn attach_payload(
         self,
@@ -69,7 +75,7 @@ pub trait ReportResultExt<T, E> {
         value: impl Into<AttachmentValue>,
     ) -> Result<T, Report<E>>;
 
-    fn with_note(self, message: impl Display + 'static) -> Result<T, Report<E>>;
+    fn with_note(self, message: impl Display + Send + Sync + 'static) -> Result<T, Report<E>>;
 
     fn with_payload(
         self,
@@ -128,14 +134,17 @@ pub trait ReportResultExt<T, E> {
     #[cfg(feature = "std")]
     fn capture_stack_trace(self) -> Result<T, Report<E>>;
 
-    fn with_display_cause(self, cause: impl Display + 'static) -> Result<T, Report<E>>;
+    fn with_display_cause(
+        self,
+        cause: impl Display + Send + Sync + 'static,
+    ) -> Result<T, Report<E>>;
 
     fn with_display_causes<I, TCause>(self, causes: I) -> Result<T, Report<E>>
     where
         I: IntoIterator<Item = TCause>,
-        TCause: Display + 'static;
+        TCause: Display + Send + Sync + 'static;
 
-    fn with_source_error(self, err: impl Error + 'static) -> Result<T, Report<E>>;
+    fn with_source_error(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E>>;
 
     fn context_lazy(
         self,
@@ -147,8 +156,8 @@ pub trait ReportResultExt<T, E> {
 
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer>>
     where
-        Report<E>: Error + 'static,
-        E: Error + 'static;
+        Report<E>: Error + Send + Sync + 'static,
+        E: Error + Send + Sync + 'static;
 
     fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer>>;
 }
@@ -180,7 +189,10 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.attach(key, value))
     }
 
-    fn attach_printable(self, message: impl Display + 'static) -> Result<T, Report<E>> {
+    fn attach_printable(
+        self,
+        message: impl Display + Send + Sync + 'static,
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.attach_printable(message))
     }
 
@@ -201,7 +213,7 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.attach(key, value)
     }
 
-    fn with_note(self, message: impl Display + 'static) -> Result<T, Report<E>> {
+    fn with_note(self, message: impl Display + Send + Sync + 'static) -> Result<T, Report<E>> {
         self.attach_printable(message)
     }
 
@@ -301,19 +313,22 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.capture_stack_trace())
     }
 
-    fn with_display_cause(self, cause: impl Display + 'static) -> Result<T, Report<E>> {
+    fn with_display_cause(
+        self,
+        cause: impl Display + Send + Sync + 'static,
+    ) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_display_cause(cause))
     }
 
     fn with_display_causes<I, TCause>(self, causes: I) -> Result<T, Report<E>>
     where
         I: IntoIterator<Item = TCause>,
-        TCause: Display + 'static,
+        TCause: Display + Send + Sync + 'static,
     {
         self.map_err(|report| report.with_display_causes(causes))
     }
 
-    fn with_source_error(self, err: impl Error + 'static) -> Result<T, Report<E>> {
+    fn with_source_error(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E>> {
         self.map_err(|report| report.with_source_error(err))
     }
 
@@ -331,8 +346,8 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
 
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer>>
     where
-        Report<E>: Error + 'static,
-        E: Error + 'static,
+        Report<E>: Error + Send + Sync + 'static,
+        E: Error + Send + Sync + 'static,
     {
         self.map_err(|report| report.wrap(outer))
     }

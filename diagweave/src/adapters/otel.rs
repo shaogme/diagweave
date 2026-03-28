@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use ref_str::RefStr;
 
 use crate::render_impl::{
-    DiagnosticIr, build_display_causes_value, build_error_value, build_source_errors_value,
+    DiagnosticIr, build_display_causes, build_error_value, build_source_errors_value,
     build_stack_trace_value,
 };
 use crate::report::{Attachment, AttachmentValue, ErrorCode};
@@ -147,7 +147,7 @@ impl<'a> DiagnosticIr<'a> {
     /// Converts the diagnostic IR to OpenTelemetry log/event records.
     pub fn to_otel_envelope(&'a self) -> OtelEnvelope<'a> {
         let mut records = Vec::new();
-        records.push(self.otel_report_record());
+        records.push(self.otel_report_ev());
 
         #[cfg(feature = "trace")]
         self.otel_trace_ev(&mut records);
@@ -155,66 +155,19 @@ impl<'a> DiagnosticIr<'a> {
         OtelEnvelope { records }
     }
 
-    fn otel_report_record(&'a self) -> OtelEvent<'a> {
+    fn otel_report_ev(&'a self) -> OtelEvent<'a> {
         let severity = self
             .metadata
             .severity
             .unwrap_or(crate::report::Severity::Error);
-        let mut attributes = Vec::new();
-
-        attributes.push(OtelAttribute {
-            key: "exception.type".into(),
-            value: OtelValue::String(self.error.r#type.clone()),
-        });
-        attributes.push(OtelAttribute {
-            key: "exception.message".into(),
-            value: OtelValue::String(self.error.message.to_string_owned().into()),
-        });
-        if let Some(stack_trace) = &self.metadata.stack_trace {
-            attributes.push(OtelAttribute {
-                key: "exception.stacktrace".into(),
-                value: otel_value_from_owned(build_stack_trace_value(stack_trace)),
-            });
-        }
-        if let Some(error_code) = &self.metadata.error_code {
-            attributes.push(Self::otel_error_code_attr("error.code", error_code));
-        }
-        if let Some(category) = self.metadata.category.as_deref() {
-            attributes.push(OtelAttribute {
-                key: "error.category".into(),
-                value: OtelValue::String((*category).into()),
-            });
-        }
-        if let Some(retryable) = self.metadata.retryable {
-            attributes.push(OtelAttribute {
-                key: "error.retryable".into(),
-                value: OtelValue::Bool(retryable),
-            });
-        }
+        let mut attributes = self.otel_base_attrs();
 
         #[cfg(feature = "trace")]
-        self.otel_trace_correlation(&mut attributes);
+        self.otel_trace_corr(&mut attributes);
         self.otel_diagnostic_bag(&mut attributes);
-        self.otel_attachment_attributes(&mut attributes);
+        self.otel_attach_attrs(&mut attributes);
 
-        #[cfg(feature = "trace")]
-        let trace_id = self
-            .trace
-            .and_then(|trace| trace.context.trace_id.as_ref().map(|v| v.as_ref().into()));
-        #[cfg(not(feature = "trace"))]
-        let trace_id: Option<RefStr<'_>> = None;
-
-        #[cfg(feature = "trace")]
-        let span_id = self
-            .trace
-            .and_then(|trace| trace.context.span_id.as_ref().map(|v| v.as_ref().into()));
-        #[cfg(not(feature = "trace"))]
-        let span_id: Option<RefStr<'_>> = None;
-
-        #[cfg(feature = "trace")]
-        let trace_flags = self.trace.and_then(|trace| trace.context.flags);
-        #[cfg(not(feature = "trace"))]
-        let trace_flags: Option<u8> = None;
+        let (trace_id, span_id, trace_flags) = self.otel_trace_ids();
 
         OtelEvent {
             name: "exception".into(),
@@ -237,8 +190,60 @@ impl<'a> DiagnosticIr<'a> {
         }
     }
 
+    fn otel_base_attrs(&'a self) -> Vec<OtelAttribute<'a>> {
+        let mut attributes = Vec::new();
+        attributes.push(OtelAttribute {
+            key: "exception.type".into(),
+            value: OtelValue::String(self.error.r#type.clone()),
+        });
+        attributes.push(OtelAttribute {
+            key: "exception.message".into(),
+            value: OtelValue::String(self.error.message.to_string_owned().into()),
+        });
+        if let Some(stack_trace) = &self.metadata.stack_trace {
+            attributes.push(OtelAttribute {
+                key: "exception.stacktrace".into(),
+                value: otel_value_from_owned(build_stack_trace_value(stack_trace)),
+            });
+        }
+        if let Some(error_code) = &self.metadata.error_code {
+            attributes.push(Self::otel_error_code_attr("error.code", error_code));
+        }
+        if let Some(category) = self.metadata.category {
+            attributes.push(OtelAttribute {
+                key: "error.category".into(),
+                value: OtelValue::String(category.into()),
+            });
+        }
+        if let Some(retryable) = self.metadata.retryable {
+            attributes.push(OtelAttribute {
+                key: "error.retryable".into(),
+                value: OtelValue::Bool(retryable),
+            });
+        }
+        attributes
+    }
+
+    fn otel_trace_ids(&'a self) -> (Option<RefStr<'a>>, Option<RefStr<'a>>, Option<u8>) {
+        #[cfg(feature = "trace")]
+        {
+            let trace_id = self
+                .trace
+                .and_then(|trace| trace.context.trace_id.as_ref().map(|v| v.as_ref().into()));
+            let span_id = self
+                .trace
+                .and_then(|trace| trace.context.span_id.as_ref().map(|v| v.as_ref().into()));
+            let trace_flags = self.trace.and_then(|trace| trace.context.flags);
+            (trace_id, span_id, trace_flags)
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            (None, None, None)
+        }
+    }
+
     #[cfg(feature = "trace")]
-    fn otel_trace_correlation(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
+    fn otel_trace_corr(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
         let Some(trace) = self.trace else {
             return;
         };
@@ -260,7 +265,7 @@ impl<'a> DiagnosticIr<'a> {
         if !self.display_causes.is_empty() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.display_causes".into(),
-                value: otel_value_from_owned(build_display_causes_value(
+                value: otel_value_from_owned(build_display_causes(
                     self.display_causes,
                     self.display_causes_state,
                 )),
@@ -274,7 +279,7 @@ impl<'a> DiagnosticIr<'a> {
         }
     }
 
-    fn otel_attachment_attributes(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
+    fn otel_attach_attrs(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
         for attachment in self.attachments {
             match attachment {
                 Attachment::Context { key, value } => {
@@ -374,9 +379,7 @@ fn severity_to_otel_number(severity: crate::report::Severity) -> u8 {
 }
 
 #[cfg(feature = "trace")]
-fn severity_for_trace_level(
-    level: crate::report::TraceEventLevel,
-) -> (ref_str::StaticRefStr, u8) {
+fn severity_for_trace_level(level: crate::report::TraceEventLevel) -> (ref_str::StaticRefStr, u8) {
     match level {
         crate::report::TraceEventLevel::Trace => ("trace".into(), 1),
         crate::report::TraceEventLevel::Debug => ("debug".into(), 5),
@@ -418,18 +421,15 @@ fn otel_value_from_owned(value: AttachmentValue) -> OtelValue<'static> {
         ),
         AttachmentValue::Bytes(v) => OtelValue::Bytes(v),
         AttachmentValue::Redacted { kind, reason } => OtelValue::KvList(
-            [
-                ("kind", kind),
-                ("reason", reason),
-            ]
-            .into_iter()
-            .map(|(key, value)| OtelAttribute {
-                key: key.into(),
-                value: value
-                    .map(|v| OtelValue::String(v.to_string().into()))
-                    .unwrap_or(OtelValue::Null),
-            })
-            .collect(),
+            [("kind", kind), ("reason", reason)]
+                .into_iter()
+                .map(|(key, value)| OtelAttribute {
+                    key: key.into(),
+                    value: value
+                        .map(|v| OtelValue::String(v.to_string().into()))
+                        .unwrap_or(OtelValue::Null),
+                })
+                .collect(),
         ),
     }
 }

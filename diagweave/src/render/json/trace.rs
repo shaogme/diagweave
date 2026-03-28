@@ -43,16 +43,12 @@ pub(super) struct TraceAttributeValue<'a> {
 
 pub(super) fn build_trace_section_value(trace: &ReportTrace) -> TraceSectionValue<'_> {
     TraceSectionValue {
-        context: build_trace_wire_context_value(&trace.context),
-        events: trace
-            .events
-            .iter()
-            .map(build_trace_wire_event_value)
-            .collect(),
+        context: build_trace_ctx_value(&trace.context),
+        events: trace.events.iter().map(build_trace_evt_value).collect(),
     }
 }
 
-fn build_trace_wire_context_value(context: &TraceContext) -> TraceContextValue<'_> {
+fn build_trace_ctx_value(context: &TraceContext) -> TraceContextValue<'_> {
     TraceContextValue {
         trace_id: context.trace_id.as_ref().map(|v| v.as_ref().into()),
         span_id: context.span_id.as_ref().map(|v| v.as_ref().into()),
@@ -63,7 +59,7 @@ fn build_trace_wire_context_value(context: &TraceContext) -> TraceContextValue<'
     }
 }
 
-fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue<'_> {
+fn build_trace_evt_value(event: &TraceEvent) -> TraceEventValue<'_> {
     TraceEventValue {
         name: event.name.clone().into(),
         level: event.level.map(trace_event_level_ref),
@@ -71,12 +67,12 @@ fn build_trace_wire_event_value(event: &TraceEvent) -> TraceEventValue<'_> {
         attributes: event
             .attributes
             .iter()
-            .map(build_trace_wire_attribute_value)
+            .map(build_trace_attr_value)
             .collect(),
     }
 }
 
-fn build_trace_wire_attribute_value(attr: &TraceEventAttribute) -> TraceAttributeValue<'_> {
+fn build_trace_attr_value(attr: &TraceEventAttribute) -> TraceAttributeValue<'_> {
     TraceAttributeValue {
         key: attr.key.clone().into(),
         value: attr.value.clone(),

@@ -3,8 +3,8 @@ use tracing::{Level, event};
 use alloc::vec::Vec;
 
 use crate::render_impl::{
-    DiagnosticIr, build_context_and_attachments, build_display_causes_value,
-    build_source_errors_value, build_stack_trace_value,
+    DiagnosticIr, build_ctx_and_attachments, build_display_causes, build_source_errors_value,
+    build_stack_trace_value,
 };
 use crate::report::{AttachmentValue, ReportTrace, Severity, TraceEvent, TraceEventLevel};
 
@@ -17,10 +17,9 @@ pub struct TracingExporter;
 impl TracingExporterTrait for TracingExporter {
     fn export_ir(&self, ir: &DiagnosticIr) {
         let report_level = severity_to_level(ir.metadata.severity);
-        let (context_items, attachment_items) = build_context_and_attachments(ir.attachments);
+        let (context_items, attachment_items) = build_ctx_and_attachments(ir.attachments);
         let stack_trace_value = ir.metadata.stack_trace.map(build_stack_trace_value);
-        let display_causes_value =
-            build_display_causes_value(ir.display_causes, ir.display_causes_state);
+        let display_causes_value = build_display_causes(ir.display_causes, ir.display_causes_state);
         let source_errors_value = ir.source_errors.as_ref().map(build_source_errors_value);
 
         emit_report_event(

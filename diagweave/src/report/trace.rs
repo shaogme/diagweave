@@ -5,6 +5,7 @@ use ref_str::StaticRefStr;
 use super::{Report, types::AttachmentValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Severity level for a trace event.
 pub enum TraceEventLevel {
     Trace,
     Debug,
@@ -27,6 +28,7 @@ impl Display for TraceEventLevel {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A key-value attribute attached to a trace event.
 pub struct TraceEventAttribute {
     pub key: StaticRefStr,
     pub value: AttachmentValue,
@@ -42,6 +44,7 @@ impl Default for TraceEventAttribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A single event emitted within a trace.
 pub struct TraceEvent {
     pub name: StaticRefStr,
     pub level: Option<TraceEventLevel>,
@@ -61,6 +64,7 @@ impl Default for TraceEvent {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+/// Trace context values associated with a report.
 pub struct TraceContext {
     pub trace_id: Option<TraceId>,
     pub span_id: Option<SpanId>,
@@ -82,19 +86,11 @@ impl TraceContext {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
+/// Trace payload attached to a report.
 pub struct ReportTrace {
     pub context: TraceContext,
     pub events: Vec<TraceEvent>,
-}
-
-impl Default for ReportTrace {
-    fn default() -> Self {
-        Self {
-            context: TraceContext::default(),
-            events: Vec::new(),
-        }
-    }
 }
 
 impl ReportTrace {
@@ -105,9 +101,11 @@ impl ReportTrace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Fixed-length non-zero hexadecimal identifier.
 pub struct HexId<const N: usize>(StaticRefStr);
 
 impl<const N: usize> HexId<N> {
+    /// Creates a validated hexadecimal identifier.
     pub fn new(value: impl Into<StaticRefStr>) -> Result<Self, ()> {
         let value = value.into();
         if Self::is_valid(value.as_str()) {
@@ -117,10 +115,15 @@ impl<const N: usize> HexId<N> {
         }
     }
 
+    /// Creates an identifier without validation.
+    ///
+    /// # Safety
+    /// The caller must ensure `value` is a valid, non-zero hex string of length `N`.
     pub unsafe fn new_unchecked(value: impl Into<StaticRefStr>) -> Self {
         Self(value.into())
     }
 
+    /// Returns whether the input is a valid identifier for this width.
     pub fn is_valid(value: &str) -> bool {
         if value.len() != N {
             return false;
@@ -128,11 +131,10 @@ impl<const N: usize> HexId<N> {
         if value.bytes().all(|b| b == b'0') {
             return false;
         }
-        value
-            .bytes()
-            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))
+        value.bytes().all(|b: u8| b.is_ascii_hexdigit())
     }
 
+    /// Returns the owned inner string.
     pub fn into_inner(self) -> StaticRefStr {
         self.0
     }
@@ -150,8 +152,11 @@ impl<const N: usize> Display for HexId<N> {
     }
 }
 
+/// 16-byte trace id encoded as 32 lowercase hex chars.
 pub type TraceId = HexId<32>;
+/// 8-byte span id encoded as 16 lowercase hex chars.
 pub type SpanId = HexId<16>;
+/// Parent span id encoded as 16 lowercase hex chars.
 pub type ParentSpanId = HexId<16>;
 
 impl<E> Report<E> {
@@ -184,7 +189,7 @@ impl<E> Report<E> {
     pub fn with_trace_sampled(mut self, sampled: bool) -> Self {
         let trace = self.trace_mut();
         trace.context.sampled = Some(sampled);
-        sync_trace_flags_with_sampled(&mut trace.context);
+        sync_flags_with_sampled(&mut trace.context);
         self
     }
 
@@ -198,7 +203,7 @@ impl<E> Report<E> {
     pub fn with_trace_flags(mut self, flags: u8) -> Self {
         let trace = self.trace_mut();
         trace.context.flags = Some(flags);
-        sync_trace_sampled_with_flags(&mut trace.context);
+        sync_sampled_with_flags(&mut trace.context);
         self
     }
 
@@ -236,15 +241,12 @@ impl<E> Report<E> {
 
     fn trace_mut(&mut self) -> &mut ReportTrace {
         let diag = self.diagnostics_mut();
-        if diag.trace.is_none() {
-            diag.trace = Some(ReportTrace::default());
-        }
-        diag.trace.as_mut().expect("trace just initialized")
+        diag.trace.get_or_insert_with(ReportTrace::default)
     }
 }
 
 #[cfg(feature = "trace")]
-fn sync_trace_flags_with_sampled(context: &mut TraceContext) {
+fn sync_flags_with_sampled(context: &mut TraceContext) {
     let Some(sampled) = context.sampled else {
         return;
     };
@@ -263,7 +265,7 @@ fn sync_trace_flags_with_sampled(context: &mut TraceContext) {
 }
 
 #[cfg(feature = "trace")]
-fn sync_trace_sampled_with_flags(context: &mut TraceContext) {
+fn sync_sampled_with_flags(context: &mut TraceContext) {
     let Some(flags) = context.flags else {
         return;
     };

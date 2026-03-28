@@ -11,7 +11,7 @@ use syn::{
 };
 
 use crate::shared::codegen::enum_impl_helpers;
-use crate::shared::constructors::generate_variant_constructors_simple;
+use crate::shared::constructors::gen_variant_ctors_simple;
 use crate::shared::derive::merge_debug_derive;
 use crate::shared::display::display_arm;
 use crate::shared::from_attr::{from_variant_source, is_from_variant};
@@ -50,7 +50,7 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
     for term in input.terms {
         ctx.expand_term(term)?;
     }
-    let constructors = generate_variant_constructors_simple(
+    let constructors = gen_variant_ctors_simple(
         enum_name,
         &constructor_variants,
         &options.report_path,

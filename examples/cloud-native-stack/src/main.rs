@@ -34,6 +34,7 @@ mod payment {
         ))
     }
 
+    /// Charges the payment provider for the given amount in cents.
     pub fn charge(amount_cents: u64) -> Result<(), Report<PaymentError>> {
         let _ = amount_cents;
 
@@ -74,6 +75,7 @@ mod order {
         }
     }
 
+    /// Creates an order and runs the payment stage.
     pub fn create(order_id: u64) -> Result<(), Report<OrderError>> {
         if order_id == 0 {
             return Err(Report::new(OrderError::invalid_order(order_id))
@@ -104,6 +106,7 @@ mod gateway {
             }
     }
 
+    /// Handles a single API request and maps failures to API errors.
     pub fn handle_request(request_id: &str) -> Result<String, Report<ApiError>> {
         if request_id == "bad-request" {
             return Err(
@@ -146,8 +149,8 @@ fn init_global_context() {
         let mut ctx = GlobalContext::default();
         ctx.context.push(("request_id".into(), REQUEST_ID.into()));
         ctx.context.push(("span_id".into(), SPAN_ID.into()));
-        ctx.trace_id = Some(TraceId::new(TRACE_ID).unwrap());
-        ctx.span_id = Some(SpanId::new(SPAN_ID).unwrap());
+        ctx.trace_id = Some(TraceId::new(TRACE_ID).ok()?);
+        ctx.span_id = Some(SpanId::new(SPAN_ID).ok()?);
         Some(ctx)
     });
 }
@@ -220,10 +223,7 @@ enum ScenarioResult {
     Payment(Report<payment::PaymentError>),
 }
 
-fn render_report(
-    label: &str,
-    report: Report<impl std::error::Error + std::fmt::Display + 'static>,
-) {
+fn render_report(label: &str, report: Report<impl std::error::Error + 'static>) {
     let json_opts = ReportRenderOptions {
         json_pretty: true,
         ..ReportRenderOptions::default()
@@ -234,7 +234,11 @@ fn render_report(
 
     let ir = report.to_diagnostic_ir();
     let otel = ir.to_otel_envelope();
-    let report_record = otel.records.first().expect("report record should exist");
+    let Some(report_record) = otel.records.first() else {
+        println!("--- {label}: OTel Envelope ---");
+        println!("records_count=0");
+        return;
+    };
 
     println!("--- {label}: OTel Envelope ---");
     println!("records_count={}", otel.records.len());

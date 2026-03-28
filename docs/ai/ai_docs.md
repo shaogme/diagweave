@@ -231,15 +231,15 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
 | `with_context` / `attach` | `(impl Into<StaticRefStr>, impl Into<AttachmentValue>)` | Add context key-value pairs |
-| `with_note` / `attach_printable` | `impl Display + 'static` | Add remarks or resolution suggestions |
+| `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
 | `with_category` | `impl Into<StaticRefStr>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
-| `with_display_cause` | `impl Display` | Add one display-cause string |
-| `with_display_causes` | `impl IntoIterator<Item = impl Display>` | Add multiple display-cause strings |
-| `with_source_error` | `impl Error + 'static` | Add one explicit error source object |
+| `with_display_cause` | `impl Display + Send + Sync + 'static` | Add one display-cause string |
+| `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | Add multiple display-cause strings |
+| `with_source_error` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
 | `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata |
 | `push_trace_event` | `impl Into<StaticRefStr>` | Append a trace event with default fields |
@@ -340,7 +340,7 @@ Manages the chain of triggers for a diagnostic. `diagweave` supports not only `s
 ### Display Cause Data
 | Type Name | Description |
 | :--- | :--- |
-| `DisplayCauseChain` | Runtime chain summary with `items: Vec<Box<dyn Display>>`, plus `truncated` and `cycle_detected`. |
+| `DisplayCauseChain` | Runtime chain summary with `items: Vec<Arc<dyn Display + Send + Sync + 'static>>`, plus `truncated` and `cycle_detected`. |
 
 ### Core Data Conversion: `AttachmentValue`
 Strongly typed values supported by `Report` attachments, converted automatically from base types:
@@ -359,7 +359,7 @@ Strongly typed values supported by `Report` attachments, converted automatically
 
 Attachment note access:
 - `Attachment::as_note() -> Option<String>` returns a materialized note string.
-- `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` returns a zero-allocation display reference.
+- `Attachment::as_note_display() -> Option<&(dyn Display + Send + Sync + 'static)>` returns a zero-allocation display reference.
 
 ---
 
@@ -409,7 +409,7 @@ pub struct DiagnosticIr<'a> {
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
-    pub display_causes: &'a [Arc<dyn Display + 'static>],
+    pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
     pub source_errors: Vec<DiagnosticIrError<'static>>,
     pub source_errors_state: CauseTraversalState,

@@ -5,9 +5,10 @@ mod resolver;
 
 use std::collections::BTreeMap;
 
+use crate::shared::options::parse_diagweave_options;
 use bitset::SymbolTable;
 use r#gen::{generate_all_from_impls, generate_enum_impl};
-use parser::{SetInput, parse_set_options};
+use parser::SetInput;
 use proc_macro::TokenStream;
 use quote::quote;
 use resolver::{ResolvedSet, collect_decls, resolve_set};
@@ -22,7 +23,7 @@ pub(crate) fn set_impl(input: TokenStream) -> TokenStream {
 }
 
 fn expand(input: SetInput) -> Result<proc_macro2::TokenStream> {
-    let options = parse_set_options(&input.attrs)?;
+    let options = parse_diagweave_options(&input.attrs)?;
     let decls = collect_decls(input.decls)?;
 
     let mut symbol_table = SymbolTable::default();

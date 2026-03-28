@@ -126,16 +126,13 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         ("a".to_owned(), AttachmentValue::Unsigned(u64::MAX)),
         (
             "b".to_owned(),
-            AttachmentValue::Array(
-                vec![
-                    AttachmentValue::Bool(true),
-                    AttachmentValue::Object(BTreeMap::from([(
-                        "inner".to_owned(),
-                        AttachmentValue::String("ok".into()),
-                    )])),
-                ]
-                .into(),
-            ),
+            AttachmentValue::Array(vec![
+                AttachmentValue::Bool(true),
+                AttachmentValue::Object(BTreeMap::from([(
+                    "inner".to_owned(),
+                    AttachmentValue::String("ok".into()),
+                )])),
+            ]),
         ),
     ]));
 
@@ -241,8 +238,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
                         reason: Some("sensitive".into()),
                     },
                 },
-            ]
-            .into(),
+            ],
         })
         .attach("request_id", "req-otel-1")
         .attach_printable("attachment-note")
@@ -313,10 +309,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     );
     assert_eq!(trace_record.severity_text.as_deref(), Some("warn"));
     assert_eq!(trace_record.severity_number, Some(13));
-    assert_eq!(
-        trace_record.trace_id.as_ref().map(|v| v.as_ref()).is_some(),
-        true
-    );
+    assert!(trace_record.trace_id.as_ref().map(|v| v.as_ref()).is_some());
     assert!(
         trace_record
             .attributes
@@ -363,8 +356,7 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
             attributes: vec![TraceEventAttribute {
                 key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
-            }]
-            .into(),
+            }],
         });
 
     let ir = report.to_diagnostic_ir();
@@ -436,8 +428,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
             attributes: vec![TraceEventAttribute {
                 key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
-            }]
-            .into(),
+            }],
         })
         .with_display_cause("fallback path");
 
@@ -511,7 +502,7 @@ fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
             name: "db.query".into(),
             level: None,
             timestamp_unix_nano: Some(1_713_337_100_000_000_000),
-            attributes: vec![].into(),
+            attributes: vec![],
         });
 
     report.emit_tracing();

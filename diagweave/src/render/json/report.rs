@@ -199,7 +199,7 @@ fn write_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let Some(source_errors) = report.source_errors_snapshot(traversal_options) else {
+    let Some(source_errors) = report.source_errors_view(traversal_options) else {
         return f.write_str("null");
     };
     write_source_errors_chain(f, pretty, depth, &source_errors)
@@ -385,13 +385,13 @@ fn write_trace_attributes(
     f.write_char('[')?;
     for attr in attributes {
         write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_trace_attribute_value(f, pretty, depth + 1, attr)?;
+        write_trace_attr_value(f, pretty, depth + 1, attr)?;
     }
     close_array(f, pretty, depth, first)
 }
 
 #[cfg(feature = "trace")]
-fn write_trace_attribute_value(
+fn write_trace_attr_value(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,

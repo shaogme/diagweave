@@ -11,20 +11,19 @@ use core::fmt::{self, Display, Formatter};
 use crate::report::Report;
 
 #[cfg(feature = "trace")]
-pub(crate) use ir::build_context_and_attachments;
+pub(crate) use ir::build_ctx_and_attachments;
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) use ir::build_error_value;
 #[cfg(feature = "trace")]
 pub(crate) use ir::build_trace_value;
 pub use ir::{DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata};
 #[cfg(any(feature = "trace", feature = "otel"))]
-pub(crate) use ir::{
-    build_display_causes_value, build_source_errors_value, build_stack_trace_value,
-};
+pub(crate) use ir::{build_display_causes, build_source_errors_value, build_stack_trace_value};
 pub use pretty::Pretty;
 
 #[cfg(feature = "json")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// JSON renderer for diagnostic reports.
 pub struct Json {
     pub options: ReportRenderOptions,
 }
@@ -43,7 +42,7 @@ where
     E: core::error::Error + Display + 'static,
 {
     fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
-        json::render_json(report, self.options, f)
+        json::write_json_report(report, self.options, f)
     }
 }
 
@@ -52,6 +51,7 @@ pub const REPORT_JSON_SCHEMA_VERSION: &str = "v0.1.0";
 #[cfg(feature = "json")]
 pub const REPORT_JSON_SCHEMA_DRAFT: &str = "https://json-schema.org/draft/2020-12/schema";
 #[cfg(feature = "json")]
+/// Returns the JSON schema for rendered reports.
 pub fn report_json_schema() -> &'static str {
     include_str!("../schemas/report-v0.1.0.schema.json")
 }

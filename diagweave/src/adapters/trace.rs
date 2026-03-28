@@ -3,8 +3,8 @@ use alloc::vec::Vec;
 use ref_str::RefStr;
 
 use crate::render_impl::{
-    DiagnosticIr, build_context_and_attachments, build_display_causes_value, build_error_value,
-    build_source_errors_value, build_stack_trace_value,
+    DiagnosticIr, build_ctx_and_attachments, build_display_causes, build_error_value,
+    build_source_errors_value, build_stack_trace_value, build_trace_value,
 };
 use crate::report::AttachmentValue;
 use crate::report::ErrorCode;
@@ -32,10 +32,10 @@ impl DiagnosticIr<'_> {
 
         self.tracing_error(&mut fields);
         self.tracing_meta(&mut fields);
-        self.tracing_stack_trace_and_causes(&mut fields);
+        self.tracing_stack_causes(&mut fields);
         #[cfg(feature = "trace")]
         self.tracing_trace(&mut fields);
-        self.tracing_context_and_attachments(&mut fields);
+        self.tracing_ctx_attrs(&mut fields);
 
         fields
     }
@@ -51,7 +51,7 @@ impl DiagnosticIr<'_> {
         if let Some(error_code) = &self.metadata.error_code {
             fields.push(TracingField {
                 key: "metadata.error_code".into(),
-                value: error_code_value(*error_code),
+                value: error_code_value(error_code),
             });
         }
         if let Some(severity) = self.metadata.severity {
@@ -60,7 +60,7 @@ impl DiagnosticIr<'_> {
                 value: AttachmentValue::String(severity.to_string().into()),
             });
         }
-        if let Some(category) = self.metadata.category.as_deref() {
+        if let Some(category) = self.metadata.category {
             fields.push(TracingField {
                 key: "metadata.category".into(),
                 value: AttachmentValue::String(category.to_string().into()),
@@ -83,14 +83,14 @@ impl DiagnosticIr<'_> {
         if trace.is_empty() {
             return;
         }
-        let trace_value = crate::render_impl::build_trace_value(trace, &self.error);
+        let trace_value = build_trace_value(trace, &self.error);
         fields.push(TracingField {
             key: "trace".into(),
             value: trace_value,
         });
     }
 
-    fn tracing_stack_trace_and_causes(&self, fields: &mut Vec<TracingField<'_>>) {
+    fn tracing_stack_causes(&self, fields: &mut Vec<TracingField<'_>>) {
         if let Some(stack_trace) = &self.metadata.stack_trace {
             fields.push(TracingField {
                 key: "diagnostic_bag.stack_trace".into(),
@@ -100,7 +100,7 @@ impl DiagnosticIr<'_> {
         if !self.display_causes.is_empty() {
             fields.push(TracingField {
                 key: "diagnostic_bag.display_causes".into(),
-                value: build_display_causes_value(self.display_causes, self.display_causes_state),
+                value: build_display_causes(self.display_causes, self.display_causes_state),
             });
         }
         if let Some(source_errors) = self.source_errors.as_ref() {
@@ -111,8 +111,8 @@ impl DiagnosticIr<'_> {
         }
     }
 
-    fn tracing_context_and_attachments(&self, fields: &mut Vec<TracingField<'_>>) {
-        let (context_items, attachment_items) = build_context_and_attachments(self.attachments);
+    fn tracing_ctx_attrs(&self, fields: &mut Vec<TracingField<'_>>) {
+        let (context_items, attachment_items) = build_ctx_and_attachments(self.attachments);
 
         if !context_items.is_empty() {
             fields.push(TracingField {

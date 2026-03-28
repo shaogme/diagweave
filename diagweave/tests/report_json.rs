@@ -13,13 +13,10 @@ fn render_format_supports_compact_pretty_and_json() {
         .attach("request_id", "tx-json")
         .attach_payload(
             "http.request",
-            AttachmentValue::Array(
-                vec![
-                    AttachmentValue::from("GET"),
-                    AttachmentValue::from("/session"),
-                ]
-                .into(),
-            ),
+            AttachmentValue::Array(vec![
+                AttachmentValue::from("GET"),
+                AttachmentValue::from("/session"),
+            ]),
             Some("application/x.debug".to_owned()),
         )
         .wrap(ApiError::Unauthorized);
@@ -115,12 +112,12 @@ fn json_preserves_empty_cause_chains_with_state() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_display_cause_chain(DisplayCauseChain {
-            items: vec![].into(),
+        .set_display_causes(DisplayCauseChain {
+            items: vec![],
             truncated: true,
             cycle_detected: true,
         })
-        .with_source_error_chain(SourceErrorChain {
+        .set_source_errors(SourceErrorChain {
             items: vec![].into(),
             truncated: true,
             cycle_detected: true,
@@ -282,8 +279,7 @@ fn json_trace_section_uses_shared_trace_shape() {
             attributes: vec![TraceEventAttribute {
                 key: "db.system".into(),
                 value: AttachmentValue::from("postgres"),
-            }]
-            .into(),
+            }],
         });
 
     let json = report.render(Json::default()).to_string();
@@ -337,8 +333,7 @@ fn json_trace_section_keeps_tagged_trace_values() {
                 key: "blob".into(),
                 value: AttachmentValue::Bytes(vec![1, 2, 3]),
             },
-        ]
-        .into(),
+        ],
     });
 
     let json = report.render(Json::default()).to_string();
@@ -369,8 +364,7 @@ fn json_trace_section_rejects_non_finite_floats() {
         attributes: vec![TraceEventAttribute {
             key: "latency".into(),
             value: AttachmentValue::Float(f64::INFINITY),
-        }]
-        .into(),
+        }],
     });
 
     assert!(

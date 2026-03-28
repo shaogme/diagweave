@@ -34,38 +34,25 @@ trait SourceArenaChain: Sized {
     fn source_roots(item: &Self::Item) -> &[SourceNodeId];
 }
 
-enum ArenaNode<'a, C>
+struct ChainFrame<'a, C>
 where
     C: SourceArenaChain,
 {
-    Chain {
-        chain: &'a C,
-        ids: &'a [SourceNodeId],
-        index: usize,
-        depth: usize,
-    },
-    Error {
-        current: Option<&'a (dyn Error + 'static)>,
-        depth: usize,
-    },
+    chain: &'a C,
+    ids: &'a [SourceNodeId],
+    index: usize,
+    depth: usize,
 }
 
-impl<'a, C> ArenaNode<'a, C>
+impl<'a, C> ChainFrame<'a, C>
 where
     C: SourceArenaChain,
 {
-    fn chain(chain: &'a C, ids: &'a [SourceNodeId], depth: usize) -> Self {
-        Self::Chain {
+    fn new(chain: &'a C, ids: &'a [SourceNodeId], depth: usize) -> Self {
+        Self {
             chain,
             ids,
             index: 0,
-            depth,
-        }
-    }
-
-    fn error(error: &'a (dyn Error + 'static), depth: usize) -> Self {
-        Self::Error {
-            current: Some(error),
             depth,
         }
     }
@@ -85,38 +72,28 @@ where
     },
 }
 
-enum TraversalAction<'a, C>
+struct ChainWalker<'a, C>
 where
     C: SourceArenaChain,
 {
-    Return(SourceErrorVisit<'a, C>, Option<ArenaNode<'a, C>>),
-    PopContinue,
-}
-
-struct ReportSourceErrorTraversalImpl<'a, C>
-where
-    C: SourceArenaChain,
-{
-    stack: Vec<ArenaNode<'a, C>>,
+    stack: Vec<ChainFrame<'a, C>>,
     options: CauseCollectOptions,
-    hide_report_wrapper_types: bool,
     path_seen: PathSeenErrorAddrs,
     state: CauseTraversalState,
 }
 
-impl<'a, C> ReportSourceErrorTraversalImpl<'a, C>
+impl<'a, C> ChainWalker<'a, C>
 where
     C: SourceArenaChain,
 {
-    fn with_stack(
-        stack: Vec<ArenaNode<'a, C>>,
-        options: CauseCollectOptions,
-        hide_report_wrapper_types: bool,
-    ) -> Self {
+    fn from_roots(chain: &'a C, roots: &'a [SourceNodeId], options: CauseCollectOptions) -> Self {
+        let mut stack = Vec::new();
+        if !roots.is_empty() {
+            stack.push(ChainFrame::new(chain, roots, 0));
+        }
         Self {
             stack,
             options,
-            hide_report_wrapper_types,
             path_seen: PathSeenErrorAddrs::default(),
             state: CauseTraversalState::default(),
         }
@@ -126,6 +103,150 @@ where
         self.state
     }
 
+    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
+        loop {
+            let options = self.options;
+            let (item, depth, chain, source_ids) = {
+                let Some(frame) = self.stack.last_mut() else {
+                    return None;
+                };
+
+                if frame.depth >= options.max_depth {
+                    self.state.truncated = true;
+                    self.stack.pop();
+                    continue;
+                }
+
+                let Some(&node_id) = frame.ids.get(frame.index) else {
+                    self.stack.pop();
+                    continue;
+                };
+                frame.index += 1;
+
+                let Some(item) = frame.chain.node(node_id) else {
+                    continue;
+                };
+
+                if options.detect_cycle
+                    && !self
+                        .path_seen
+                        .enter(frame.depth, error_addr(C::error_ref(item)))
+                {
+                    self.state.cycle_detected = true;
+                    continue;
+                }
+
+                (item, frame.depth, frame.chain, C::source_roots(item))
+            };
+
+            if !source_ids.is_empty() {
+                if depth + 1 < options.max_depth {
+                    self.stack
+                        .push(ChainFrame::new(chain, source_ids, depth + 1));
+                } else {
+                    self.state.truncated = true;
+                }
+            }
+
+            return Some(SourceErrorVisit::Item { item, depth });
+        }
+    }
+}
+
+struct ErrorWalker<'a> {
+    current: Option<&'a (dyn Error + 'static)>,
+    depth: usize,
+    options: CauseCollectOptions,
+    path_seen: PathSeenErrorAddrs,
+    state: CauseTraversalState,
+}
+
+impl<'a> ErrorWalker<'a> {
+    fn new(current: Option<&'a (dyn Error + 'static)>, options: CauseCollectOptions) -> Self {
+        Self {
+            current,
+            depth: 0,
+            options,
+            path_seen: PathSeenErrorAddrs::default(),
+            state: CauseTraversalState::default(),
+        }
+    }
+
+    fn state(&self) -> CauseTraversalState {
+        self.state
+    }
+
+    fn next_visit<C>(&mut self) -> Option<SourceErrorVisit<'a, C>>
+    where
+        C: SourceArenaChain,
+    {
+        if self.depth >= self.options.max_depth {
+            self.state.truncated = true;
+            self.current = None;
+            return None;
+        }
+
+        let error = self.current.take()?;
+
+        if self.options.detect_cycle && !self.path_seen.enter(self.depth, error_addr(error)) {
+            self.state.cycle_detected = true;
+            return None;
+        }
+
+        self.current = error.source();
+        let entry_depth = self.depth;
+        self.depth += 1;
+
+        Some(SourceErrorVisit::Error {
+            error,
+            depth: entry_depth,
+        })
+    }
+}
+
+fn merge_state(base: &mut CauseTraversalState, next: CauseTraversalState) {
+    base.truncated |= next.truncated;
+    base.cycle_detected |= next.cycle_detected;
+}
+
+struct ReportSourceErrorTraversalImpl<'a, C>
+where
+    C: SourceArenaChain,
+{
+    chain_walk: Option<ChainWalker<'a, C>>,
+    error_walk: Option<ErrorWalker<'a>>,
+    hide_report_wrapper_types: bool,
+    finished_state: CauseTraversalState,
+}
+
+impl<'a, C> ReportSourceErrorTraversalImpl<'a, C>
+where
+    C: SourceArenaChain,
+{
+    fn with_walkers(
+        chain_walk: Option<ChainWalker<'a, C>>,
+        error_walk: Option<ErrorWalker<'a>>,
+        hide_report_wrapper_types: bool,
+    ) -> Self {
+        Self {
+            chain_walk,
+            error_walk,
+            hide_report_wrapper_types,
+            finished_state: CauseTraversalState::default(),
+        }
+    }
+
+    fn state(&self) -> CauseTraversalState {
+        let mut state = self.finished_state;
+        if let Some(walk) = self.chain_walk.as_ref() {
+            merge_state(&mut state, walk.state());
+        }
+        if let Some(walk) = self.error_walk.as_ref() {
+            merge_state(&mut state, walk.state());
+        }
+        state
+    }
+
     fn next_entry(&mut self) -> Option<SourceErrorEntry> {
         let hide_report_wrapper_types = self.hide_report_wrapper_types;
         self.next_visit()
@@ -133,47 +254,23 @@ where
     }
 
     fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
-        loop {
-            let options = self.options;
-            let action = {
-                let node = self.stack.last_mut()?;
-                match node {
-                    ArenaNode::Chain {
-                        chain,
-                        ids,
-                        index,
-                        depth,
-                    } => report_visit_chain_node::<C>(
-                        chain,
-                        ids,
-                        index,
-                        *depth,
-                        options,
-                        &mut self.path_seen,
-                        &mut self.state,
-                    ),
-                    ArenaNode::Error { current, depth } => report_visit_error_node::<C>(
-                        current,
-                        depth,
-                        options,
-                        &mut self.path_seen,
-                        &mut self.state,
-                    ),
-                }
-            };
-
-            match action {
-                TraversalAction::Return(visit, push) => {
-                    if let Some(push) = push {
-                        self.stack.push(push);
-                    }
-                    return Some(visit);
-                }
-                TraversalAction::PopContinue => {
-                    self.stack.pop();
-                }
+        if let Some(chain_walk) = self.chain_walk.as_mut() {
+            if let Some(visit) = chain_walk.next_visit() {
+                return Some(visit);
             }
+            merge_state(&mut self.finished_state, chain_walk.state());
+            self.chain_walk = None;
         }
+
+        if let Some(error_walk) = self.error_walk.as_mut() {
+            if let Some(visit) = error_walk.next_visit::<C>() {
+                return Some(visit);
+            }
+            merge_state(&mut self.finished_state, error_walk.state());
+            self.error_walk = None;
+        }
+
+        None
     }
 }
 
@@ -190,14 +287,15 @@ fn traversal_from_chain<'a, C>(
 where
     C: SourceArenaChain,
 {
-    let mut stack = Vec::new();
-    if let Some(error) = inner_source {
-        stack.push(ArenaNode::<C>::error(error, 0));
-    }
-    if let Some(chain) = source_errors {
-        stack.push(ArenaNode::<C>::chain(chain, chain.roots(), 0));
-    }
-    ReportSourceErrorTraversalImpl::with_stack(stack, options, hide_report_wrapper_types)
+    let chain_walk =
+        source_errors.map(|chain| ChainWalker::from_roots(chain, chain.roots(), options));
+    let error_walk = if inner_source.is_some() {
+        Some(ErrorWalker::new(inner_source, options))
+    } else {
+        None
+    };
+
+    ReportSourceErrorTraversalImpl::with_walkers(chain_walk, error_walk, hide_report_wrapper_types)
 }
 
 impl<'a> ReportSourceErrorTraversal<'a> {
@@ -304,10 +402,8 @@ struct SourceErrorChainTraversal<'a, C>
 where
     C: SourceArenaChain,
 {
-    stack: Vec<ArenaNode<'a, C>>,
+    walk: ChainWalker<'a, C>,
     hide_report_wrapper_types: bool,
-    path_seen: PathSeenErrorAddrs,
-    state: CauseTraversalState,
 }
 
 impl<'a, C> SourceErrorChainTraversal<'a, C>
@@ -316,157 +412,24 @@ where
 {
     fn from_chain(chain: &'a C, hide_report_wrapper_types: bool) -> Self {
         Self {
-            stack: vec![ArenaNode::<C>::chain(chain, chain.roots(), 0)],
+            walk: ChainWalker::from_roots(
+                chain,
+                chain.roots(),
+                CauseCollectOptions {
+                    max_depth: usize::MAX,
+                    detect_cycle: true,
+                },
+            ),
             hide_report_wrapper_types,
-            path_seen: PathSeenErrorAddrs::default(),
-            state: CauseTraversalState::default(),
         }
     }
 
     fn next_entry(&mut self) -> Option<SourceErrorEntry> {
         let hide_report_wrapper_types = self.hide_report_wrapper_types;
-        self.next_visit()
+        self.walk
+            .next_visit()
             .map(|visit| SourceErrorEntry::from_visit::<C>(visit, hide_report_wrapper_types))
     }
-
-    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
-        loop {
-            let action = {
-                let node = self.stack.last_mut()?;
-                match node {
-                    ArenaNode::Chain {
-                        chain,
-                        ids,
-                        index,
-                        depth,
-                    } => chain_visit_chain_node::<C>(
-                        chain,
-                        ids,
-                        index,
-                        *depth,
-                        &mut self.path_seen,
-                        &mut self.state,
-                    ),
-                    ArenaNode::Error { .. } => TraversalAction::PopContinue,
-                }
-            };
-
-            match action {
-                TraversalAction::Return(visit, push) => {
-                    if let Some(push) = push {
-                        self.stack.push(push);
-                    }
-                    return Some(visit);
-                }
-                TraversalAction::PopContinue => {
-                    self.stack.pop();
-                }
-            }
-        }
-    }
-}
-
-fn report_visit_chain_node<'a, C>(
-    chain: &'a C,
-    ids: &'a [SourceNodeId],
-    index: &mut usize,
-    depth: usize,
-    options: CauseCollectOptions,
-    path_seen: &mut PathSeenErrorAddrs,
-    state: &mut CauseTraversalState,
-) -> TraversalAction<'a, C>
-where
-    C: SourceArenaChain,
-{
-    if depth >= options.max_depth {
-        state.truncated = true;
-        return TraversalAction::PopContinue;
-    }
-    let Some(&node_id) = ids.get(*index) else {
-        return TraversalAction::PopContinue;
-    };
-    *index += 1;
-    let Some(item) = chain.node(node_id) else {
-        return TraversalAction::PopContinue;
-    };
-    if options.detect_cycle && !path_seen.enter(depth, error_addr(C::error_ref(item))) {
-        state.cycle_detected = true;
-        return TraversalAction::PopContinue;
-    }
-    let source_ids = C::source_roots(item);
-    let push = if source_ids.is_empty() {
-        None
-    } else if depth + 1 < options.max_depth {
-        Some(ArenaNode::<C>::chain(chain, source_ids, depth + 1))
-    } else {
-        state.truncated = true;
-        None
-    };
-    TraversalAction::Return(SourceErrorVisit::Item { item, depth }, push)
-}
-
-fn report_visit_error_node<'a, C>(
-    current: &mut Option<&'a (dyn Error + 'static)>,
-    depth: &mut usize,
-    options: CauseCollectOptions,
-    path_seen: &mut PathSeenErrorAddrs,
-    state: &mut CauseTraversalState,
-) -> TraversalAction<'a, C>
-where
-    C: SourceArenaChain,
-{
-    if *depth >= options.max_depth {
-        state.truncated = true;
-        return TraversalAction::PopContinue;
-    }
-    let Some(error) = current.take() else {
-        return TraversalAction::PopContinue;
-    };
-    if options.detect_cycle && !path_seen.enter(*depth, error_addr(error)) {
-        state.cycle_detected = true;
-        return TraversalAction::PopContinue;
-    }
-    *current = error.source();
-    let entry_depth = *depth;
-    *depth += 1;
-    TraversalAction::Return(
-        SourceErrorVisit::Error {
-            error,
-            depth: entry_depth,
-        },
-        None,
-    )
-}
-
-fn chain_visit_chain_node<'a, C>(
-    chain: &'a C,
-    ids: &'a [SourceNodeId],
-    index: &mut usize,
-    depth: usize,
-    path_seen: &mut PathSeenErrorAddrs,
-    state: &mut CauseTraversalState,
-) -> TraversalAction<'a, C>
-where
-    C: SourceArenaChain,
-{
-    let Some(&node_id) = ids.get(*index) else {
-        return TraversalAction::PopContinue;
-    };
-    *index += 1;
-    let Some(item) = chain.node(node_id) else {
-        return TraversalAction::PopContinue;
-    };
-    if !path_seen.enter(depth, error_addr(C::error_ref(item))) {
-        state.cycle_detected = true;
-        return TraversalAction::PopContinue;
-    }
-    let source_ids = C::source_roots(item);
-    let push = if source_ids.is_empty() {
-        None
-    } else {
-        Some(ArenaNode::<C>::chain(chain, source_ids, depth + 1))
-    };
-    TraversalAction::Return(SourceErrorVisit::Item { item, depth }, push)
 }
 
 impl SourceErrorEntry {

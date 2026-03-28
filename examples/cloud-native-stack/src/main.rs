@@ -35,127 +35,137 @@ mod payment {
         ))
     }
 
+    fn declined_report(amount_cents: u64) -> Report<PaymentError> {
+        Report::new(PaymentError::Declined)
+            .with_error_code("PAYMENT.DECLINED")
+            .with_severity(Severity::Warn)
+            .with_category("payment")
+            .with_retryable(false)
+            .with_note("payment provider declined")
+            .with_display_cause("risk policy rejected the transaction")
+            .with_diag_src_err(io::Error::other("issuer hard decline"))
+            .with_payload(
+                "provider_reply",
+                serde_json::json!({
+                    "provider": "mockpay",
+                    "decision": "declined",
+                    "decline_code": "insufficient_funds"
+                }),
+                Some("application/json"),
+            )
+            .with_trace_event(TraceEvent {
+                name: "payment.provider.decline".into(),
+                level: Some(TraceEventLevel::Warn),
+                timestamp_unix_nano: Some(1_713_337_001_000_000_000),
+                attributes: vec![
+                    TraceEventAttribute {
+                        key: "payment.amount_cents".into(),
+                        value: AttachmentValue::from(amount_cents),
+                    },
+                    TraceEventAttribute {
+                        key: "payment.provider".into(),
+                        value: AttachmentValue::from("mockpay"),
+                    },
+                ],
+            })
+            .with_context("payment_stage", "charge")
+    }
+
+    fn timeout_report(amount_cents: u64) -> Report<PaymentError> {
+        Report::new(PaymentError::from(NetworkError::Timeout(250)))
+            .with_error_code("PAYMENT.TIMEOUT")
+            .with_severity(Severity::Error)
+            .with_category("payment")
+            .with_retryable(true)
+            .with_note("payment provider timeout")
+            .with_display_cause("upstream provider exceeded SLA")
+            .with_diag_src_err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "provider response timeout",
+            ))
+            .with_payload(
+                "provider_reply",
+                serde_json::json!({
+                    "provider": "mockpay",
+                    "decision": "timeout",
+                    "timeout_ms": 250
+                }),
+                Some("application/json"),
+            )
+            .with_trace_event(TraceEvent {
+                name: "payment.provider.timeout".into(),
+                level: Some(TraceEventLevel::Error),
+                timestamp_unix_nano: Some(1_713_337_002_000_000_000),
+                attributes: vec![
+                    TraceEventAttribute {
+                        key: "payment.amount_cents".into(),
+                        value: AttachmentValue::from(amount_cents),
+                    },
+                    TraceEventAttribute {
+                        key: "retryable".into(),
+                        value: AttachmentValue::from(true),
+                    },
+                ],
+            })
+            .with_context("payment_stage", "charge")
+    }
+
+    fn network_report(
+        amount_cents: u64,
+        io_kind: io::ErrorKind,
+        io_message: String,
+    ) -> Report<PaymentError> {
+        let err = NetworkError::Io(io::Error::new(io_kind, io_message.clone()));
+        Report::new(PaymentError::from(err))
+            .with_error_code("PAYMENT.NETWORK")
+            .with_severity(Severity::Error)
+            .with_category("payment")
+            .with_retryable(true)
+            .with_note("payment provider network error")
+            .with_display_cause("tcp dial to provider failed")
+            .with_diag_src_err(io::Error::new(io_kind, io_message))
+            .with_payload(
+                "provider_reply",
+                serde_json::json!({
+                    "provider": "mockpay",
+                    "decision": "network_error",
+                    "io_kind": io_kind.to_string()
+                }),
+                Some("application/json"),
+            )
+            .with_trace_event(TraceEvent {
+                name: "payment.provider.io_error".into(),
+                level: Some(TraceEventLevel::Error),
+                timestamp_unix_nano: Some(1_713_337_003_000_000_000),
+                attributes: vec![
+                    TraceEventAttribute {
+                        key: "payment.amount_cents".into(),
+                        value: AttachmentValue::from(amount_cents),
+                    },
+                    TraceEventAttribute {
+                        key: "error.kind".into(),
+                        value: AttachmentValue::from(io_kind.to_string()),
+                    },
+                ],
+            })
+            .with_context("payment_stage", "charge")
+    }
+
     /// Charges the payment provider for the given amount in cents.
     pub fn charge(amount_cents: u64) -> Result<(), Report<PaymentError>> {
-        if amount_cents == 0 {
-            return Err(Report::new(PaymentError::Declined)
-                .with_error_code("PAYMENT.DECLINED")
-                .with_severity(Severity::Warn)
-                .with_category("payment")
-                .with_retryable(false)
-                .with_note("payment provider declined")
-                .with_display_cause("risk policy rejected the transaction")
-                .with_diagnostic_source_error(io::Error::other("issuer hard decline"))
-                .with_payload(
-                    "provider_reply",
-                    serde_json::json!({
-                        "provider": "mockpay",
-                        "decision": "declined",
-                        "decline_code": "insufficient_funds"
-                    }),
-                    Some("application/json"),
-                )
-                .with_trace_event(TraceEvent {
-                    name: "payment.provider.decline".into(),
-                    level: Some(TraceEventLevel::Warn),
-                    timestamp_unix_nano: Some(1_713_337_001_000_000_000),
-                    attributes: vec![
-                        TraceEventAttribute {
-                            key: "payment.amount_cents".into(),
-                            value: AttachmentValue::from(amount_cents),
-                        },
-                        TraceEventAttribute {
-                            key: "payment.provider".into(),
-                            value: AttachmentValue::from("mockpay"),
-                        },
-                    ],
-                })
-                .with_context("payment_stage", "charge"));
-        }
-        if amount_cents == 1 {
-            return Err(Report::new(PaymentError::from(NetworkError::Timeout(250)))
-                .with_error_code("PAYMENT.TIMEOUT")
-                .with_severity(Severity::Error)
-                .with_category("payment")
-                .with_retryable(true)
-                .with_note("payment provider timeout")
-                .with_display_cause("upstream provider exceeded SLA")
-                .with_diagnostic_source_error(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "provider response timeout",
-                ))
-                .with_payload(
-                    "provider_reply",
-                    serde_json::json!({
-                        "provider": "mockpay",
-                        "decision": "timeout",
-                        "timeout_ms": 250
-                    }),
-                    Some("application/json"),
-                )
-                .with_trace_event(TraceEvent {
-                    name: "payment.provider.timeout".into(),
-                    level: Some(TraceEventLevel::Error),
-                    timestamp_unix_nano: Some(1_713_337_002_000_000_000),
-                    attributes: vec![
-                        TraceEventAttribute {
-                            key: "payment.amount_cents".into(),
-                            value: AttachmentValue::from(amount_cents),
-                        },
-                        TraceEventAttribute {
-                            key: "retryable".into(),
-                            value: AttachmentValue::from(true),
-                        },
-                    ],
-                })
-                .with_context("payment_stage", "charge"));
-        }
-
-        if amount_cents == 2 {
-            return match low_level_io() {
+        match amount_cents {
+            0 => Err(declined_report(amount_cents)),
+            1 => Err(timeout_report(amount_cents)),
+            2 => match low_level_io() {
                 Ok(()) => Ok(()),
-                Err(io_err) => {
-                    let io_kind = io_err.kind();
-                    let io_message = io_err.to_string();
-                    let err = NetworkError::Io(io_err);
-                    Err(Report::new(PaymentError::from(err))
-                        .with_error_code("PAYMENT.NETWORK")
-                        .with_severity(Severity::Error)
-                        .with_category("payment")
-                        .with_retryable(true)
-                        .with_note("payment provider network error")
-                        .with_display_cause("tcp dial to provider failed")
-                        .with_diagnostic_source_error(io::Error::new(io_kind, io_message))
-                        .with_payload(
-                            "provider_reply",
-                            serde_json::json!({
-                                "provider": "mockpay",
-                                "decision": "network_error",
-                                "io_kind": io_kind.to_string()
-                            }),
-                            Some("application/json"),
-                        )
-                        .with_trace_event(TraceEvent {
-                            name: "payment.provider.io_error".into(),
-                            level: Some(TraceEventLevel::Error),
-                            timestamp_unix_nano: Some(1_713_337_003_000_000_000),
-                            attributes: vec![
-                                TraceEventAttribute {
-                                    key: "payment.amount_cents".into(),
-                                    value: AttachmentValue::from(amount_cents),
-                                },
-                                TraceEventAttribute {
-                                    key: "error.kind".into(),
-                                    value: AttachmentValue::from(io_kind.to_string()),
-                                },
-                            ],
-                        })
-                        .with_context("payment_stage", "charge"))
-                }
-            };
+                Err(io_err) => Err(network_report(
+                    amount_cents,
+                    io_err.kind(),
+                    io_err.to_string(),
+                )),
+            },
+            _ => Ok(()),
         }
-
-        Ok(())
     }
 }
 
@@ -181,33 +191,40 @@ mod order {
     /// Creates an order and runs payment with a custom amount for scenario simulation.
     pub fn create_with_amount(order_id: u64, amount_cents: u64) -> Result<(), Report<OrderError>> {
         if order_id == 0 {
-            return Err(Report::new(OrderError::invalid_order(order_id))
-                .with_error_code("ORDER.INVALID")
-                .with_severity(Severity::Warn)
-                .with_category("order")
-                .with_retryable(false)
-                .with_note("order validation failed")
-                .with_display_cause("required fields missing")
-                .with_payload(
-                    "order_validation",
-                    serde_json::json!({
-                        "order_id": order_id,
-                        "reason": "non-zero order id required"
-                    }),
-                    Some("application/json"),
-                )
-                .with_trace_event(TraceEvent {
-                    name: "order.validate".into(),
-                    level: Some(TraceEventLevel::Warn),
-                    timestamp_unix_nano: Some(1_713_337_004_000_000_000),
-                    attributes: vec![TraceEventAttribute {
-                        key: "order.id".into(),
-                        value: AttachmentValue::from(order_id),
-                    }],
-                })
-                .with_context("order_id", order_id));
+            return Err(invalid_order_report(order_id));
         }
+        run_payment_stage(order_id, amount_cents)
+    }
 
+    fn invalid_order_report(order_id: u64) -> Report<OrderError> {
+        Report::new(OrderError::invalid_order(order_id))
+            .with_error_code("ORDER.INVALID")
+            .with_severity(Severity::Warn)
+            .with_category("order")
+            .with_retryable(false)
+            .with_note("order validation failed")
+            .with_display_cause("required fields missing")
+            .with_payload(
+                "order_validation",
+                serde_json::json!({
+                    "order_id": order_id,
+                    "reason": "non-zero order id required"
+                }),
+                Some("application/json"),
+            )
+            .with_trace_event(TraceEvent {
+                name: "order.validate".into(),
+                level: Some(TraceEventLevel::Warn),
+                timestamp_unix_nano: Some(1_713_337_004_000_000_000),
+                attributes: vec![TraceEventAttribute {
+                    key: "order.id".into(),
+                    value: AttachmentValue::from(order_id),
+                }],
+            })
+            .with_context("order_id", order_id)
+    }
+
+    fn run_payment_stage(order_id: u64, amount_cents: u64) -> Result<(), Report<OrderError>> {
         payment::charge(amount_cents)
             .with_context("order_id", order_id)
             .with_context("order_amount_cents", amount_cents)
@@ -233,7 +250,6 @@ mod order {
                 ],
             })
             .wrap_with(|_err| OrderError::payment_failed(order_id))?;
-
         Ok(())
     }
 }
@@ -254,55 +270,66 @@ mod gateway {
 
     /// Handles a single API request and maps failures to API errors.
     pub fn handle_request(request_id: &str) -> Result<String, Report<ApiError>> {
-        if request_id == "bad-request" {
-            return Err(
-                Report::new(ApiError::bad_request("missing auth header".to_owned()))
-                    .with_note("gateway rejected request")
-                    .with_context("route", "/v1/order"),
-            );
+        match request_id {
+            "bad-request" => bad_request(),
+            "payment-declined" => payment_declined(),
+            "order-network-error" => order_network_error(),
+            _ => success_path(),
         }
-        if request_id == "payment-declined" {
-            payment::charge(0)
-                .with_context("route", "/v1/charge")
-                .with_note("gateway forwarding to payment")
-                .with_error_code("API.PAYMENT_DECLINED")
-                .with_severity(Severity::Warn)
-                .with_category("api")
-                .with_retryable(false)
-                .with_trace_event(TraceEvent {
-                    name: "gateway.forward.payment".into(),
-                    level: Some(TraceEventLevel::Warn),
-                    timestamp_unix_nano: Some(1_713_337_006_000_000_000),
-                    attributes: vec![TraceEventAttribute {
-                        key: "http.route".into(),
-                        value: AttachmentValue::from("/v1/charge"),
-                    }],
-                })
-                .wrap_with(ApiError::Payment)?;
-            return Ok("OK".to_owned());
-        }
-        if request_id == "order-network-error" {
-            order::create_with_amount(9002, 2)
-                .with_context("route", "/v1/order")
-                .with_note("gateway forwarding to order service")
-                .with_error_code("API.ORDER_UPSTREAM_FAILURE")
-                .with_severity(Severity::Error)
-                .with_category("api")
-                .with_retryable(true)
-                .with_display_cause("order service call failed")
-                .with_trace_event(TraceEvent {
-                    name: "gateway.forward.order".into(),
-                    level: Some(TraceEventLevel::Error),
-                    timestamp_unix_nano: Some(1_713_337_007_000_000_000),
-                    attributes: vec![TraceEventAttribute {
-                        key: "http.route".into(),
-                        value: AttachmentValue::from("/v1/order"),
-                    }],
-                })
-                .wrap_with(ApiError::Order)?;
-            return Ok("OK".to_owned());
-        }
+    }
 
+    fn bad_request() -> Result<String, Report<ApiError>> {
+        Err(
+            Report::new(ApiError::bad_request("missing auth header".to_owned()))
+                .with_note("gateway rejected request")
+                .with_context("route", "/v1/order"),
+        )
+    }
+
+    fn payment_declined() -> Result<String, Report<ApiError>> {
+        payment::charge(0)
+            .with_context("route", "/v1/charge")
+            .with_note("gateway forwarding to payment")
+            .with_error_code("API.PAYMENT_DECLINED")
+            .with_severity(Severity::Warn)
+            .with_category("api")
+            .with_retryable(false)
+            .with_trace_event(TraceEvent {
+                name: "gateway.forward.payment".into(),
+                level: Some(TraceEventLevel::Warn),
+                timestamp_unix_nano: Some(1_713_337_006_000_000_000),
+                attributes: vec![TraceEventAttribute {
+                    key: "http.route".into(),
+                    value: AttachmentValue::from("/v1/charge"),
+                }],
+            })
+            .wrap_with(ApiError::Payment)?;
+        Ok("OK".to_owned())
+    }
+
+    fn order_network_error() -> Result<String, Report<ApiError>> {
+        order::create_with_amount(9002, 2)
+            .with_context("route", "/v1/order")
+            .with_note("gateway forwarding to order service")
+            .with_error_code("API.ORDER_UPSTREAM_FAILURE")
+            .with_severity(Severity::Error)
+            .with_category("api")
+            .with_retryable(true)
+            .with_display_cause("order service call failed")
+            .with_trace_event(TraceEvent {
+                name: "gateway.forward.order".into(),
+                level: Some(TraceEventLevel::Error),
+                timestamp_unix_nano: Some(1_713_337_007_000_000_000),
+                attributes: vec![TraceEventAttribute {
+                    key: "http.route".into(),
+                    value: AttachmentValue::from("/v1/order"),
+                }],
+            })
+            .wrap_with(ApiError::Order)?;
+        Ok("OK".to_owned())
+    }
+
+    fn success_path() -> Result<String, Report<ApiError>> {
         order::create(9001)
             .with_context("route", "/v1/order")
             .with_note("gateway forwarding to order service")
@@ -316,7 +343,6 @@ mod gateway {
                 }],
             })
             .wrap_with(ApiError::Order)?;
-
         Ok("OK".to_owned())
     }
 }
@@ -453,6 +479,6 @@ fn render_report(label: &str, report: Report<impl std::error::Error + 'static>) 
     );
     println!(
         "diagnostic_source_errors_count={}",
-        report.iter_diagnostic_sources().count()
+        report.iter_diag_sources().count()
     );
 }

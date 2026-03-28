@@ -187,13 +187,13 @@ pub struct Report<E> {
 | `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
 | `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
 | `report.visit_origin_sources(visit)` | 使用默认选项流式遍历原生传播链 |
-| `report.visit_origin_sources_ext(options, visit)` | 使用自定义选项流式遍历原生传播链 |
-| `report.visit_diagnostic_sources(visit)` | 使用默认选项流式遍历诊断补充链 |
-| `report.visit_diagnostic_sources_ext(options, visit)` | 使用自定义选项流式遍历诊断补充链 |
+| `report.visit_origin_src_ext(options, visit)` | 使用自定义选项流式遍历原生传播链 |
+| `report.visit_diag_sources(visit)` | 使用默认选项流式遍历诊断补充链 |
+| `report.visit_diag_srcs_ext(options, visit)` | 使用自定义选项流式遍历诊断补充链 |
 | `report.iter_origin_sources()` | 使用默认选项迭代原生传播链 |
-| `report.iter_origin_sources_ext(options)` | 使用自定义选项迭代原生传播链 |
-| `report.iter_diagnostic_sources()` | 使用默认选项迭代诊断补充链 |
-| `report.iter_diagnostic_sources_ext(options)` | 使用自定义选项迭代诊断补充链 |
+| `report.iter_origin_src_ext(options)` | 使用自定义选项迭代原生传播链 |
+| `report.iter_diag_sources()` | 使用默认选项迭代诊断补充链 |
+| `report.iter_diag_srcs_ext(options)` | 使用自定义选项迭代诊断补充链 |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
@@ -243,7 +243,7 @@ pub struct Report<E> {
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | 批量添加展示原因字符串 |
-| `with_diagnostic_source_error` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |
+| `with_diag_src_err` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |
 | `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
 | `with_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state 用于关联元数据 |
 | `push_trace_event` | `impl Into<StaticRefStr>` | 追加一个默认字段的 trace 事件 |
@@ -307,7 +307,7 @@ let report = report.capture_stack_trace();
 - **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **延迟加载**: `context_lazy(key, f)`, `note_lazy(f)` (仅在 Err 时执行闭包)
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
-- **错误源**: `with_diagnostic_source_error(err)`
+- **错误源**: `with_diag_src_err(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **包装**: `wrap(outer)`, `wrap_with(map)`
 
@@ -444,7 +444,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
+#     .with_diag_src_err(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 

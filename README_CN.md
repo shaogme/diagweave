@@ -272,7 +272,7 @@ pub enum MyError {
 
 - `with_context`、`with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
-- `with_display_cause`、`with_display_causes`、`with_diagnostic_source_error`
+- `with_display_cause`、`with_display_causes`、`with_diag_src_err`
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
 
@@ -285,10 +285,10 @@ pub enum MyError {
 - `attachments()`、`metadata()`、`stack_trace()`
 - `error_code()`、`severity()`、`category()`、`retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
-- `visit_origin_sources(visit)` / `visit_origin_sources_ext(options, visit)`
-- `visit_diagnostic_sources(visit)` / `visit_diagnostic_sources_ext(options, visit)`
-- `iter_origin_sources()` / `iter_origin_sources_ext(options)`
-- `iter_diagnostic_sources()` / `iter_diagnostic_sources_ext(options)`
+- `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`
+- `visit_diag_sources(visit)` / `visit_diag_srcs_ext(options, visit)`
+- `iter_origin_sources()` / `iter_origin_src_ext(options)`
+- `iter_diag_sources()` / `iter_diag_srcs_ext(options)`
 
 Note 附件读取：
 
@@ -314,8 +314,8 @@ Note 附件读取：
 原因语义说明：
 
 - `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
-- `with_diagnostic_source_error` 用于显式追加错误对象到**诊断补充链**，参数要求 `impl Error + Send + Sync + 'static`。
-- 原生传播链由 `wrap` / `wrap_with` 与 `Error::source()` 维护；诊断补充链由 `with_diagnostic_source_error` 维护。
+- `with_diag_src_err` 用于显式追加错误对象到**诊断补充链**，参数要求 `impl Error + Send + Sync + 'static`。
+- 原生传播链由 `wrap` / `wrap_with` 与 `Error::source()` 维护；诊断补充链由 `with_diag_src_err` 维护。
 
 全局上下文注入（`std`）：
 
@@ -400,7 +400,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
+#     .with_diag_src_err(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 

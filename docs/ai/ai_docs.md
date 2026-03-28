@@ -187,13 +187,13 @@ pub struct Report<E> {
 | `report.visit_causes(visit)` | Streams display causes with default options |
 | `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
 | `report.visit_origin_sources(visit)` | Streams origin source errors with default options |
-| `report.visit_origin_sources_ext(options, visit)` | Streams origin source errors with custom options |
-| `report.visit_diagnostic_sources(visit)` | Streams diagnostic source errors with default options |
-| `report.visit_diagnostic_sources_ext(options, visit)` | Streams diagnostic source errors with custom options |
+| `report.visit_origin_src_ext(options, visit)` | Streams origin source errors with custom options |
+| `report.visit_diag_sources(visit)` | Streams diagnostic source errors with default options |
+| `report.visit_diag_srcs_ext(options, visit)` | Streams diagnostic source errors with custom options |
 | `report.iter_origin_sources()` | Iterates origin source errors with default options |
-| `report.iter_origin_sources_ext(options)` | Iterates origin source errors with custom options |
-| `report.iter_diagnostic_sources()` | Iterates diagnostic source errors with default options |
-| `report.iter_diagnostic_sources_ext(options)` | Iterates diagnostic source errors with custom options |
+| `report.iter_origin_src_ext(options)` | Iterates origin source errors with custom options |
+| `report.iter_diag_sources()` | Iterates diagnostic source errors with default options |
+| `report.iter_diag_srcs_ext(options)` | Iterates diagnostic source errors with custom options |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
@@ -243,7 +243,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | Add multiple display-cause strings |
-| `with_diagnostic_source_error` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |
+| `with_diag_src_err` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
 | `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata |
 | `push_trace_event` | `impl Into<StaticRefStr>` | Append a trace event with default fields |
@@ -307,7 +307,7 @@ Proxy versions of all `Report` chained configuration methods:
 - **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
-- **Source Errors**: `with_diagnostic_source_error(err)`
+- **Source Errors**: `with_diag_src_err(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **Wrapping**: `wrap(outer)`, `wrap_with(map)`
 
@@ -444,7 +444,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
+#     .with_diag_src_err(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 

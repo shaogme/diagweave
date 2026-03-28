@@ -42,11 +42,10 @@ fn source_errors_iterator_preserves_long_attached_chain() {
         *root
     }
 
-    let report =
-        Report::new(ApiError::Unauthorized).with_diagnostic_source_error(build_chain_error(20));
+    let report = Report::new(ApiError::Unauthorized).with_diag_src_err(build_chain_error(20));
 
     let collected: Vec<(String, usize)> = report
-        .diagnostic_source_errors()
+        .diag_source_errors()
         .map(|err| (err.message, err.depth))
         .collect();
 
@@ -72,7 +71,7 @@ fn wrap_preserves_deep_source_chains() {
         })
     });
 
-    let mut iter = report.iter_origin_sources_ext(CauseCollectOptions {
+    let mut iter = report.iter_origin_src_ext(CauseCollectOptions {
         max_depth: 32,
         detect_cycle: true,
     });

@@ -56,8 +56,7 @@ fn make_report(
     }
 
     for idx in 0..source_count {
-        report =
-            report.with_diagnostic_source_error(std::io::Error::other(format!("source_{idx}")));
+        report = report.with_diag_src_err(std::io::Error::other(format!("source_{idx}")));
     }
 
     report
@@ -153,7 +152,7 @@ fn bench_source_traversal(c: &mut Criterion) {
             &max_depth,
             |b, &max_depth| {
                 b.iter(|| {
-                    let mut iter = report.iter_origin_sources_ext(CauseCollectOptions {
+                    let mut iter = report.iter_origin_src_ext(CauseCollectOptions {
                         max_depth,
                         detect_cycle: true,
                     });
@@ -166,11 +165,11 @@ fn bench_source_traversal(c: &mut Criterion) {
 
     for max_depth in [1usize, 4, 16, 64] {
         group.bench_with_input(
-            BenchmarkId::new("iter_diagnostic_sources_depth", max_depth),
+            BenchmarkId::new("iter_diag_sources_depth", max_depth),
             &max_depth,
             |b, &max_depth| {
                 b.iter(|| {
-                    let mut iter = report.iter_diagnostic_sources_ext(CauseCollectOptions {
+                    let mut iter = report.iter_diag_srcs_ext(CauseCollectOptions {
                         max_depth,
                         detect_cycle: true,
                     });

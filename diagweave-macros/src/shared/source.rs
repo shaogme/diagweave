@@ -14,54 +14,82 @@ pub(crate) fn source_arm_for_variant(enum_ident: &Ident, variant: &Variant) -> R
     let variant_ident = &variant.ident;
     match &variant.fields {
         Fields::Unit => {
-            if source_index.is_some() {
-                return Err(Error::new_spanned(
-                    &variant.fields,
-                    "#[source]/#[from] requires a field-bearing variant",
-                ));
-            }
-            Ok(quote! { #enum_ident::#variant_ident => ::core::option::Option::None })
+            build_unit_source_arm(enum_ident, variant_ident, &variant.fields, source_index)
         }
-        Fields::Named(named) => {
-            if let Some(index) = source_index {
-                let sid = named
-                    .named
-                    .iter()
-                    .nth(index)
-                    .and_then(|f| f.ident.clone())
-                    .ok_or_else(|| {
-                        Error::new_spanned(&variant.fields, "invalid source field index")
-                    })?;
-                Ok(quote! {
-                    #enum_ident::#variant_ident { #sid, .. } => {
-                        let src: &(dyn ::core::error::Error + 'static) = #sid;
-                        ::core::option::Option::Some(src)
-                    }
-                })
-            } else {
-                Ok(quote! { #enum_ident::#variant_ident { .. } => ::core::option::Option::None })
-            }
-        }
+        Fields::Named(named) => build_named_source_arm(
+            enum_ident,
+            variant_ident,
+            &variant.fields,
+            named,
+            source_index,
+        ),
         Fields::Unnamed(unnamed) => {
-            if let Some(index) = source_index {
-                let binders = (0..unnamed.unnamed.len()).map(|idx| {
-                    if idx == index {
-                        quote!(source)
-                    } else {
-                        quote!(_)
-                    }
-                });
-                Ok(quote! {
-                    #enum_ident::#variant_ident(#(#binders),*) => {
-                        let src: &(dyn ::core::error::Error + 'static) = source;
-                        ::core::option::Option::Some(src)
-                    }
-                })
-            } else {
-                Ok(quote! { #enum_ident::#variant_ident(..) => ::core::option::Option::None })
-            }
+            build_unnamed_source_arm(enum_ident, variant_ident, unnamed, source_index)
         }
     }
+}
+
+fn build_unit_source_arm(
+    enum_ident: &Ident,
+    variant_ident: &Ident,
+    fields: &Fields,
+    source_index: Option<usize>,
+) -> Result<TokenStream> {
+    if source_index.is_some() {
+        return Err(Error::new_spanned(
+            fields,
+            "#[source]/#[from] requires a field-bearing variant",
+        ));
+    }
+    Ok(quote! { #enum_ident::#variant_ident => ::core::option::Option::None })
+}
+
+fn build_named_source_arm(
+    enum_ident: &Ident,
+    variant_ident: &Ident,
+    fields: &Fields,
+    named: &syn::FieldsNamed,
+    source_index: Option<usize>,
+) -> Result<TokenStream> {
+    let Some(index) = source_index else {
+        return Ok(quote! { #enum_ident::#variant_ident { .. } => ::core::option::Option::None });
+    };
+    let sid = named
+        .named
+        .iter()
+        .nth(index)
+        .and_then(|f| f.ident.clone())
+        .ok_or_else(|| Error::new_spanned(fields, "invalid source field index"))?;
+    Ok(quote! {
+        #enum_ident::#variant_ident { #sid, .. } => {
+            let src: &(dyn ::core::error::Error + 'static) = #sid;
+            ::core::option::Option::Some(src)
+        }
+    })
+}
+
+fn build_unnamed_source_arm(
+    enum_ident: &Ident,
+    variant_ident: &Ident,
+    unnamed: &syn::FieldsUnnamed,
+    source_index: Option<usize>,
+) -> Result<TokenStream> {
+    let Some(index) = source_index else {
+        return Ok(quote! { #enum_ident::#variant_ident(..) => ::core::option::Option::None });
+    };
+    let binders = (0..unnamed.unnamed.len()).map(|idx| {
+        if idx == index {
+            quote!(source)
+        } else {
+            quote!(_)
+        }
+    });
+    Ok(quote! {
+        #enum_ident::#variant_ident(#(#binders),*) => {
+            let src: &(dyn ::core::error::Error + 'static) = source;
+            ::core::option::Option::Some(src)
+        }
+    })
 }
 
 fn resolved_source_index(fields: &Fields) -> Result<Option<usize>> {

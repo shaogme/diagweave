@@ -19,7 +19,7 @@ pub(crate) use ir::build_trace_value;
 pub use ir::{DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata};
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) use ir::{
-    build_diagnostic_source_errors_value, build_display_causes, build_origin_source_errors_value,
+    build_diag_src_errs_val, build_display_causes, build_origin_src_errs_val,
     build_stack_trace_value,
 };
 pub use pretty::Pretty;

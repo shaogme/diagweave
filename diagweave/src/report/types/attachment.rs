@@ -1,4 +1,6 @@
 use alloc::boxed::Box;
+#[cfg(feature = "std")]
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -199,11 +201,11 @@ where
 }
 
 #[cfg(feature = "std")]
-impl<V> From<alloc::collections::BTreeMap<String, V>> for AttachmentValue
+impl<V> From<BTreeMap<String, V>> for AttachmentValue
 where
     V: Into<AttachmentValue>,
 {
-    fn from(value: alloc::collections::BTreeMap<String, V>) -> Self {
+    fn from(value: BTreeMap<String, V>) -> Self {
         Self::Object(value.into_iter().map(|(k, v)| (k, v.into())).collect())
     }
 }

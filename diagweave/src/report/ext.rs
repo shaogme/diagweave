@@ -144,10 +144,7 @@ pub trait ReportResultExt<T, E> {
         I: IntoIterator<Item = TCause>,
         TCause: Display + Send + Sync + 'static;
 
-    fn with_diagnostic_source_error(
-        self,
-        err: impl Error + Send + Sync + 'static,
-    ) -> Result<T, Report<E>>;
+    fn with_diag_src_err(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E>>;
 
     fn context_lazy(
         self,
@@ -331,11 +328,8 @@ impl<T, E> ReportResultExt<T, E> for Result<T, Report<E>> {
         self.map_err(|report| report.with_display_causes(causes))
     }
 
-    fn with_diagnostic_source_error(
-        self,
-        err: impl Error + Send + Sync + 'static,
-    ) -> Result<T, Report<E>> {
-        self.map_err(|report| report.with_diagnostic_source_error(err))
+    fn with_diag_src_err(self, err: impl Error + Send + Sync + 'static) -> Result<T, Report<E>> {
+        self.map_err(|report| report.with_diag_src_err(err))
     }
 
     fn context_lazy(

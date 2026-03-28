@@ -6,8 +6,8 @@ use alloc::vec::Vec;
 use ref_str::RefStr;
 
 use crate::render_impl::{
-    DiagnosticIr, build_diagnostic_source_errors_value, build_display_causes, build_error_value,
-    build_origin_source_errors_value, build_stack_trace_value,
+    DiagnosticIr, build_diag_src_errs_val, build_display_causes, build_error_value,
+    build_origin_src_errs_val, build_stack_trace_value,
 };
 use crate::report::{Attachment, AttachmentValue, ErrorCode};
 
@@ -276,13 +276,13 @@ impl<'a> DiagnosticIr<'a> {
         if let Some(source_errors) = self.origin_source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.origin_source_errors".into(),
-                value: otel_value_from_owned(build_origin_source_errors_value(source_errors)),
+                value: otel_value_from_owned(build_origin_src_errs_val(source_errors)),
             });
         }
         if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.diagnostic_source_errors".into(),
-                value: otel_value_from_owned(build_diagnostic_source_errors_value(source_errors)),
+                value: otel_value_from_owned(build_diag_src_errs_val(source_errors)),
             });
         }
     }

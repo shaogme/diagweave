@@ -369,7 +369,7 @@ fn pretty_can_hide_type_names_in_source_chains() {
     let _guard = init_test();
 
     let pretty = Report::new(ApiError::Unauthorized)
-        .with_diagnostic_source_error(AuthError::InvalidToken)
+        .with_diag_src_err(AuthError::InvalidToken)
         .render(Pretty::new(ReportRenderOptions {
             show_type_name: false,
             show_cause_chains_section: true,
@@ -430,7 +430,7 @@ fn public_cause_visit_apis_are_accessible() {
 
     let report = Report::new(AuthError::InvalidToken)
         .with_display_cause("token stale")
-        .with_diagnostic_source_error(ApiError::Unauthorized);
+        .with_diag_src_err(ApiError::Unauthorized);
     let mut display = Vec::new();
     let display_state = report
         .visit_causes(|cause| {
@@ -447,7 +447,7 @@ fn public_cause_visit_apis_are_accessible() {
         .expect("origin source errors");
     let mut diagnostic_source = Vec::new();
     let diagnostic_source_state = report
-        .visit_diagnostic_sources(|err| {
+        .visit_diag_sources(|err| {
             diagnostic_source.push(err.message);
             Ok(())
         })
@@ -464,7 +464,7 @@ fn public_cause_visit_apis_are_accessible() {
     assert!(!diagnostic_source_state.cycle_detected);
 
     let cycle = Report::new(LoopError)
-        .visit_origin_sources_ext(
+        .visit_origin_src_ext(
             CauseCollectOptions {
                 max_depth: 8,
                 detect_cycle: true,
@@ -474,7 +474,7 @@ fn public_cause_visit_apis_are_accessible() {
         .expect("cycle traversal");
     assert!(cycle.cycle_detected);
 
-    let mut iter = report.iter_diagnostic_sources_ext(CauseCollectOptions {
+    let mut iter = report.iter_diag_srcs_ext(CauseCollectOptions {
         max_depth: 4,
         detect_cycle: true,
     });
@@ -490,7 +490,7 @@ fn source_iteration_can_disable_cycle_detection() {
     let _guard = init_test();
 
     let report = Report::new(LoopError);
-    let mut iter = report.iter_origin_sources_ext(CauseCollectOptions {
+    let mut iter = report.iter_origin_src_ext(CauseCollectOptions {
         max_depth: 4,
         detect_cycle: false,
     });
@@ -543,11 +543,11 @@ fn wrap_keeps_explicit_source_chain_isolated_from_inner_source() {
     static NATURAL_SOURCE: NaturalSourceError = NaturalSourceError;
 
     let report = Report::new(SourcefulError)
-        .with_diagnostic_source_error(ApiError::Unauthorized)
+        .with_diag_src_err(ApiError::Unauthorized)
         .wrap(ApiError::Wrapped { code: 500 });
 
     let messages: Vec<String> = report
-        .iter_origin_sources_ext(CauseCollectOptions {
+        .iter_origin_src_ext(CauseCollectOptions {
             max_depth: 8,
             detect_cycle: true,
         })
@@ -563,10 +563,10 @@ fn source_iteration_keeps_top_level_siblings_at_same_depth() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_diagnostic_source_error(AuthError::InvalidToken)
-        .with_diagnostic_source_error(std::io::Error::other("network down"));
+        .with_diag_src_err(AuthError::InvalidToken)
+        .with_diag_src_err(std::io::Error::other("network down"));
     let collected: Vec<(String, usize)> = report
-        .iter_diagnostic_sources_ext(CauseCollectOptions {
+        .iter_diag_srcs_ext(CauseCollectOptions {
             max_depth: 4,
             detect_cycle: true,
         })
@@ -588,11 +588,11 @@ fn source_iteration_keeps_siblings_after_truncation() {
 
     let deep_branch = Report::new(AuthError::InvalidToken).wrap(ApiError::Unauthorized);
     let report = Report::new(ApiError::Wrapped { code: 400 })
-        .with_diagnostic_source_error(deep_branch)
-        .with_diagnostic_source_error(std::io::Error::other("network down"));
+        .with_diag_src_err(deep_branch)
+        .with_diag_src_err(std::io::Error::other("network down"));
 
     let collected: Vec<String> = report
-        .iter_diagnostic_sources_ext(CauseCollectOptions {
+        .iter_diag_srcs_ext(CauseCollectOptions {
             max_depth: 1,
             detect_cycle: true,
         })
@@ -623,12 +623,8 @@ fn source_errors_iterator_only_uses_attached_chain() {
 
     static NATURAL_SOURCE: NaturalSourceError = NaturalSourceError;
 
-    let report =
-        Report::new(NaturalSourceError).with_diagnostic_source_error(AuthError::InvalidToken);
-    let collected: Vec<String> = report
-        .diagnostic_source_errors()
-        .map(|err| err.message)
-        .collect();
+    let report = Report::new(NaturalSourceError).with_diag_src_err(AuthError::InvalidToken);
+    let collected: Vec<String> = report.diag_source_errors().map(|err| err.message).collect();
 
     assert_eq!(collected, vec!["auth invalid token".to_owned()]);
 }

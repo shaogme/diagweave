@@ -63,66 +63,114 @@ where
 {
     let mut first = true;
     f.write_char('{')?;
-    if options.show_stack_trace_section
-        && (options.show_empty_sections || report.stack_trace().is_some())
-    {
-        write_object_field(
-            f,
-            pretty,
-            depth,
-            &mut first,
-            "stack_trace",
-            |f| match report.stack_trace() {
-                Some(stack_trace) => write_stack_trace_object(f, pretty, depth + 1, stack_trace),
-                None => f.write_str("null"),
-            },
-        )?;
-    }
-    if options.show_cause_chains_section
-        && (options.show_empty_sections || has_display_causes(report))
-    {
-        write_object_field(f, pretty, depth, &mut first, "display_causes", |f| {
-            write_display_causes(f, pretty, depth + 1, report, options)
-        })?;
-    }
-    if options.show_cause_chains_section
-        && (options.show_empty_sections || has_origin_source_errors(report))
-    {
-        write_object_field(f, pretty, depth, &mut first, "origin_source_errors", |f| {
-            write_source_errors_field(
-                f,
-                pretty,
-                depth + 1,
-                report,
-                options,
-                true,
-                Report::origin_source_errors_view,
-            )
-        })?;
-    }
-    if options.show_cause_chains_section
-        && (options.show_empty_sections || has_diagnostic_source_errors(report))
-    {
-        write_object_field(
-            f,
-            pretty,
-            depth,
-            &mut first,
-            "diagnostic_source_errors",
-            |f| {
-                write_source_errors_field(
-                    f,
-                    pretty,
-                    depth + 1,
-                    report,
-                    options,
-                    false,
-                    Report::diagnostic_source_errors_view,
-                )
-            },
-        )?;
-    }
+    write_diag_stack(f, pretty, depth, report, options, &mut first)?;
+    write_diag_display_causes(f, pretty, depth, report, options, &mut first)?;
+    write_diag_origin_sources(f, pretty, depth, report, options, &mut first)?;
+    write_diag_extra_sources(f, pretty, depth, report, options, &mut first)?;
     close_object(f, pretty, depth, first)
+}
+
+fn write_diag_stack<E>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E>,
+    options: ReportRenderOptions,
+    first: &mut bool,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
+    if !options.show_stack_trace_section
+        || (!options.show_empty_sections && report.stack_trace().is_none())
+    {
+        return Ok(());
+    }
+    write_object_field(f, pretty, depth, first, "stack_trace", |f| {
+        match report.stack_trace() {
+            Some(stack_trace) => write_stack_trace_object(f, pretty, depth + 1, stack_trace),
+            None => f.write_str("null"),
+        }
+    })
+}
+
+fn write_diag_display_causes<E>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E>,
+    options: ReportRenderOptions,
+    first: &mut bool,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
+    if !options.show_cause_chains_section
+        || (!options.show_empty_sections && !has_display_causes(report))
+    {
+        return Ok(());
+    }
+    write_object_field(f, pretty, depth, first, "display_causes", |f| {
+        write_display_causes(f, pretty, depth + 1, report, options)
+    })
+}
+
+fn write_diag_origin_sources<E>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E>,
+    options: ReportRenderOptions,
+    first: &mut bool,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
+    if !options.show_cause_chains_section
+        || (!options.show_empty_sections && !has_origin_source_errors(report))
+    {
+        return Ok(());
+    }
+    write_object_field(f, pretty, depth, first, "origin_source_errors", |f| {
+        write_source_errors_field(
+            f,
+            pretty,
+            depth + 1,
+            report,
+            options,
+            true,
+            Report::origin_src_err_view,
+        )
+    })
+}
+
+fn write_diag_extra_sources<E>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E>,
+    options: ReportRenderOptions,
+    first: &mut bool,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+{
+    if !options.show_cause_chains_section
+        || (!options.show_empty_sections && !has_diag_source_errors(report))
+    {
+        return Ok(());
+    }
+    write_object_field(f, pretty, depth, first, "diagnostic_source_errors", |f| {
+        write_source_errors_field(
+            f,
+            pretty,
+            depth + 1,
+            report,
+            options,
+            false,
+            Report::diag_src_err_view,
+        )
+    })
 }
 
 fn has_display_causes<E>(report: &Report<E>) -> bool
@@ -136,14 +184,14 @@ fn has_origin_source_errors<E>(report: &Report<E>) -> bool
 where
     E: Error + Display + 'static,
 {
-    report.origin_source_errors_chain().is_some() || report.inner().source().is_some()
+    report.origin_src_err_chain().is_some() || report.inner().source().is_some()
 }
 
-fn has_diagnostic_source_errors<E>(report: &Report<E>) -> bool
+fn has_diag_source_errors<E>(report: &Report<E>) -> bool
 where
     E: Error + Display + 'static,
 {
-    report.diagnostic_source_errors_chain().is_some()
+    report.diag_src_err_chain().is_some()
 }
 
 fn write_meta_gov_fields(

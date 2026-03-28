@@ -119,7 +119,7 @@ fn json_preserves_empty_cause_chains_with_state() {
             truncated: true,
             cycle_detected: true,
         })
-        .set_diagnostic_source_errors({
+        .set_diag_src_errs({
             let mut chain = SourceErrorChain::default();
             chain.truncated = true;
             chain.cycle_detected = true;
@@ -149,8 +149,8 @@ fn json_source_errors_include_error_type() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_diagnostic_source_error(AuthError::InvalidToken)
-        .with_diagnostic_source_error(std::io::Error::other("network down"));
+        .with_diag_src_err(AuthError::InvalidToken)
+        .with_diag_src_err(std::io::Error::other("network down"));
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
@@ -226,8 +226,8 @@ fn json_source_errors_remap_roots_and_children_to_dense_indices() {
     }
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_diagnostic_source_error(chain("left-root", "left-child"))
-        .with_diagnostic_source_error(chain("right-root", "right-child"));
+        .with_diag_src_err(chain("left-root", "left-child"))
+        .with_diag_src_err(chain("right-root", "right-child"));
 
     let json = report
         .render(Json::new(ReportRenderOptions {

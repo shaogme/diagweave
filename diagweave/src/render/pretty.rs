@@ -47,21 +47,21 @@ where
         render_stack_trace(f, report, options)?;
         render_attachments(f, report, options)?;
         render_display_causes(f, report, options)?;
-        render_source_errors_section(
+        render_src_errors_section(
             f,
             report,
             options,
             "Origin Source Errors:",
             true,
-            Report::origin_source_errors_view,
+            Report::origin_src_err_view,
         )?;
-        render_source_errors_section(
+        render_src_errors_section(
             f,
             report,
             options,
             "Diagnostic Source Errors:",
             false,
-            Report::diagnostic_source_errors_view,
+            Report::diag_src_err_view,
         )?;
         Ok(())
     }
@@ -411,7 +411,7 @@ fn render_display_causes(
     Ok(())
 }
 
-fn render_source_errors_section<E, F>(
+fn render_src_errors_section<E, F>(
     f: &mut Formatter<'_>,
     report: &Report<E>,
     options: ReportRenderOptions,
@@ -499,7 +499,7 @@ fn render_source_error_chain(
         write_depth_indent(f, indent, current_depth)?;
         writeln!(f, "- message: {}", item.error)?;
         if show_type_name {
-            let type_name = item.type_name_for_display(hide_report_wrapper_types);
+            let type_name = item.display_type_name(hide_report_wrapper_types);
             write_depth_indent(f, indent, current_depth)?;
             writeln!(f, "- type: {}", type_name.unwrap_or("null"))?;
         }

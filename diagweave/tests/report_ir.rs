@@ -78,8 +78,8 @@ fn source_errors_field_matches_json_shape_in_tracing_fields() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_diagnostic_source_error(AuthError::InvalidToken)
-        .with_diagnostic_source_error(std::io::Error::other("network down"));
+        .with_diag_src_err(AuthError::InvalidToken)
+        .with_diag_src_err(std::io::Error::other("network down"));
 
     let ir = report.to_diagnostic_ir();
     let fields = ir.to_tracing_fields();

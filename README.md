@@ -272,7 +272,7 @@ Common enrichers on `Result<T, Report<E>>`:
 
 - `with_context`, `with_note`, `with_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
-- `with_display_cause`, `with_display_causes`, `with_diagnostic_source_error`
+- `with_display_cause`, `with_display_causes`, `with_diag_src_err`
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
 
@@ -285,10 +285,10 @@ Read APIs on `Report<E>`:
 - `attachments()`, `metadata()`, `stack_trace()`
 - `error_code()`, `severity()`, `category()`, `retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
-- `visit_origin_sources(visit)` / `visit_origin_sources_ext(options, visit)`
-- `visit_diagnostic_sources(visit)` / `visit_diagnostic_sources_ext(options, visit)`
-- `iter_origin_sources()` / `iter_origin_sources_ext(options)`
-- `iter_diagnostic_sources()` / `iter_diagnostic_sources_ext(options)`
+- `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`
+- `visit_diag_sources(visit)` / `visit_diag_srcs_ext(options, visit)`
+- `iter_origin_sources()` / `iter_origin_src_ext(options)`
+- `iter_diag_sources()` / `iter_diag_srcs_ext(options)`
 
 Attachment note access:
 
@@ -314,8 +314,8 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
-- `with_diagnostic_source_error` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
-- Origin source propagation is maintained by `wrap` / `wrap_with` and `Error::source()`, while diagnostic source propagation is maintained by `with_diagnostic_source_error`.
+- `with_diag_src_err` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
+- Origin source propagation is maintained by `wrap` / `wrap_with` and `Error::source()`, while diagnostic source propagation is maintained by `with_diag_src_err`.
 
 Global context injector (`std`):
 
@@ -400,7 +400,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
+#     .with_diag_src_err(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 

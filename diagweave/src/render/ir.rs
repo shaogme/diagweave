@@ -155,9 +155,8 @@ impl<E> Report<E> {
             attachments: self.attachments(),
             display_causes: self.display_causes(),
             display_causes_state,
-            origin_source_errors: self.origin_source_errors_view(CauseCollectOptions::default()),
-            diagnostic_source_errors: self
-                .diagnostic_source_errors_view(CauseCollectOptions::default()),
+            origin_source_errors: self.origin_src_err_view(CauseCollectOptions::default()),
+            diagnostic_source_errors: self.diag_src_err_view(CauseCollectOptions::default()),
             context_count,
             attachment_count,
         }
@@ -450,16 +449,12 @@ pub(crate) fn build_display_causes(
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
-pub(crate) fn build_origin_source_errors_value(
-    source_errors: &SourceErrorChain,
-) -> AttachmentValue {
+pub(crate) fn build_origin_src_errs_val(source_errors: &SourceErrorChain) -> AttachmentValue {
     build_source_errors_value(source_errors, true)
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
-pub(crate) fn build_diagnostic_source_errors_value(
-    source_errors: &SourceErrorChain,
-) -> AttachmentValue {
+pub(crate) fn build_diag_src_errs_val(source_errors: &SourceErrorChain) -> AttachmentValue {
     build_source_errors_value(source_errors, false)
 }
 

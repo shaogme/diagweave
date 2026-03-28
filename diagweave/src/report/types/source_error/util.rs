@@ -33,13 +33,9 @@ trait ArenaChainLike: Sized {
         cycle_detected: bool,
     ) -> Self;
     fn nodes(&self) -> &Arc<[Self::Item]>;
-    fn nodes_mut(&mut self) -> &mut Arc<[Self::Item]>;
     fn roots(&self) -> &Arc<[SourceNodeId]>;
-    fn roots_mut(&mut self) -> &mut Arc<[SourceNodeId]>;
     fn truncated(&self) -> bool;
-    fn set_truncated(&mut self, value: bool);
     fn cycle_detected(&self) -> bool;
-    fn set_cycle_detected(&mut self, value: bool);
 }
 
 impl ArenaItemLike for SourceErrorItem {
@@ -89,32 +85,16 @@ impl ArenaChainLike for SourceErrorChain {
         &self.nodes
     }
 
-    fn nodes_mut(&mut self) -> &mut Arc<[Self::Item]> {
-        &mut self.nodes
-    }
-
     fn roots(&self) -> &Arc<[SourceNodeId]> {
         &self.roots
-    }
-
-    fn roots_mut(&mut self) -> &mut Arc<[SourceNodeId]> {
-        &mut self.roots
     }
 
     fn truncated(&self) -> bool {
         self.truncated
     }
 
-    fn set_truncated(&mut self, value: bool) {
-        self.truncated = value;
-    }
-
     fn cycle_detected(&self) -> bool {
         self.cycle_detected
-    }
-
-    fn set_cycle_detected(&mut self, value: bool) {
-        self.cycle_detected = value;
     }
 }
 
@@ -200,7 +180,7 @@ struct NormalizedChain {
     cycle_detected: bool,
 }
 
-fn normalize_chain<C>(chain: &C) -> NormalizedChain
+fn normalize_chain_repr<C>(chain: &C) -> NormalizedChain
 where
     C: ArenaChainLike,
 {
@@ -234,11 +214,7 @@ where
         }
     }
 
-    let mut remap = vec![None; nodes.len()];
-    for (new_id, &old_id) in order.iter().enumerate() {
-        remap[old_id] = Some(new_id);
-    }
-
+    let remap = remap_order(&order, nodes.len());
     let map_id =
         |id: SourceNodeId| -> Option<usize> { if id < remap.len() { remap[id] } else { None } };
 
@@ -264,54 +240,60 @@ where
     }
 }
 
+fn remap_order(order: &[usize], len: usize) -> Vec<Option<usize>> {
+    let mut remap = vec![None; len];
+    for (new_id, &old_id) in order.iter().enumerate() {
+        remap[old_id] = Some(new_id);
+    }
+    remap
+}
+
 fn chain_eq<C>(left: &C, right: &C) -> bool
 where
     C: ArenaChainLike,
 {
-    normalize_chain(left) == normalize_chain(right)
+    normalize_chain_repr(left) == normalize_chain_repr(right)
 }
 
-fn append_chain<C>(this: &mut C, other: C)
-where
-    C: ArenaChainLike,
-{
-    this.set_truncated(this.truncated() | other.truncated());
-    this.set_cycle_detected(this.cycle_detected() | other.cycle_detected());
+pub(crate) fn append_source_chain(this: &mut SourceErrorChain, other: SourceErrorChain) {
+    this.truncated |= other.truncated;
+    this.cycle_detected |= other.cycle_detected;
 
-    if this.roots().is_empty() {
+    if this.roots.is_empty() {
         *this = other;
         return;
     }
-    if other.roots().is_empty() {
+    if other.roots.is_empty() {
         return;
     }
 
-    let base = this.nodes().len();
-    let mut nodes = Vec::with_capacity(this.nodes().len() + other.nodes().len());
-    nodes.extend(this.nodes().iter().cloned());
-    nodes.extend(other.nodes().iter().cloned().map(|n| shift_item(n, base)));
+    let base = this.nodes.len();
+    let mut nodes = Vec::with_capacity(this.nodes.len() + other.nodes.len());
+    nodes.extend(this.nodes.iter().cloned());
+    nodes.extend(other.nodes.iter().cloned().map(|n| shift_item(n, base)));
 
-    let mut roots = Vec::with_capacity(this.roots().len() + other.roots().len());
-    roots.extend(this.roots().iter().copied());
-    roots.extend(other.roots().iter().map(|id| id + base));
+    let mut roots = Vec::with_capacity(this.roots.len() + other.roots.len());
+    roots.extend(this.roots.iter().copied());
+    roots.extend(other.roots.iter().map(|id| id + base));
 
-    *this.nodes_mut() = nodes.into();
-    *this.roots_mut() = roots.into();
+    this.nodes = nodes.into();
+    this.roots = roots.into();
 }
 
-fn limit_depth_chain<C>(chain: &mut C, options: CauseCollectOptions, depth: usize) -> bool
-where
-    C: ArenaChainLike,
-{
+pub(crate) fn limit_depth_source_chain(
+    chain: &mut SourceErrorChain,
+    options: CauseCollectOptions,
+    depth: usize,
+) -> bool {
     if depth >= options.max_depth {
-        *chain.roots_mut() = Vec::new().into();
-        chain.set_truncated(true);
+        chain.roots = Vec::new().into();
+        chain.truncated = true;
         return true;
     }
 
-    let mut truncated = chain.truncated();
-    let roots = chain.roots().clone();
-    let nodes = Arc::make_mut(chain.nodes_mut());
+    let mut truncated = chain.truncated;
+    let roots = chain.roots.clone();
+    let nodes = Arc::make_mut(&mut chain.nodes);
     let mut stack: Vec<(SourceNodeId, usize)> =
         roots.iter().copied().map(|id| (id, depth)).collect();
     let mut visited = fast_set_new();
@@ -335,7 +317,7 @@ where
         }
     }
 
-    chain.set_truncated(truncated);
+    chain.truncated = truncated;
     truncated
 }
 
@@ -414,7 +396,7 @@ impl SourceErrorChain {
                 ExportedSourceErrorNode {
                     message: item.error.to_string(),
                     type_name: item
-                        .type_name_for_display(hide_report_wrapper_types)
+                        .display_type_name(hide_report_wrapper_types)
                         .map(ToOwned::to_owned),
                     source_roots: item
                         .source_roots
@@ -433,7 +415,7 @@ impl SourceErrorChain {
         }
     }
 
-    fn build_chain_with_root(
+    fn build_chain_root(
         root: SourceErrorItem,
         source: Option<&SourceErrorChain>,
         state: CauseTraversalState,
@@ -462,7 +444,7 @@ impl SourceErrorChain {
         Self::from_borrowed_error(error, options)
     }
 
-    pub(crate) fn from_root_with_source<T>(
+    pub(crate) fn from_root_source<T>(
         error: T,
         source: Option<SourceErrorChain>,
         state: CauseTraversalState,
@@ -470,7 +452,7 @@ impl SourceErrorChain {
     where
         T: Error + Send + Sync + 'static,
     {
-        Self::build_chain_with_root(SourceErrorItem::new(error), source.as_ref(), state)
+        Self::build_chain_root(SourceErrorItem::new(error), source.as_ref(), state)
     }
 
     pub(crate) fn from_error<T>(error: T) -> Self
@@ -484,17 +466,15 @@ impl SourceErrorChain {
                 detect_cycle: true,
             },
         );
-        Self::build_chain_with_root(SourceErrorItem::new(error), source.as_deref(), state)
+        Self::build_chain_root(SourceErrorItem::new(error), source.as_deref(), state)
     }
 
-    pub(crate) fn append(&mut self, other: SourceErrorChain) {
-        append_chain(self, other);
-    }
-
+    /// Returns true when the chain has no roots.
     pub fn is_empty(&self) -> bool {
         self.roots.is_empty()
     }
 
+    /// Returns a flattened iterator over chain entries.
     pub fn iter_entries(&self) -> SourceErrorChainEntries<'_> {
         SourceErrorChainEntries::new(self, false)
     }
@@ -503,6 +483,7 @@ impl SourceErrorChain {
         SourceErrorChainEntries::new(self, true)
     }
 
+    /// Returns an iterator over root-level source error items.
     pub fn iter(&self) -> SourceErrorItemIter<'_> {
         SourceErrorItemIter {
             chain: self,
@@ -536,10 +517,6 @@ impl SourceErrorChain {
         self.cycle_detected = false;
     }
 
-    pub(crate) fn limit_depth(&mut self, options: CauseCollectOptions, depth: usize) -> bool {
-        limit_depth_chain(self, options, depth)
-    }
-
     pub(super) fn from_borrowed_error(error: &dyn Error, options: CauseCollectOptions) -> Self {
         let (source, state) = Self::from_borrowed_srcs(error.source(), options);
         let root = SourceErrorItem {
@@ -547,7 +524,7 @@ impl SourceErrorChain {
             type_name: None,
             source_roots: Vec::new(),
         };
-        Self::build_chain_with_root(root, source.as_deref(), state)
+        Self::build_chain_root(root, source.as_deref(), state)
     }
 
     pub(super) fn from_borrowed_srcs(

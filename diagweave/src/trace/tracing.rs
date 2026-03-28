@@ -1,8 +1,8 @@
 use tracing::{Level, event};
 
 use crate::render_impl::{
-    DiagnosticIr, build_ctx_and_attachments, build_diagnostic_source_errors_value,
-    build_display_causes, build_origin_source_errors_value, build_stack_trace_value,
+    DiagnosticIr, build_ctx_and_attachments, build_diag_src_errs_val, build_display_causes,
+    build_origin_src_errs_val, build_stack_trace_value,
 };
 use crate::report::{AttachmentValue, ReportTrace, Severity, TraceEvent, TraceEventLevel};
 
@@ -21,11 +21,11 @@ impl TracingExporterTrait for TracingExporter {
         let origin_source_errors_value = ir
             .origin_source_errors
             .as_ref()
-            .map(build_origin_source_errors_value);
+            .map(build_origin_src_errs_val);
         let diagnostic_source_errors_value = ir
             .diagnostic_source_errors
             .as_ref()
-            .map(build_diagnostic_source_errors_value);
+            .map(build_diag_src_errs_val);
 
         emit_report_event(
             report_level,
@@ -112,57 +112,26 @@ struct ReportEventFields<'a, 'ir> {
 }
 
 fn emit_report_event(level: Level, fields: ReportEventFields<'_, '_>) {
+    macro_rules! emit_with_level {
+        ($fixed:expr) => {
+            report_event!(
+                $fixed,
+                fields.ir,
+                fields.context,
+                fields.attachments,
+                fields.stack_trace,
+                fields.display_causes,
+                fields.origin_source_errors,
+                fields.diagnostic_source_errors
+            )
+        };
+    }
     match level {
-        Level::TRACE => report_event!(
-            Level::TRACE,
-            fields.ir,
-            fields.context,
-            fields.attachments,
-            fields.stack_trace,
-            fields.display_causes,
-            fields.origin_source_errors,
-            fields.diagnostic_source_errors
-        ),
-        Level::DEBUG => report_event!(
-            Level::DEBUG,
-            fields.ir,
-            fields.context,
-            fields.attachments,
-            fields.stack_trace,
-            fields.display_causes,
-            fields.origin_source_errors,
-            fields.diagnostic_source_errors
-        ),
-        Level::INFO => report_event!(
-            Level::INFO,
-            fields.ir,
-            fields.context,
-            fields.attachments,
-            fields.stack_trace,
-            fields.display_causes,
-            fields.origin_source_errors,
-            fields.diagnostic_source_errors
-        ),
-        Level::WARN => report_event!(
-            Level::WARN,
-            fields.ir,
-            fields.context,
-            fields.attachments,
-            fields.stack_trace,
-            fields.display_causes,
-            fields.origin_source_errors,
-            fields.diagnostic_source_errors
-        ),
-        Level::ERROR => report_event!(
-            Level::ERROR,
-            fields.ir,
-            fields.context,
-            fields.attachments,
-            fields.stack_trace,
-            fields.display_causes,
-            fields.origin_source_errors,
-            fields.diagnostic_source_errors
-        ),
+        Level::TRACE => emit_with_level!(Level::TRACE),
+        Level::DEBUG => emit_with_level!(Level::DEBUG),
+        Level::INFO => emit_with_level!(Level::INFO),
+        Level::WARN => emit_with_level!(Level::WARN),
+        Level::ERROR => emit_with_level!(Level::ERROR),
     }
 }
 

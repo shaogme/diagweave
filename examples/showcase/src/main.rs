@@ -144,7 +144,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
         .with_note("failing over to secondary database")
         .with_display_cause("db operation failed")
         .with_display_cause("query plan fallback selected")
-        .with_diagnostic_source_error(io::Error::other("replica lag detected"))
+        .with_diag_src_err(io::Error::other("replica lag detected"))
         .capture_stack_trace()
         .wrap_with(|db_err| match db_err {
             DatabaseError::ConnectionLost(io) => AppError::Io(io),
@@ -310,18 +310,18 @@ where
     }
 
     println!("Diagnostic Source Errors:");
-    if report.iter_diagnostic_sources().next().is_none() {
+    if report.iter_diag_sources().next().is_none() {
         println!("  (none)");
     } else {
         let mut idx = 0usize;
-        let _ = report.visit_diagnostic_sources(|source| {
+        let _ = report.visit_diag_sources(|source| {
             idx += 1;
             println!("  {}. {}", idx, source.message);
             Ok(())
         });
         let mut source_count = 0usize;
         let state = report
-            .visit_diagnostic_sources(|_| {
+            .visit_diag_sources(|_| {
                 source_count += 1;
                 Ok(())
             })

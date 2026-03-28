@@ -25,6 +25,65 @@ impl Display for BenchError {
 
 impl Error for BenchError {}
 
+#[derive(Debug)]
+struct LinkedError {
+    message: String,
+    source: Option<Box<dyn Error + Send + Sync + 'static>>,
+}
+
+impl LinkedError {
+    fn leaf(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            source: None,
+        }
+    }
+}
+
+impl Display for LinkedError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl Error for LinkedError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|err| err as &(dyn Error + 'static))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SelfCycleError;
+
+impl Display for SelfCycleError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("self cycle source error")
+    }
+}
+
+impl Error for SelfCycleError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self)
+    }
+}
+
+fn make_deep_chain_error(depth: usize) -> LinkedError {
+    if depth == 0 {
+        return LinkedError::leaf("deep_0");
+    }
+
+    let mut current = LinkedError::leaf(format!("deep_{}", depth - 1));
+    for idx in (0..(depth - 1)).rev() {
+        current = LinkedError {
+            message: format!("deep_{idx}"),
+            source: Some(Box::new(current)),
+        };
+    }
+    current
+}
+
 fn make_report(
     context_count: usize,
     note_count: usize,
@@ -183,10 +242,62 @@ fn bench_source_traversal(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_source_traversal_topologies(c: &mut Criterion) {
+    let deep_report = Report::new(BenchError::Root).with_diag_src_err(make_deep_chain_error(1024));
+
+    let mut wide_report = Report::new(BenchError::Root);
+    for idx in 0..1024usize {
+        wide_report = wide_report.with_diag_src_err(LinkedError::leaf(format!("wide_{idx}")));
+    }
+
+    let cycle_report = Report::new(BenchError::Root).with_diag_src_err(SelfCycleError);
+
+    let mut group = c.benchmark_group("source_traversal_topologies");
+
+    group.bench_function("deep_chain_1024_detect_cycle", |b| {
+        b.iter(|| {
+            let mut iter = deep_report.iter_diag_srcs_ext(CauseCollectOptions {
+                max_depth: usize::MAX,
+                detect_cycle: true,
+            });
+            let count = iter.by_ref().count();
+            let state = iter.state();
+            black_box((count, state.truncated, state.cycle_detected));
+        })
+    });
+
+    group.bench_function("wide_roots_1024_detect_cycle", |b| {
+        b.iter(|| {
+            let mut iter = wide_report.iter_diag_srcs_ext(CauseCollectOptions {
+                max_depth: usize::MAX,
+                detect_cycle: true,
+            });
+            let count = iter.by_ref().count();
+            let state = iter.state();
+            black_box((count, state.truncated, state.cycle_detected));
+        })
+    });
+
+    group.bench_function("self_cycle_detect_cycle", |b| {
+        b.iter(|| {
+            let mut iter = cycle_report.iter_diag_srcs_ext(CauseCollectOptions {
+                max_depth: usize::MAX,
+                detect_cycle: true,
+            });
+            let count = iter.by_ref().count();
+            let state = iter.state();
+            black_box((count, state.truncated, state.cycle_detected));
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_report_build,
     bench_ir_and_render,
-    bench_source_traversal
+    bench_source_traversal,
+    bench_source_traversal_topologies
 );
 criterion_main!(benches);

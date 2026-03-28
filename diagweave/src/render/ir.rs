@@ -275,7 +275,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .trace_id
             .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow().into_owned().into()))
+            .map(|v| AttachmentValue::String(v.clone().into_inner()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -283,7 +283,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .span_id
             .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow().into_owned().into()))
+            .map(|v| AttachmentValue::String(v.clone().into_inner()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
@@ -291,7 +291,7 @@ fn build_trace_attachment_context_value(context: &TraceContext) -> AttachmentVal
         context
             .parent_span_id
             .as_ref()
-            .map(|v| AttachmentValue::String(v.as_cow().into_owned().into()))
+            .map(|v| AttachmentValue::String(v.clone().into_inner()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(

@@ -290,7 +290,7 @@ pub enum MyError {
 
 Note 附件读取：
 
-- `Attachment::as_note() -> Option<Cow<'_, str>>`（物化后的文本视图）
+- `Attachment::as_note() -> Option<String>`（物化后的文本视图）
 - `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`（零分配显示视图）
 
 `Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：

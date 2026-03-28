@@ -358,7 +358,7 @@ Strongly typed values supported by `Report` attachments, converted automatically
 | `Redacted` | `{ kind, reason }` | Placeholder for sensitive data |
 
 Attachment note access:
-- `Attachment::as_note() -> Option<Cow<'_, str>>` returns a materialized note string.
+- `Attachment::as_note() -> Option<String>` returns a materialized note string.
 - `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>` returns a zero-allocation display reference.
 
 ---

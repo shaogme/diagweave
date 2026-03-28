@@ -1,4 +1,3 @@
-use alloc::borrow::Cow;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
@@ -6,8 +5,6 @@ use ref_str::StaticRefStr;
 use super::{Report, types::AttachmentValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
 pub enum TraceEventLevel {
     Trace,
     Debug,
@@ -29,20 +26,7 @@ impl Display for TraceEventLevel {
     }
 }
 
-impl From<TraceEventLevel> for Cow<'static, str> {
-    fn from(value: TraceEventLevel) -> Self {
-        match value {
-            TraceEventLevel::Trace => "trace".into(),
-            TraceEventLevel::Debug => "debug".into(),
-            TraceEventLevel::Info => "info".into(),
-            TraceEventLevel::Warn => "warn".into(),
-            TraceEventLevel::Error => "error".into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEventAttribute {
     pub key: StaticRefStr,
     pub value: AttachmentValue,
@@ -58,7 +42,6 @@ impl Default for TraceEventAttribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceEvent {
     pub name: StaticRefStr,
     pub level: Option<TraceEventLevel>,
@@ -78,7 +61,6 @@ impl Default for TraceEvent {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceContext {
     pub trace_id: Option<TraceId>,
     pub span_id: Option<SpanId>,
@@ -101,7 +83,6 @@ impl TraceContext {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct ReportTrace {
     pub context: TraceContext,
     pub events: Vec<TraceEvent>,
@@ -152,8 +133,8 @@ impl<const N: usize> HexId<N> {
             .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F'))
     }
 
-    pub fn as_cow(&self) -> Cow<'static, str> {
-        self.0.as_cow()
+    pub fn into_inner(self) -> StaticRefStr {
+        self.0
     }
 }
 
@@ -166,32 +147,6 @@ impl<const N: usize> AsRef<str> for HexId<N> {
 impl<const N: usize> Display for HexId<N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(self.0.as_ref())
-    }
-}
-
-#[cfg(all(feature = "trace", feature = "json"))]
-impl<const N: usize> serde::Serialize for HexId<N> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(self.0.as_ref())
-    }
-}
-
-#[cfg(all(feature = "trace", feature = "json"))]
-impl<'de, const N: usize> serde::Deserialize<'de> for HexId<N> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = <Cow<'de, str> as serde::Deserialize<'de>>::deserialize(deserializer)?;
-        let value: StaticRefStr = value.into_owned().into();
-        if Self::is_valid(value.as_str()) {
-            Ok(Self(value))
-        } else {
-            Err(serde::de::Error::custom("invalid hex id"))
-        }
     }
 }
 

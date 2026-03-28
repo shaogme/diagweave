@@ -358,7 +358,7 @@ fn process() -> Result<(), Report<io::Error>> {
 | `Redacted` | `{ kind, reason }` | 脱敏数据占位符 |
 
 Note 附件读取：
-- `Attachment::as_note() -> Option<Cow<'_, str>>`：返回物化后的 note 文本。
+- `Attachment::as_note() -> Option<String>`：返回物化后的 note 文本。
 - `Attachment::as_note_display() -> Option<&(dyn Display + 'static)>`：返回零分配的显示引用。
 
 ---

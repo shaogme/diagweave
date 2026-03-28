@@ -40,7 +40,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     );
     assert_eq!(
         report.attachments()[1].as_note(),
-        Some("check authorization flow".into())
+        Some("check authorization flow".to_owned())
     );
     assert!(report.attachments()[2].as_payload().is_some());
     assert_eq!(

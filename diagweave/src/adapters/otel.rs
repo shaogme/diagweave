@@ -65,7 +65,7 @@ impl OtelValue<'_> {
     pub fn as_cow(&self) -> Cow<'_, str> {
         match self {
             Self::Null => Cow::Borrowed("null"),
-            Self::String(v) => v.as_cow(),
+            Self::String(v) => v.as_ref().into(),
             Self::Int(v) => Cow::Owned(v.to_string()),
             Self::U64(v) => Cow::Owned(v.to_string()),
             Self::Double(v) => Cow::Owned(v.to_string()),

@@ -1,4 +1,3 @@
-use alloc::borrow::Cow;
 use alloc::boxed::Box;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
@@ -431,9 +430,9 @@ impl Attachment {
     }
 
     /// Attempts to interpret the attachment as a note message.
-    pub fn as_note(&self) -> Option<Cow<'_, str>> {
+    pub fn as_note(&self) -> Option<String> {
         match self {
-            Self::Note { message } => Some(Cow::Owned(message.to_string())),
+            Self::Note { message } => Some(message.to_string()),
             Self::Context { .. } | Self::Payload { .. } => None,
         }
     }

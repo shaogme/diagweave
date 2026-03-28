@@ -46,7 +46,8 @@ where
         render_stack_trace(f, report, options)?;
         render_attachments(f, report, options)?;
         render_display_causes(f, report, options)?;
-        render_source_errors(f, report, options)?;
+        render_origin_source_errors(f, report, options)?;
+        render_diagnostic_source_errors(f, report, options)?;
         Ok(())
     }
 }
@@ -395,7 +396,7 @@ fn render_display_causes(
     Ok(())
 }
 
-fn render_source_errors(
+fn render_origin_source_errors(
     f: &mut Formatter<'_>,
     report: &Report<impl Error + 'static>,
     options: ReportRenderOptions,
@@ -408,9 +409,9 @@ fn render_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let Some(source_errors) = report.source_errors_view(traversal_options) else {
+    let Some(source_errors) = report.origin_source_errors_view(traversal_options) else {
         if options.show_empty_sections {
-            writeln!(f, "Source Errors:")?;
+            writeln!(f, "Origin Source Errors:")?;
             write_indent(f, options.pretty_indent)?;
             writeln!(f, "- (none)")?;
         }
@@ -422,7 +423,61 @@ fn render_source_errors(
         || source_errors.truncated
         || source_errors.cycle_detected
     {
-        writeln!(f, "Source Errors:")?;
+        writeln!(f, "Origin Source Errors:")?;
+    }
+    if source_errors.is_empty() {
+        if options.show_empty_sections {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        }
+    } else {
+        render_source_error_chain(
+            f,
+            &source_errors,
+            options.pretty_indent,
+            1,
+            options.show_type_name,
+        )?;
+    }
+    if source_errors.truncated {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- ... truncated by max_source_depth")?;
+    }
+    if source_errors.cycle_detected {
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- ... cycle detected and traversal stopped")?;
+    }
+    Ok(())
+}
+
+fn render_diagnostic_source_errors(
+    f: &mut Formatter<'_>,
+    report: &Report<impl Error + 'static>,
+    options: ReportRenderOptions,
+) -> fmt::Result {
+    if !options.show_cause_chains_section {
+        return Ok(());
+    }
+
+    let traversal_options = crate::report::CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let Some(source_errors) = report.diagnostic_source_errors_view(traversal_options) else {
+        if options.show_empty_sections {
+            writeln!(f, "Diagnostic Source Errors:")?;
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
+        }
+        return Ok(());
+    };
+
+    if options.show_empty_sections
+        || !source_errors.is_empty()
+        || source_errors.truncated
+        || source_errors.cycle_detected
+    {
+        writeln!(f, "Diagnostic Source Errors:")?;
     }
     if source_errors.is_empty() {
         if options.show_empty_sections {

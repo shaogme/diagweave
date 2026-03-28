@@ -41,12 +41,21 @@ impl<'a> SourceErrorNode<'a> {
 }
 
 impl<'a> ReportSourceErrorIter<'a> {
-    pub(crate) fn new(
+    pub(crate) fn new_origin(
         report: &'a crate::report::Report<impl Error + 'static>,
         options: CauseCollectOptions,
     ) -> Self {
         Self {
-            walk: ReportSourceErrorTraversal::from_report(report, options),
+            walk: ReportSourceErrorTraversal::from_origin_report(report, options),
+        }
+    }
+
+    pub(crate) fn new_diagnostic(
+        report: &'a crate::report::Report<impl Error + 'static>,
+        options: CauseCollectOptions,
+    ) -> Self {
+        Self {
+            walk: ReportSourceErrorTraversal::from_diagnostic_report(report, options),
         }
     }
 
@@ -89,7 +98,7 @@ pub(crate) struct ReportSourceErrorTraversal<'a> {
 }
 
 impl<'a> ReportSourceErrorTraversal<'a> {
-    pub(crate) fn from_report(
+    pub(crate) fn from_origin_report(
         report: &'a crate::report::Report<impl Error + 'static>,
         options: CauseCollectOptions,
     ) -> Self {
@@ -99,7 +108,26 @@ impl<'a> ReportSourceErrorTraversal<'a> {
         }
         if let Some(source_errors) = report
             .diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref())
+            .and_then(|diag| diag.origin_source_errors.as_ref())
+        {
+            stack.push(SourceErrorNode::chain(source_errors.items.iter(), 0));
+        }
+        Self {
+            stack,
+            options,
+            seen: SeenErrorAddrs::new(),
+            state: CauseTraversalState::default(),
+        }
+    }
+
+    pub(crate) fn from_diagnostic_report(
+        report: &'a crate::report::Report<impl Error + 'static>,
+        options: CauseCollectOptions,
+    ) -> Self {
+        let mut stack = Vec::new();
+        if let Some(source_errors) = report
+            .diagnostics()
+            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
         {
             stack.push(SourceErrorNode::chain(source_errors.items.iter(), 0));
         }
@@ -319,7 +347,8 @@ pub(crate) struct DiagnosticBag {
     pub(crate) stack_trace: Option<StackTrace>,
     pub(crate) attachments: Vec<Attachment>,
     pub(crate) display_causes: Option<DisplayCauseChain>,
-    pub(crate) source_errors: Option<SourceErrorChain>,
+    pub(crate) origin_source_errors: Option<SourceErrorChain>,
+    pub(crate) diagnostic_source_errors: Option<SourceErrorChain>,
 }
 
 pub(crate) const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {

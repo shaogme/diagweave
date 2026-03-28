@@ -105,8 +105,10 @@ where
         .attachments()
         .iter()
         .any(|attachment| !matches!(attachment, crate::report::Attachment::Context { .. }));
-    let has_diag_bag =
-        has_stack_trace(report) || has_display_causes(report) || has_source_errors(report);
+    let has_diag_bag = has_stack_trace(report)
+        || has_display_causes(report)
+        || has_origin_source_errors(report)
+        || has_diagnostic_source_errors(report);
     JsonSectionFlags {
         has_metadata,
         has_context,
@@ -129,9 +131,16 @@ where
     report.display_causes_chain().is_some()
 }
 
-fn has_source_errors<E>(report: &Report<E>) -> bool
+fn has_origin_source_errors<E>(report: &Report<E>) -> bool
 where
     E: Error + Display + 'static,
 {
-    report.source_errors_chain().is_some() || report.inner().source().is_some()
+    report.origin_source_errors_chain().is_some() || report.inner().source().is_some()
+}
+
+fn has_diagnostic_source_errors<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.diagnostic_source_errors_chain().is_some()
 }

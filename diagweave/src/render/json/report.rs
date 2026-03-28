@@ -86,11 +86,23 @@ where
         })?;
     }
     if options.show_cause_chains_section
-        && (options.show_empty_sections || has_source_errors(report))
+        && (options.show_empty_sections || has_origin_source_errors(report))
     {
-        write_object_field(f, pretty, depth, &mut first, "source_errors", |f| {
-            write_source_errors(f, pretty, depth + 1, report, options)
+        write_object_field(f, pretty, depth, &mut first, "origin_source_errors", |f| {
+            write_origin_source_errors(f, pretty, depth + 1, report, options)
         })?;
+    }
+    if options.show_cause_chains_section
+        && (options.show_empty_sections || has_diagnostic_source_errors(report))
+    {
+        write_object_field(
+            f,
+            pretty,
+            depth,
+            &mut first,
+            "diagnostic_source_errors",
+            |f| write_diagnostic_source_errors(f, pretty, depth + 1, report, options),
+        )?;
     }
     close_object(f, pretty, depth, first)
 }
@@ -102,11 +114,18 @@ where
     report.display_causes_chain().is_some()
 }
 
-fn has_source_errors<E>(report: &Report<E>) -> bool
+fn has_origin_source_errors<E>(report: &Report<E>) -> bool
 where
     E: Error + Display + 'static,
 {
-    report.source_errors_chain().is_some() || report.inner().source().is_some()
+    report.origin_source_errors_chain().is_some() || report.inner().source().is_some()
+}
+
+fn has_diagnostic_source_errors<E>(report: &Report<E>) -> bool
+where
+    E: Error + Display + 'static,
+{
+    report.diagnostic_source_errors_chain().is_some()
 }
 
 fn write_meta_gov_fields(
@@ -188,7 +207,7 @@ fn write_display_causes(
     close_object(f, pretty, depth, first)
 }
 
-fn write_source_errors(
+fn write_origin_source_errors(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
@@ -199,7 +218,24 @@ fn write_source_errors(
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
     };
-    let Some(source_errors) = report.source_errors_view(traversal_options) else {
+    let Some(source_errors) = report.origin_source_errors_view(traversal_options) else {
+        return f.write_str("null");
+    };
+    write_source_errors_chain(f, pretty, depth, &source_errors)
+}
+
+fn write_diagnostic_source_errors(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<impl Error + 'static>,
+    options: ReportRenderOptions,
+) -> fmt::Result {
+    let traversal_options = CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let Some(source_errors) = report.diagnostic_source_errors_view(traversal_options) else {
         return f.write_str("null");
     };
     write_source_errors_chain(f, pretty, depth, &source_errors)

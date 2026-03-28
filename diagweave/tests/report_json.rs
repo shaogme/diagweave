@@ -117,7 +117,7 @@ fn json_preserves_empty_cause_chains_with_state() {
             truncated: true,
             cycle_detected: true,
         })
-        .set_source_errors(SourceErrorChain {
+        .set_diagnostic_source_errors(SourceErrorChain {
             items: vec![].into(),
             truncated: true,
             cycle_detected: true,
@@ -145,8 +145,8 @@ fn json_source_errors_include_error_type() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_source_error(AuthError::InvalidToken)
-        .with_source_error(std::io::Error::other("network down"));
+        .with_diagnostic_source_error(AuthError::InvalidToken)
+        .with_diagnostic_source_error(std::io::Error::other("network down"));
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");

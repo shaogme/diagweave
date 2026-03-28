@@ -12,7 +12,7 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `schema_version: string` (const: `v0.1.0`)
 - `error: { message: string, type: string }`
 - `metadata: { error_code: string|integer|null, severity: "debug"|"info"|"warn"|"error"|"fatal"|null, category: string|null, retryable: boolean|null }`
-- `diagnostic_bag: { stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, source_errors: SourceErrorChain|null }`
+- `diagnostic_bag: { stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, origin_source_errors: SourceErrorChain|null, diagnostic_source_errors: SourceErrorChain|null }`
 - `trace: { context: TraceContext, events: TraceEvent[] }`
 - `context: Array<{ key: string, value: AttachmentValue }>`
 - `attachments: Array<Note|Payload>`
@@ -33,13 +33,21 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `diagnostic_bag.display_causes.truncated: boolean`
 - `diagnostic_bag.display_causes.cycle_detected: boolean`
 
-## SourceErrorChain model
+## Origin SourceErrorChain model
 
-- `diagnostic_bag.source_errors.items[*].message: string`
-- `diagnostic_bag.source_errors.items[*].type: string|null`
-- `diagnostic_bag.source_errors.items[*].source: SourceErrorChain|null`
-- `diagnostic_bag.source_errors.truncated: boolean`
-- `diagnostic_bag.source_errors.cycle_detected: boolean`
+- `diagnostic_bag.origin_source_errors.items[*].message: string`
+- `diagnostic_bag.origin_source_errors.items[*].type: string|null`
+- `diagnostic_bag.origin_source_errors.items[*].source: SourceErrorChain|null`
+- `diagnostic_bag.origin_source_errors.truncated: boolean`
+- `diagnostic_bag.origin_source_errors.cycle_detected: boolean`
+
+## Diagnostic SourceErrorChain model
+
+- `diagnostic_bag.diagnostic_source_errors.items[*].message: string`
+- `diagnostic_bag.diagnostic_source_errors.items[*].type: string|null`
+- `diagnostic_bag.diagnostic_source_errors.items[*].source: SourceErrorChain|null`
+- `diagnostic_bag.diagnostic_source_errors.truncated: boolean`
+- `diagnostic_bag.diagnostic_source_errors.cycle_detected: boolean`
 
 ## Trace model
 

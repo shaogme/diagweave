@@ -144,7 +144,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
         .with_note("failing over to secondary database")
         .with_display_cause("db operation failed")
         .with_display_cause("query plan fallback selected")
-        .with_source_error(io::Error::other("replica lag detected"))
+        .with_diagnostic_source_error(io::Error::other("replica lag detected"))
         .capture_stack_trace()
         .wrap_with(|db_err| match db_err {
             DatabaseError::ConnectionLost(io) => AppError::Io(io),
@@ -241,7 +241,8 @@ where
         "JSON check: schema_version={}, causes_present={}\n",
         parsed["schema_version"],
         parsed["diagnostic_bag"]["display_causes"].is_object()
-            || parsed["diagnostic_bag"]["source_errors"].is_object()
+            || parsed["diagnostic_bag"]["origin_source_errors"].is_object()
+            || parsed["diagnostic_bag"]["diagnostic_source_errors"].is_object()
     );
 
     let lean_pretty_opts = ReportRenderOptions {
@@ -285,19 +286,42 @@ fn print_source_errors<E>(report: &Report<E>)
 where
     E: std::error::Error + 'static,
 {
-    println!("Error Causes (Source Errors Chain):");
-    if report.iter_sources().next().is_none() {
+    println!("Origin Source Errors:");
+    if report.iter_origin_sources().next().is_none() {
         println!("  (none)");
     } else {
         let mut idx = 0usize;
-        let _ = report.visit_sources(|source| {
+        let _ = report.visit_origin_sources(|source| {
             idx += 1;
             println!("  {}. {}", idx, source.message);
             Ok(())
         });
         let mut source_count = 0usize;
         let state = report
-            .visit_sources(|_| {
+            .visit_origin_sources(|_| {
+                source_count += 1;
+                Ok(())
+            })
+            .unwrap_or_else(|_| diagweave::report::CauseTraversalState::default());
+        println!(
+            "  summary: count={}, truncated={}, cycle_detected={}",
+            source_count, state.truncated, state.cycle_detected
+        );
+    }
+
+    println!("Diagnostic Source Errors:");
+    if report.iter_diagnostic_sources().next().is_none() {
+        println!("  (none)");
+    } else {
+        let mut idx = 0usize;
+        let _ = report.visit_diagnostic_sources(|source| {
+            idx += 1;
+            println!("  {}. {}", idx, source.message);
+            Ok(())
+        });
+        let mut source_count = 0usize;
+        let state = report
+            .visit_diagnostic_sources(|_| {
                 source_count += 1;
                 Ok(())
             })

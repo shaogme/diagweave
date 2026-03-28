@@ -123,23 +123,41 @@ impl<E> Report<E> {
             .and_then(|diag| diag.display_causes.as_ref())
     }
 
-    /// Returns the source errors associated with the report.
-    pub fn source_errors(&self) -> impl Iterator<Item = SourceErrorEntry> + '_
+    /// Returns source errors from the origin chain associated with the report.
+    pub fn origin_source_errors(&self) -> impl Iterator<Item = SourceErrorEntry> + '_
+    where
+        E: Error + 'static,
+    {
+        self.origin_source_errors_view(CauseCollectOptions::default())
+            .map(|chain| chain.iter_entries().collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter()
+    }
+
+    /// Returns source errors from the diagnostic chain associated with the report.
+    pub fn diagnostic_source_errors(&self) -> impl Iterator<Item = SourceErrorEntry> + '_
     where
         E: Error + 'static,
     {
         self.diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref())
+            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
             .map(SourceErrorChain::iter_entries)
             .into_iter()
             .flatten()
     }
 
-    /// Returns the source-error chain associated with the report, if any.
+    /// Returns the origin source-error chain associated with the report, if any.
     #[cfg(feature = "json")]
-    pub(crate) fn source_errors_chain(&self) -> Option<&SourceErrorChain> {
+    pub(crate) fn origin_source_errors_chain(&self) -> Option<&SourceErrorChain> {
         self.diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref())
+            .and_then(|diag| diag.origin_source_errors.as_ref())
+    }
+
+    /// Returns the diagnostic source-error chain associated with the report, if any.
+    #[cfg(feature = "json")]
+    pub(crate) fn diagnostic_source_errors_chain(&self) -> Option<&SourceErrorChain> {
+        self.diagnostics()
+            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
     }
 
     /// Returns the metadata associated with the report.
@@ -390,18 +408,18 @@ impl<E> Report<E> {
         self
     }
 
-    /// Adds an error source to the report's error chain.
-    pub fn with_source_error(mut self, err: impl Error + Send + Sync + 'static) -> Self {
+    /// Adds an error source to the report's diagnostic source chain.
+    pub fn with_diagnostic_source_error(mut self, err: impl Error + Send + Sync + 'static) -> Self {
         self.diagnostics_mut()
-            .source_errors
+            .diagnostic_source_errors
             .get_or_insert_with(SourceErrorChain::default)
             .append(SourceErrorChain::from_error(err));
         self
     }
 
-    /// Replaces the source-error chain for the report.
-    pub fn set_source_errors(mut self, source_errors: SourceErrorChain) -> Self {
-        self.diagnostics_mut().source_errors = Some(source_errors);
+    /// Replaces the diagnostic source-error chain for the report.
+    pub fn set_diagnostic_source_errors(mut self, source_errors: SourceErrorChain) -> Self {
+        self.diagnostics_mut().diagnostic_source_errors = Some(source_errors);
         self
     }
 
@@ -411,25 +429,25 @@ impl<E> Report<E> {
         Self: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static,
     {
-        let source_errors = match self
+        let origin_source_errors = match self
             .diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref())
+            .and_then(|diag| diag.origin_source_errors.as_ref())
         {
             Some(source_errors) => Some(source_errors.clone()),
-            None => self.source_errors_view(CauseCollectOptions {
+            None => self.origin_source_errors_view(CauseCollectOptions {
                 max_depth: usize::MAX,
                 detect_cycle: true,
             }),
         };
         let Report { inner, cold } = self;
         let source_report = Report { inner, cold };
-        let source_state = source_errors
+        let source_state = origin_source_errors
             .as_ref()
             .map(SourceErrorChain::state)
             .unwrap_or_default();
-        let source_errors = SourceErrorChain {
+        let origin_source_errors = SourceErrorChain {
             items: vec![
-                SourceErrorItem::new(source_report).with_source(source_errors.map(Arc::new)),
+                SourceErrorItem::new(source_report).with_source(origin_source_errors.map(Arc::new)),
             ]
             .into(),
             truncated: source_state.truncated,
@@ -445,7 +463,8 @@ impl<E> Report<E> {
                     stack_trace: None,
                     attachments: Vec::new(),
                     display_causes: None,
-                    source_errors: Some(source_errors),
+                    origin_source_errors: Some(origin_source_errors),
+                    diagnostic_source_errors: None,
                 },
             })),
         }
@@ -497,17 +516,17 @@ impl<E> Report<E> {
         Ok(state)
     }
 
-    /// Visits source errors using default collection options.
-    pub fn visit_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
+    /// Visits origin source errors using default collection options.
+    pub fn visit_origin_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
         E: Error + 'static,
     {
-        self.visit_sources_ext(CauseCollectOptions::default(), visit)
+        self.visit_origin_sources_ext(CauseCollectOptions::default(), visit)
     }
 
-    /// Visits source errors using custom collection options.
-    pub fn visit_sources_ext<F>(
+    /// Visits origin source errors using custom collection options.
+    pub fn visit_origin_sources_ext<F>(
         &self,
         options: CauseCollectOptions,
         mut visit: F,
@@ -516,7 +535,33 @@ impl<E> Report<E> {
         F: FnMut(SourceErrorEntry) -> fmt::Result,
         E: Error + 'static,
     {
-        let mut iter = self.iter_sources_ext(options);
+        let mut iter = self.iter_origin_sources_ext(options);
+        for err in iter.by_ref() {
+            visit(err)?;
+        }
+        Ok(iter.state())
+    }
+
+    /// Visits diagnostic source errors using default collection options.
+    pub fn visit_diagnostic_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
+    where
+        F: FnMut(SourceErrorEntry) -> fmt::Result,
+        E: Error + 'static,
+    {
+        self.visit_diagnostic_sources_ext(CauseCollectOptions::default(), visit)
+    }
+
+    /// Visits diagnostic source errors using custom collection options.
+    pub fn visit_diagnostic_sources_ext<F>(
+        &self,
+        options: CauseCollectOptions,
+        mut visit: F,
+    ) -> Result<CauseTraversalState, fmt::Error>
+    where
+        F: FnMut(SourceErrorEntry) -> fmt::Result,
+        E: Error + 'static,
+    {
+        let mut iter = self.iter_diagnostic_sources_ext(options);
         for err in iter.by_ref() {
             visit(err)?;
         }
@@ -553,14 +598,30 @@ impl<E> Report<E>
 where
     E: Error + 'static,
 {
-    /// Iterates source errors using default collection options.
-    pub fn iter_sources(&self) -> ReportSourceErrorIter<'_> {
-        self.iter_sources_ext(CauseCollectOptions::default())
+    /// Iterates origin source errors using default collection options.
+    pub fn iter_origin_sources(&self) -> ReportSourceErrorIter<'_> {
+        self.iter_origin_sources_ext(CauseCollectOptions::default())
     }
 
-    /// Iterates source errors using custom collection options.
-    pub fn iter_sources_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_> {
-        ReportSourceErrorIter::new(self, options)
+    /// Iterates origin source errors using custom collection options.
+    pub fn iter_origin_sources_ext(
+        &self,
+        options: CauseCollectOptions,
+    ) -> ReportSourceErrorIter<'_> {
+        ReportSourceErrorIter::new_origin(self, options)
+    }
+
+    /// Iterates diagnostic source errors using default collection options.
+    pub fn iter_diagnostic_sources(&self) -> ReportSourceErrorIter<'_> {
+        self.iter_diagnostic_sources_ext(CauseCollectOptions::default())
+    }
+
+    /// Iterates diagnostic source errors using custom collection options.
+    pub fn iter_diagnostic_sources_ext(
+        &self,
+        options: CauseCollectOptions,
+    ) -> ReportSourceErrorIter<'_> {
+        ReportSourceErrorIter::new_diagnostic(self, options)
     }
 }
 
@@ -568,13 +629,13 @@ impl<E> Report<E>
 where
     E: Error + 'static,
 {
-    pub(crate) fn source_errors_view(
+    pub(crate) fn origin_source_errors_view(
         &self,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
         let stored = self
             .diagnostics()
-            .and_then(|diag| diag.source_errors.as_ref());
+            .and_then(|diag| diag.origin_source_errors.as_ref());
         let inner_source = self.inner.source();
 
         let mut snapshot = match (stored, inner_source) {
@@ -587,6 +648,21 @@ where
                 Some(snapshot)
             }
         }?;
+        snapshot.limit_depth(options, 0);
+        if !options.detect_cycle {
+            snapshot.clear_cycle_flags();
+        }
+        Some(snapshot)
+    }
+
+    pub(crate) fn diagnostic_source_errors_view(
+        &self,
+        options: CauseCollectOptions,
+    ) -> Option<SourceErrorChain> {
+        let mut snapshot = self
+            .diagnostics()
+            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
+            .cloned()?;
         snapshot.limit_depth(options, 0);
         if !options.detect_cycle {
             snapshot.clear_cycle_flags();

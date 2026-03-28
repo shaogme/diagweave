@@ -181,7 +181,7 @@ where
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
             .and_then(|diag| {
-                diag.source_errors.as_ref().and_then(|v| {
+                diag.origin_source_errors.as_ref().and_then(|v| {
                     v.items
                         .first()
                         .map(|err| err.error.as_ref() as &(dyn Error + 'static))

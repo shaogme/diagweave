@@ -1,10 +1,11 @@
 use std::io;
 
 use diagweave::prelude::{
-    GlobalContext, Report, ReportRenderOptions, ReportResultExt, SpanId, TraceId,
+    AttachmentValue, Compact, GlobalContext, ParentSpanId, Pretty, Report, ReportRenderOptions,
+    ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
     register_global_injector, set, union,
 };
-use diagweave::render::Json;
+use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 
 mod payment {
     use super::*;
@@ -36,28 +37,125 @@ mod payment {
 
     /// Charges the payment provider for the given amount in cents.
     pub fn charge(amount_cents: u64) -> Result<(), Report<PaymentError>> {
-        let _ = amount_cents;
-
         if amount_cents == 0 {
             return Err(Report::new(PaymentError::Declined)
+                .with_error_code("PAYMENT.DECLINED")
+                .with_severity(Severity::Warn)
+                .with_category("payment")
+                .with_retryable(false)
                 .with_note("payment provider declined")
+                .with_display_cause("risk policy rejected the transaction")
+                .with_diagnostic_source_error(io::Error::other("issuer hard decline"))
+                .with_payload(
+                    "provider_reply",
+                    serde_json::json!({
+                        "provider": "mockpay",
+                        "decision": "declined",
+                        "decline_code": "insufficient_funds"
+                    }),
+                    Some("application/json"),
+                )
+                .with_trace_event(TraceEvent {
+                    name: "payment.provider.decline".into(),
+                    level: Some(TraceEventLevel::Warn),
+                    timestamp_unix_nano: Some(1_713_337_001_000_000_000),
+                    attributes: vec![
+                        TraceEventAttribute {
+                            key: "payment.amount_cents".into(),
+                            value: AttachmentValue::from(amount_cents),
+                        },
+                        TraceEventAttribute {
+                            key: "payment.provider".into(),
+                            value: AttachmentValue::from("mockpay"),
+                        },
+                    ],
+                })
                 .with_context("payment_stage", "charge"));
         }
         if amount_cents == 1 {
             return Err(Report::new(PaymentError::from(NetworkError::Timeout(250)))
+                .with_error_code("PAYMENT.TIMEOUT")
+                .with_severity(Severity::Error)
+                .with_category("payment")
+                .with_retryable(true)
                 .with_note("payment provider timeout")
+                .with_display_cause("upstream provider exceeded SLA")
+                .with_diagnostic_source_error(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "provider response timeout",
+                ))
+                .with_payload(
+                    "provider_reply",
+                    serde_json::json!({
+                        "provider": "mockpay",
+                        "decision": "timeout",
+                        "timeout_ms": 250
+                    }),
+                    Some("application/json"),
+                )
+                .with_trace_event(TraceEvent {
+                    name: "payment.provider.timeout".into(),
+                    level: Some(TraceEventLevel::Error),
+                    timestamp_unix_nano: Some(1_713_337_002_000_000_000),
+                    attributes: vec![
+                        TraceEventAttribute {
+                            key: "payment.amount_cents".into(),
+                            value: AttachmentValue::from(amount_cents),
+                        },
+                        TraceEventAttribute {
+                            key: "retryable".into(),
+                            value: AttachmentValue::from(true),
+                        },
+                    ],
+                })
                 .with_context("payment_stage", "charge"));
         }
 
-        match low_level_io() {
-            Ok(()) => Ok(()),
-            Err(io_err) => {
-                let err = NetworkError::Io(io_err);
-                Err(Report::new(PaymentError::from(err))
-                    .with_note("payment provider network error")
-                    .with_context("payment_stage", "charge"))
-            }
+        if amount_cents == 2 {
+            return match low_level_io() {
+                Ok(()) => Ok(()),
+                Err(io_err) => {
+                    let io_kind = io_err.kind();
+                    let io_message = io_err.to_string();
+                    let err = NetworkError::Io(io_err);
+                    Err(Report::new(PaymentError::from(err))
+                        .with_error_code("PAYMENT.NETWORK")
+                        .with_severity(Severity::Error)
+                        .with_category("payment")
+                        .with_retryable(true)
+                        .with_note("payment provider network error")
+                        .with_display_cause("tcp dial to provider failed")
+                        .with_diagnostic_source_error(io::Error::new(io_kind, io_message))
+                        .with_payload(
+                            "provider_reply",
+                            serde_json::json!({
+                                "provider": "mockpay",
+                                "decision": "network_error",
+                                "io_kind": io_kind.to_string()
+                            }),
+                            Some("application/json"),
+                        )
+                        .with_trace_event(TraceEvent {
+                            name: "payment.provider.io_error".into(),
+                            level: Some(TraceEventLevel::Error),
+                            timestamp_unix_nano: Some(1_713_337_003_000_000_000),
+                            attributes: vec![
+                                TraceEventAttribute {
+                                    key: "payment.amount_cents".into(),
+                                    value: AttachmentValue::from(amount_cents),
+                                },
+                                TraceEventAttribute {
+                                    key: "error.kind".into(),
+                                    value: AttachmentValue::from(io_kind.to_string()),
+                                },
+                            ],
+                        })
+                        .with_context("payment_stage", "charge"))
+                }
+            };
         }
+
+        Ok(())
     }
 }
 
@@ -77,15 +175,63 @@ mod order {
 
     /// Creates an order and runs the payment stage.
     pub fn create(order_id: u64) -> Result<(), Report<OrderError>> {
+        create_with_amount(order_id, 18800)
+    }
+
+    /// Creates an order and runs payment with a custom amount for scenario simulation.
+    pub fn create_with_amount(order_id: u64, amount_cents: u64) -> Result<(), Report<OrderError>> {
         if order_id == 0 {
             return Err(Report::new(OrderError::invalid_order(order_id))
+                .with_error_code("ORDER.INVALID")
+                .with_severity(Severity::Warn)
+                .with_category("order")
+                .with_retryable(false)
                 .with_note("order validation failed")
+                .with_display_cause("required fields missing")
+                .with_payload(
+                    "order_validation",
+                    serde_json::json!({
+                        "order_id": order_id,
+                        "reason": "non-zero order id required"
+                    }),
+                    Some("application/json"),
+                )
+                .with_trace_event(TraceEvent {
+                    name: "order.validate".into(),
+                    level: Some(TraceEventLevel::Warn),
+                    timestamp_unix_nano: Some(1_713_337_004_000_000_000),
+                    attributes: vec![TraceEventAttribute {
+                        key: "order.id".into(),
+                        value: AttachmentValue::from(order_id),
+                    }],
+                })
                 .with_context("order_id", order_id));
         }
 
-        payment::charge(18800)
+        payment::charge(amount_cents)
             .with_context("order_id", order_id)
+            .with_context("order_amount_cents", amount_cents)
             .with_note("order pipeline entered payment stage")
+            .with_error_code("ORDER.PAYMENT_FAILED")
+            .with_severity(Severity::Error)
+            .with_category("order")
+            .with_retryable(true)
+            .with_display_cause("order payment stage failed")
+            .with_trace_event(TraceEvent {
+                name: "order.payment".into(),
+                level: Some(TraceEventLevel::Error),
+                timestamp_unix_nano: Some(1_713_337_005_000_000_000),
+                attributes: vec![
+                    TraceEventAttribute {
+                        key: "order.id".into(),
+                        value: AttachmentValue::from(order_id),
+                    },
+                    TraceEventAttribute {
+                        key: "order.amount_cents".into(),
+                        value: AttachmentValue::from(amount_cents),
+                    },
+                ],
+            })
             .wrap_with(|_err| OrderError::payment_failed(order_id))?;
 
         Ok(())
@@ -115,17 +261,60 @@ mod gateway {
                     .with_context("route", "/v1/order"),
             );
         }
-        if request_id == "payment-only" {
+        if request_id == "payment-declined" {
             payment::charge(0)
                 .with_context("route", "/v1/charge")
                 .with_note("gateway forwarding to payment")
+                .with_error_code("API.PAYMENT_DECLINED")
+                .with_severity(Severity::Warn)
+                .with_category("api")
+                .with_retryable(false)
+                .with_trace_event(TraceEvent {
+                    name: "gateway.forward.payment".into(),
+                    level: Some(TraceEventLevel::Warn),
+                    timestamp_unix_nano: Some(1_713_337_006_000_000_000),
+                    attributes: vec![TraceEventAttribute {
+                        key: "http.route".into(),
+                        value: AttachmentValue::from("/v1/charge"),
+                    }],
+                })
                 .wrap_with(ApiError::Payment)?;
+            return Ok("OK".to_owned());
+        }
+        if request_id == "order-network-error" {
+            order::create_with_amount(9002, 2)
+                .with_context("route", "/v1/order")
+                .with_note("gateway forwarding to order service")
+                .with_error_code("API.ORDER_UPSTREAM_FAILURE")
+                .with_severity(Severity::Error)
+                .with_category("api")
+                .with_retryable(true)
+                .with_display_cause("order service call failed")
+                .with_trace_event(TraceEvent {
+                    name: "gateway.forward.order".into(),
+                    level: Some(TraceEventLevel::Error),
+                    timestamp_unix_nano: Some(1_713_337_007_000_000_000),
+                    attributes: vec![TraceEventAttribute {
+                        key: "http.route".into(),
+                        value: AttachmentValue::from("/v1/order"),
+                    }],
+                })
+                .wrap_with(ApiError::Order)?;
             return Ok("OK".to_owned());
         }
 
         order::create(9001)
             .with_context("route", "/v1/order")
             .with_note("gateway forwarding to order service")
+            .with_trace_event(TraceEvent {
+                name: "gateway.forward.order".into(),
+                level: Some(TraceEventLevel::Info),
+                timestamp_unix_nano: Some(1_713_337_008_000_000_000),
+                attributes: vec![TraceEventAttribute {
+                    key: "http.route".into(),
+                    value: AttachmentValue::from("/v1/order"),
+                }],
+            })
             .wrap_with(ApiError::Order)?;
 
         Ok("OK".to_owned())
@@ -143,14 +332,20 @@ fn init_tracing() {
 fn init_global_context() {
     const REQUEST_ID: &str = "req-20260327-0001";
     const SPAN_ID: &str = "00f067aa0ba902b7";
+    const PARENT_SPAN_ID: &str = "1111111111111111";
     const TRACE_ID: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context.push(("request_id".into(), REQUEST_ID.into()));
         ctx.context.push(("span_id".into(), SPAN_ID.into()));
+        ctx.context
+            .push(("service".into(), "cloud-native-stack".into()));
+        ctx.context
+            .push(("deployment_env".into(), "staging".into()));
         ctx.trace_id = Some(TraceId::new(TRACE_ID).ok()?);
         ctx.span_id = Some(SpanId::new(SPAN_ID).ok()?);
+        ctx.parent_span_id = Some(ParentSpanId::new(PARENT_SPAN_ID).ok()?);
         Some(ctx)
     });
 }
@@ -158,13 +353,19 @@ fn init_global_context() {
 fn main() {
     init_tracing();
     init_global_context();
+    println!("diagweave report json schema version = {REPORT_JSON_SCHEMA_VERSION}");
 
     let scenarios = [
         ("api:bad_request", Scenario::Api("bad-request")),
-        ("api:payment_error", Scenario::Api("payment-only")),
+        ("api:payment_declined", Scenario::Api("payment-declined")),
+        (
+            "api:order_network_error",
+            Scenario::Api("order-network-error"),
+        ),
         ("order:invalid", Scenario::Order(0)),
         ("payment:declined", Scenario::Payment(0)),
         ("payment:timeout", Scenario::Payment(1)),
+        ("payment:network_error", Scenario::Payment(2)),
         ("api:success_path", Scenario::Api("req-20260327-0001")),
     ];
 
@@ -176,19 +377,6 @@ fn main() {
             ScenarioResult::Payment(report) => render_report(label, report),
         }
     }
-}
-
-fn find_attr<'a>(
-    attrs: &'a [diagweave::adapters::OtelAttribute<'a>],
-    key: &str,
-) -> Option<&'a diagweave::adapters::OtelValue<'a>> {
-    attrs.iter().find_map(|attr| {
-        if attr.key == key {
-            Some(&attr.value)
-        } else {
-            None
-        }
-    })
 }
 
 enum Scenario<'a> {
@@ -224,10 +412,21 @@ enum ScenarioResult {
 }
 
 fn render_report(label: &str, report: Report<impl std::error::Error + 'static>) {
+    let pretty_opts = ReportRenderOptions {
+        pretty_indent: PrettyIndent::Spaces(2),
+        show_empty_sections: false,
+        ..ReportRenderOptions::default()
+    };
     let json_opts = ReportRenderOptions {
         json_pretty: true,
         ..ReportRenderOptions::default()
     };
+
+    println!("\n--- {label}: Compact (Human) ---");
+    println!("{}", report.render(Compact));
+
+    println!("--- {label}: Pretty (Human) ---");
+    println!("{}", report.render(Pretty::new(pretty_opts)));
 
     println!("\n--- {label}: JSON (ELK) ---");
     println!("{}", report.render(Json::new(json_opts)));
@@ -242,14 +441,18 @@ fn render_report(label: &str, report: Report<impl std::error::Error + 'static>) 
 
     println!("--- {label}: OTel Envelope ---");
     println!("records_count={}", otel.records.len());
+    println!("severity_text={:?}", report_record.severity_text.as_deref());
+    println!("severity_number={:?}", report_record.severity_number);
+    println!("attributes_count={}", report_record.attributes.len());
+    println!("trace_id={:?}", report_record.trace_id.as_deref());
+    println!("span_id={:?}", report_record.span_id.as_deref());
+    println!("display_causes_count={}", report.display_causes().len());
     println!(
-        "trace_id={:?}",
-        find_attr(&report_record.attributes, "trace_id")
-            .map(|v: &diagweave::adapters::OtelValue<'_>| v.to_string())
+        "origin_source_errors_count={}",
+        report.iter_origin_sources().count()
     );
     println!(
-        "span_id={:?}",
-        find_attr(&report_record.attributes, "span_id")
-            .map(|v: &diagweave::adapters::OtelValue<'_>| v.to_string())
+        "diagnostic_source_errors_count={}",
+        report.iter_diagnostic_sources().count()
     );
 }

@@ -103,9 +103,15 @@ impl DiagnosticIr<'_> {
                 value: build_display_causes(self.display_causes, self.display_causes_state),
             });
         }
-        if let Some(source_errors) = self.source_errors.as_ref() {
+        if let Some(source_errors) = self.origin_source_errors.as_ref() {
             fields.push(TracingField {
-                key: "diagnostic_bag.source_errors".into(),
+                key: "diagnostic_bag.origin_source_errors".into(),
+                value: build_source_errors_value(source_errors),
+            });
+        }
+        if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
+            fields.push(TracingField {
+                key: "diagnostic_bag.diagnostic_source_errors".into(),
                 value: build_source_errors_value(source_errors),
             });
         }

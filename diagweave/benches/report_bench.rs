@@ -56,7 +56,8 @@ fn make_report(
     }
 
     for idx in 0..source_count {
-        report = report.with_source_error(std::io::Error::other(format!("source_{idx}")));
+        report =
+            report.with_diagnostic_source_error(std::io::Error::other(format!("source_{idx}")));
     }
 
     report
@@ -79,12 +80,16 @@ fn bench_report_build(c: &mut Criterion) {
 
     for size in [0usize, 2, 8, 32] {
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("mixed_attachments", size), &size, |b, &size| {
-            b.iter(|| {
-                let report = make_report(size, size, size, 0);
-                black_box(report);
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("mixed_attachments", size),
+            &size,
+            |b, &size| {
+                b.iter(|| {
+                    let report = make_report(size, size, size, 0);
+                    black_box(report);
+                })
+            },
+        );
     }
     group.finish();
 }
@@ -144,11 +149,28 @@ fn bench_source_traversal(c: &mut Criterion) {
 
     for max_depth in [1usize, 4, 16, 64] {
         group.bench_with_input(
-            BenchmarkId::new("iter_sources_depth", max_depth),
+            BenchmarkId::new("iter_origin_sources_depth", max_depth),
             &max_depth,
             |b, &max_depth| {
                 b.iter(|| {
-                    let mut iter = report.iter_sources_ext(CauseCollectOptions {
+                    let mut iter = report.iter_origin_sources_ext(CauseCollectOptions {
+                        max_depth,
+                        detect_cycle: true,
+                    });
+                    let count = iter.by_ref().count();
+                    black_box((count, iter.state().truncated));
+                })
+            },
+        );
+    }
+
+    for max_depth in [1usize, 4, 16, 64] {
+        group.bench_with_input(
+            BenchmarkId::new("iter_diagnostic_sources_depth", max_depth),
+            &max_depth,
+            |b, &max_depth| {
+                b.iter(|| {
+                    let mut iter = report.iter_diagnostic_sources_ext(CauseCollectOptions {
                         max_depth,
                         detect_cycle: true,
                     });

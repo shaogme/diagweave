@@ -11,6 +11,7 @@ use crate::shared::derive::merge_debug_derive;
 use crate::shared::display::display_arm;
 use crate::shared::from_attr::{from_variant_source, is_from_variant};
 use crate::shared::sanitize::sanitize_variant_attrs;
+use crate::shared::source::source_arm_for_variant;
 
 pub(crate) fn generate_enum_impl(set: &ResolvedSet, options: &SetOptions) -> Result<TokenStream> {
     let enum_ident = &set.name;
@@ -25,6 +26,11 @@ pub(crate) fn generate_enum_impl(set: &ResolvedSet, options: &SetOptions) -> Res
         .iter()
         .map(|v| display_arm(enum_ident, &v.variant))
         .collect::<Result<Vec<_>>>()?;
+    let source_arms = set
+        .variants
+        .iter()
+        .map(|v| source_arm_for_variant(enum_ident, &v.variant))
+        .collect::<Result<Vec<_>>>()?;
     let raw_variants: Vec<Variant> = set.variants.iter().map(|v| v.variant.clone()).collect();
     let constructors = gen_variant_ctors(
         enum_ident,
@@ -34,7 +40,7 @@ pub(crate) fn generate_enum_impl(set: &ResolvedSet, options: &SetOptions) -> Res
     )?;
     let variant_from_impls = from_impls_for_variants(enum_ident, &set.variants)?;
     let merged_attrs = merge_debug_derive(set.attrs.clone())?;
-    let enum_impl_helpers = enum_impl_helpers(enum_ident);
+    let enum_impl_helpers = enum_impl_helpers(enum_ident, &source_arms);
     Ok(quote! {
         #(#merged_attrs)*
         #vis enum #enum_ident { #(#variants),* }

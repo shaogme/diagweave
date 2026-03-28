@@ -120,7 +120,8 @@ pub struct DiagnosticIr<'a> {
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
-    pub source_errors: Option<SourceErrorChain>,
+    pub origin_source_errors: Option<SourceErrorChain>,
+    pub diagnostic_source_errors: Option<SourceErrorChain>,
     pub context_count: usize,
     pub attachment_count: usize,
 }
@@ -155,7 +156,9 @@ impl<E> Report<E> {
             attachments: self.attachments(),
             display_causes: self.display_causes(),
             display_causes_state,
-            source_errors: self.source_errors_view(CauseCollectOptions::default()),
+            origin_source_errors: self.origin_source_errors_view(CauseCollectOptions::default()),
+            diagnostic_source_errors: self
+                .diagnostic_source_errors_view(CauseCollectOptions::default()),
             context_count,
             attachment_count,
         }

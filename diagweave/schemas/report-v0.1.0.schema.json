@@ -385,7 +385,7 @@
     "diagnostic_bag": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stack_trace", "display_causes", "source_errors"],
+      "required": ["stack_trace", "display_causes", "origin_source_errors", "diagnostic_source_errors"],
       "properties": {
         "stack_trace": {
           "oneOf": [
@@ -399,7 +399,13 @@
             { "type": "null" }
           ]
         },
-        "source_errors": {
+        "origin_source_errors": {
+          "oneOf": [
+            { "$ref": "#/$defs/source_error_chain" },
+            { "type": "null" }
+          ]
+        },
+        "diagnostic_source_errors": {
           "oneOf": [
             { "$ref": "#/$defs/source_error_chain" },
             { "type": "null" }

@@ -186,10 +186,10 @@ pub struct Report<E> {
 | `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
 | `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
 | `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
-| `report.visit_sources(visit)` | 使用默认选项流式遍历错误源链 |
-| `report.visit_sources_ext(options, visit)` | 使用自定义选项流式遍历错误源链 |
-| `report.iter_sources()` | 使用默认选项迭代错误源链 |
-| `report.iter_sources_ext(options)` | 使用自定义选项迭代错误源链 |
+| `report.visit_origin_sources(visit)` | 使用默认选项流式遍历错误源链 |
+| `report.visit_origin_sources_ext(options, visit)` | 使用自定义选项流式遍历错误源链 |
+| `report.iter_origin_sources()` | 使用默认选项迭代错误源链 |
+| `report.iter_origin_sources_ext(options)` | 使用自定义选项迭代错误源链 |
 | `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
 | `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
@@ -239,7 +239,7 @@ pub struct Report<E> {
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | 批量添加展示原因字符串 |
-| `with_source_error` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |
+| `with_diagnostic_source_error` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |
 | `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
 | `with_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state 用于关联元数据 |
 | `push_trace_event` | `impl Into<StaticRefStr>` | 追加一个默认字段的 trace 事件 |
@@ -303,7 +303,7 @@ let report = report.capture_stack_trace();
 - **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **延迟加载**: `context_lazy(key, f)`, `note_lazy(f)` (仅在 Err 时执行闭包)
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
-- **错误源**: `with_source_error(err)`
+- **错误源**: `with_diagnostic_source_error(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **包装**: `wrap(outer)`, `wrap_with(map)`
 
@@ -438,7 +438,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_source_error(std::io::Error::other("upstream"));
+#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 
@@ -492,7 +492,7 @@ let json_str = report.json().to_string();
 
 ### 导出行为
 - **属性映射**：`Context` 会被映射为 `tracing` 事件的命名字段。
-- **结构化字段**：`report_display_causes`、`report_source_errors`、`report_stack_trace`、`report_context` 和 `report_attachments` 会作为结构化调试字段导出。
+- **结构化字段**：`report_display_causes`、`report_origin_source_errors / report_diagnostic_source_errors`、`report_stack_trace`、`report_context` 和 `report_attachments` 会作为结构化调试字段导出。
 - **空部分**：空的 `trace`、`context`、`attachments` 部分默认会省略。
 - **Trace ID 绑定**：若 Report 包含 `TraceContext`，导出时会自动关联，或通过注入器自动关联当前 Span 环境信息。
 
@@ -560,7 +560,7 @@ report.emit_tracing_with(&MyCustomExporter);
 1. **记录字段**: 主报告会变成一个日志记录，严重程度、时间戳相关元数据、trace 关联字段和结构化 `body` 错误节点会放在顶层。
 2. **属性**: 错误核心字段、重试/分类标记、原因链摘要以及附件/上下文数据会以结构化 OTEL 属性输出。
 3. **Trace 事件**: `Report` 内部的 `TraceEvent` 会转换成额外的 OTLP 风格日志/事件记录，带各自的时间戳、严重程度和 trace 关联字段。
-4. **结构保留**: `exception.stacktrace` 和 `diagnostic_bag.source_errors` 不再被字符串扁平化。
+4. **结构保留**: `exception.stacktrace` 和 `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` 不再被字符串扁平化。
 
 ---
 
@@ -670,4 +670,5 @@ impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRende
 - **`trace`**: 无额外外部依赖的 Trace 数据结构。
 - **`otel`**: 本身不引入额外依赖，但需要显式开启后才能导出 OTLP envelope。
 - **`tracing`**: 依赖 `tracing` crate。
+
 

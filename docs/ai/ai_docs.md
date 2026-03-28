@@ -186,10 +186,10 @@ pub struct Report<E> {
 | `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
 | `report.visit_causes(visit)` | Streams display causes with default options |
 | `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
-| `report.visit_sources(visit)` | Streams source errors with default options |
-| `report.visit_sources_ext(options, visit)` | Streams source errors with custom options |
-| `report.iter_sources()` | Iterates source errors with default options |
-| `report.iter_sources_ext(options)` | Iterates source errors with custom options |
+| `report.visit_origin_sources(visit)` | Streams source errors with default options |
+| `report.visit_origin_sources_ext(options, visit)` | Streams source errors with custom options |
+| `report.iter_origin_sources()` | Iterates source errors with default options |
+| `report.iter_origin_sources_ext(options)` | Iterates source errors with custom options |
 | `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
 | `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
@@ -239,7 +239,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | Add multiple display-cause strings |
-| `with_source_error` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |
+| `with_diagnostic_source_error` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |
 | `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
 | `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata |
 | `push_trace_event` | `impl Into<StaticRefStr>` | Append a trace event with default fields |
@@ -303,7 +303,7 @@ Proxy versions of all `Report` chained configuration methods:
 - **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
-- **Source Errors**: `with_source_error(err)`
+- **Source Errors**: `with_diagnostic_source_error(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
 - **Wrapping**: `wrap(outer)`, `wrap_with(map)`
 
@@ -438,7 +438,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_source_error(std::io::Error::other("upstream"));
+#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 
@@ -492,7 +492,7 @@ Exports diagnostic reports to monitoring systems or log streams.
 
 ### Export Behavior
 - **Attribute Mapping**: `Context` is mapped as named fields for the `tracing` event.
-- **Structured Fields**: `report_display_causes`, `report_source_errors`, `report_stack_trace`, `report_context`, and `report_attachments` are emitted as structured debug fields.
+- **Structured Fields**: `report_display_causes`, `report_origin_source_errors / report_diagnostic_source_errors`, `report_stack_trace`, `report_context`, and `report_attachments` are emitted as structured debug fields.
 - **Empty Sections**: Empty `trace`, `context`, and `attachments` sections are omitted.
 - **Trace ID Binding**: If Report contains `TraceContext`, it is automatically associated, or associated via injector from current Span environment.
 
@@ -560,7 +560,7 @@ report.emit_tracing_with(&MyCustomExporter);
 1. **Record fields**: The primary report becomes a log record with severity, timestamp-ready metadata, trace correlation fields, and a structured `body` error node.
 2. **Attributes**: Core error fields, retry/category flags, cause-chain summaries, and attachment/context data are emitted as structured OTEL attributes.
 3. **Trace events**: Internal `TraceEvent` values become additional OTLP-style log/event records with their own top-level timestamp, severity, and trace correlation fields.
-4. **Structure preservation**: `exception.stacktrace` and `diagnostic_bag.source_errors` remain structured instead of string-flattened.
+4. **Structure preservation**: `exception.stacktrace` and `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` remain structured instead of string-flattened.
 
 ---
 
@@ -670,6 +670,7 @@ impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRende
 - **`trace`**: Zero-dependency trace data structures.
 - **`otel`**: Requires no extra dependency by itself; enabled explicitly for OTLP envelope export.
 - **`tracing`**: Requires `tracing` crate.
+
 
 
 

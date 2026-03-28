@@ -272,7 +272,7 @@ pub enum MyError {
 
 - `with_context`、`with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
-- `with_display_cause`、`with_display_causes`、`with_source_error`
+- `with_display_cause`、`with_display_causes`、`with_diagnostic_source_error`
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
 
@@ -285,8 +285,8 @@ pub enum MyError {
 - `attachments()`、`metadata()`、`stack_trace()`
 - `error_code()`、`severity()`、`category()`、`retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
-- `visit_sources(visit)` / `visit_sources_ext(options, visit)`
-- `iter_sources()` / `iter_sources_ext(options)`
+- `visit_origin_sources(visit)` / `visit_origin_sources_ext(options, visit)`
+- `iter_origin_sources()` / `iter_origin_sources_ext(options)`
 
 Note 附件读取：
 
@@ -312,8 +312,8 @@ Note 附件读取：
 原因语义说明：
 
 - `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
-- `with_source_error` 用于显式追加错误对象到 source 链元数据，参数要求 `impl Error + Send + Sync + 'static`。
-- 真正的错误传播链由 `with_source_error`、`wrap` / `wrap_with` 与 `Error::source()` 共同维护。
+- `with_diagnostic_source_error` 用于显式追加错误对象到 source 链元数据，参数要求 `impl Error + Send + Sync + 'static`。
+- 真正的错误传播链由 `with_diagnostic_source_error`、`wrap` / `wrap_with` 与 `Error::source()` 共同维护。
 
 全局上下文注入（`std`）：
 
@@ -398,7 +398,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_source_error(std::io::Error::other("upstream"));
+#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 
@@ -444,7 +444,7 @@ OTEL 适配器会尽量保留树状结构：
 
 - 主 `exception` 记录的 `body` 保持为结构化值，而不是纯字符串
 - `exception.stacktrace` 以 `KvList` 形式输出
-- `diagnostic_bag.source_errors` 同时保留 `message` 和 `type`
+- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` 同时保留 `message` 和 `type`
 - 空的 `trace` / `context` / `attachments` 部分默认会省略
 
 tracing 导出：
@@ -532,4 +532,5 @@ powershell -File scripts/test-feature-matrix.ps1
 ## 许可证
 
 MIT 或 Apache-2.0 双许可证。
+
 

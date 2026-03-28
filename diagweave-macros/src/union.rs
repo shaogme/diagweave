@@ -17,6 +17,7 @@ use crate::shared::display::display_arm;
 use crate::shared::from_attr::{from_variant_source, is_from_variant};
 use crate::shared::options::parse_diagweave_options;
 use crate::shared::sanitize::sanitize_variant_attrs;
+use crate::shared::source::source_arm_for_variant;
 
 pub(crate) fn union_impl(input: TokenStream) -> TokenStream {
     let parsed = parse_macro_input!(input as UnionInput);
@@ -32,6 +33,7 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
     let mut generated_variants = Vec::new();
     let mut from_impls = Vec::new();
     let mut display_arms = Vec::new();
+    let mut source_arms = Vec::new();
     let mut constructor_variants = Vec::new();
     let mut used_variant_names = BTreeMap::<String, Span>::new();
     let mut used_source_types = BTreeMap::<String, Span>::new();
@@ -42,6 +44,7 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
         generated_variants: &mut generated_variants,
         from_impls: &mut from_impls,
         display_arms: &mut display_arms,
+        source_arms: &mut source_arms,
         constructor_variants: &mut constructor_variants,
         used_variant_names: &mut used_variant_names,
         used_source_types: &mut used_source_types,
@@ -58,7 +61,7 @@ fn expand_union(input: UnionInput) -> Result<proc_macro2::TokenStream> {
     )?;
 
     let merged_attrs = merge_debug_derive(attrs)?;
-    let enum_impl_helpers = enum_impl_helpers(enum_name);
+    let enum_impl_helpers = enum_impl_helpers(enum_name, &source_arms);
     Ok(quote! {
         #(#merged_attrs)*
         #vis enum #enum_name {
@@ -170,6 +173,7 @@ struct ExpandContext<'a> {
     generated_variants: &'a mut Vec<proc_macro2::TokenStream>,
     from_impls: &'a mut Vec<proc_macro2::TokenStream>,
     display_arms: &'a mut Vec<proc_macro2::TokenStream>,
+    source_arms: &'a mut Vec<proc_macro2::TokenStream>,
     constructor_variants: &'a mut Vec<Variant>,
     used_variant_names: &'a mut BTreeMap<String, Span>,
     used_source_types: &'a mut BTreeMap<String, Span>,
@@ -202,6 +206,12 @@ impl<'a> ExpandContext<'a> {
         self.display_arms.push(quote! {
             #enum_name::#variant_ident(inner) => write!(f, "{}", inner)
         });
+        self.source_arms.push(quote! {
+            #enum_name::#variant_ident(inner) => {
+                let src: &(dyn ::core::error::Error + 'static) = inner;
+                ::core::option::Option::Some(src)
+            }
+        });
         self.constructor_variants
             .push(syn::parse_quote!(#variant_ident(#ty)));
         let key = quote::quote!(#ty).to_string();
@@ -229,6 +239,8 @@ impl<'a> ExpandContext<'a> {
                 variant.ident.span(),
             )?;
             self.display_arms.push(display_arm(enum_name, &variant)?);
+            self.source_arms
+                .push(source_arm_for_variant(enum_name, &variant)?);
             self.constructor_variants.push(variant.clone());
             if is_from_variant(&variant)? {
                 let (source_ty, ctor) = from_variant_source(enum_name, &variant)?;

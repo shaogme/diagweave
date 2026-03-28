@@ -271,9 +271,15 @@ impl<'a> DiagnosticIr<'a> {
                 )),
             });
         }
-        if let Some(source_errors) = self.source_errors.as_ref() {
+        if let Some(source_errors) = self.origin_source_errors.as_ref() {
             attributes.push(OtelAttribute {
-                key: "diagnostic_bag.source_errors".into(),
+                key: "diagnostic_bag.origin_source_errors".into(),
+                value: otel_value_from_owned(build_source_errors_value(source_errors)),
+            });
+        }
+        if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
+            attributes.push(OtelAttribute {
+                key: "diagnostic_bag.diagnostic_source_errors".into(),
                 value: otel_value_from_owned(build_source_errors_value(source_errors)),
             });
         }

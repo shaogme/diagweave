@@ -272,7 +272,7 @@ Common enrichers on `Result<T, Report<E>>`:
 
 - `with_context`, `with_note`, `with_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
-- `with_display_cause`, `with_display_causes`, `with_source_error`
+- `with_display_cause`, `with_display_causes`, `with_diagnostic_source_error`
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
 
@@ -285,8 +285,8 @@ Read APIs on `Report<E>`:
 - `attachments()`, `metadata()`, `stack_trace()`
 - `error_code()`, `severity()`, `category()`, `retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
-- `visit_sources(visit)` / `visit_sources_ext(options, visit)`
-- `iter_sources()` / `iter_sources_ext(options)`
+- `visit_origin_sources(visit)` / `visit_origin_sources_ext(options, visit)`
+- `iter_origin_sources()` / `iter_origin_sources_ext(options)`
 
 Attachment note access:
 
@@ -312,8 +312,8 @@ Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
-- `with_source_error` appends explicit error objects into the report diagnostic bag source chain, requiring `impl Error + Send + Sync + 'static`.
-- Error source propagation is maintained by `with_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
+- `with_diagnostic_source_error` appends explicit error objects into the report diagnostic bag source chain, requiring `impl Error + Send + Sync + 'static`.
+- Error source propagation is maintained by `with_diagnostic_source_error`, `wrap` / `wrap_with`, and `Error::source()`.
 
 Global context injector (`std`):
 
@@ -398,7 +398,7 @@ use diagweave::render::ReportRenderOptions;
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
-#     .with_source_error(std::io::Error::other("upstream"));
+#     .with_diagnostic_source_error(std::io::Error::other("upstream"));
 
 let ir = report.to_diagnostic_ir();
 
@@ -444,7 +444,7 @@ The OTEL adapter keeps the report tree structured where possible:
 
 - the main `exception` record carries a structured `body` instead of a plain string
 - `exception.stacktrace` is exported as a `KvList`
-- `diagnostic_bag.source_errors` preserves both `message` and `type`
+- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` preserves both `message` and `type`
 - empty `trace` / `context` / `attachments` sections are omitted
 
 Tracing export:
@@ -532,5 +532,6 @@ If you only need minimal display derivation or quick app-level propagation, a li
 ## License
 
 Dual-licensed under MIT OR Apache-2.0.
+
 
 

@@ -20,6 +20,7 @@ serde_json = { workspace = true, features = ["alloc"], optional = true }
 tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
+criterion = "0.8.2"
 trybuild = "1.0"
 tracing-subscriber = { workspace = true, features = ["registry", "std"] }
 
@@ -30,6 +31,10 @@ json = ["dep:serde", "dep:serde_json"]
 trace = []
 otel = []
 tracing = ["trace", "dep:tracing"]
+
+[[bench]]
+name = "report_bench"
+harness = false
 
 [lints]
 workspace = true

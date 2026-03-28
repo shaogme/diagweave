@@ -306,13 +306,13 @@ impl SourceErrorEntry {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct ColdData {
     pub(crate) metadata: ReportMetadata,
     pub(crate) diagnostics: DiagnosticBag,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct DiagnosticBag {
     #[cfg(feature = "trace")]
     pub(crate) trace: Option<ReportTrace>,

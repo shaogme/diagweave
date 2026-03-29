@@ -4,11 +4,12 @@ use core::fmt::{self, Debug, Display, Formatter};
 use crate::report::Attachment;
 use crate::report::SourceErrorChain;
 
-use super::Report;
+use super::{ObservabilityState, Report};
 
-impl<E> Debug for Report<E>
+impl<E, State> Debug for Report<E, State>
 where
     E: Debug,
+    State: ObservabilityState + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         #[cfg(debug_assertions)]
@@ -58,17 +59,19 @@ where
     }
 }
 
-impl<E> Display for Report<E>
+impl<E, State> Display for Report<E, State>
 where
     E: Display,
+    State: ObservabilityState,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.inner())?;
         let metadata = self.metadata();
-        let has_metadata = metadata.error_code.is_some()
-            || metadata.severity.is_some()
-            || metadata.category.is_some()
-            || metadata.retryable.is_some();
+        let has_metadata = metadata.error_code().is_some()
+            || metadata.severity().is_some()
+            || metadata.observability_level().is_some()
+            || metadata.category().is_some()
+            || metadata.retryable().is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
             diag.stack_trace.is_some() || !diag.attachments.is_empty() || {
                 #[cfg(feature = "trace")]
@@ -92,9 +95,10 @@ where
     }
 }
 
-impl<E> Report<E>
+impl<E, State> Report<E, State>
 where
     E: Display,
+    State: ObservabilityState,
 {
     fn fmt_metadata_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
         let metadata = self.metadata();
@@ -106,16 +110,19 @@ where
             *idx += 1;
             Ok(())
         };
-        if let Some(code) = &metadata.error_code {
+        if let Some(code) = metadata.error_code() {
             write_field("code", code)?;
         }
-        if let Some(sev) = metadata.severity {
+        if let Some(sev) = metadata.severity() {
             write_field("severity", &sev)?;
         }
-        if let Some(cat) = metadata.category.as_deref() {
+        if let Some(level) = metadata.observability_level() {
+            write_field("observability_level", &level)?;
+        }
+        if let Some(cat) = metadata.category() {
             write_field("category", &cat)?;
         }
-        if let Some(ret) = metadata.retryable {
+        if let Some(ret) = metadata.retryable() {
             write_field("retryable", &ret)?;
         }
         Ok(())
@@ -175,9 +182,10 @@ where
     }
 }
 
-impl<E> Error for Report<E>
+impl<E, State> Error for Report<E, State>
 where
     E: Error + 'static,
+    State: ObservabilityState + Debug,
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()

@@ -180,6 +180,7 @@ pub struct Report<E> {
 | `report.metadata()` | Returns a reference to the raw metadata (`&ReportMetadata`) |
 | `report.error_code()` | Reads metadata error code (`Option<&ErrorCode>`) |
 | `report.severity()` | Reads metadata severity (`Option<Severity>`) |
+| `report.observability_level()` | Reads metadata observability level (`Option<ObservabilityLevel>`) |
 | `report.category()` | Reads metadata category (`Option<&str>`) |
 | `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
@@ -187,6 +188,8 @@ pub struct Report<E> {
 | `report.visit_causes(visit)` | Streams display causes with default options |
 | `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
 | `report.visit_origin_sources(visit)` | Streams origin source errors with default options |
+
+`ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `severity()`, `observability_level()`, `category()`, and `retryable()`, while composition uses builder methods such as `with_error_code(...)` and `with_severity(...)`.
 | `report.visit_origin_src_ext(options, visit)` | Streams origin source errors with custom options |
 | `report.visit_diag_sources(visit)` | Streams diagnostic source errors with default options |
 | `report.visit_diag_srcs_ext(options, visit)` | Streams diagnostic source errors with custom options |
@@ -238,6 +241,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
+| `with_observability_level` | `ObservabilityLevel` | Set export-facing observability level (Trace, Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
 | `with_category` | `impl Into<StaticRefStr>` | Set error category (for monitoring metrics) |
 | `with_retryable` | `bool` | Mark if the error is suggested to be retried |
@@ -303,7 +307,7 @@ Provides pipelines for seamless diagnostic info injection on error paths by impl
 
 #### 2. `ReportResultExt` (on `Result<T, Report<E>>`)
 Proxy versions of all `Report` chained configuration methods:
-- **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
+- **Metadata**: `with_severity`, `with_observability_level`, `with_error_code`, `with_category`, `with_retryable`
 - **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
@@ -314,7 +318,7 @@ Proxy versions of all `Report` chained configuration methods:
 #### 3. `ReportResultInspectExt` (on `Result<T, Report<E>>`)
 Read-only helpers for error-path inspection without manually matching `Err`:
 - `report_ref()`, `report_metadata()`, `report_attachments()`
-- `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`
+- `report_error_code()`, `report_severity()`, `report_observability_level()`, `report_category()`, `report_retryable()`
 
 
 ### Usage Example
@@ -323,10 +327,11 @@ use diagweave::prelude::*;
 use std::{fs, io};
 use std::time::SystemTime;
 
-fn process() -> Result<(), Report<io::Error>> {
+fn process() -> Result<(), Report<io::Error, HasObservability>> {
     fs::read_to_string("config.toml")
         .diag_context("file", "config.toml") // Converts and attaches context
         .with_severity(Severity::Warn)
+        .with_observability_level(ObservabilityLevel::Warn)
         .context_lazy("timestamp", || format!("{:?}", SystemTime::now()).into())
         .attach_printable("failed to load system config")?;
         
@@ -398,7 +403,7 @@ use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
 use diagweave::report::{
-    Attachment, CauseTraversalState, SourceErrorChain,
+    Attachment, CauseTraversalState, MissingObservability, SourceErrorChain,
 };
 use std::fmt::Display;
 use std::sync::Arc;
@@ -407,11 +412,11 @@ use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
 use diagweave::StaticRefStr;
 
-pub struct DiagnosticIr<'a> {
+pub struct DiagnosticIr<'a, State = MissingObservability> {
     #[cfg(feature = "json")]
     pub schema_version: StaticRefStr,
     pub error: DiagnosticIrError<'a>,
-    pub metadata: DiagnosticIrMetadata<'a>,
+    pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
@@ -423,6 +428,8 @@ pub struct DiagnosticIr<'a> {
     pub attachment_count: usize,
 }
 ```
+
+`DiagnosticIrMetadata` now keeps its internal fields private and exposes read access through methods such as `error_code()`, `severity()`, `observability_level()`, `category()`, `retryable()`, and `stack_trace()`.
 
 Per-item context/note/payload traversal is exposed via `Report::visit_attachments(...)`.
 
@@ -454,7 +461,7 @@ println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
 `DiagnosticIr` keeps `display_causes` plus both source chains as structured data. In the JSON contract, both `origin_source_errors.type` and `diagnostic_source_errors.type` are `string | null`; `origin` commonly hits `null` due to natural `Error::source()` lossiness.
-The IR and adapter layers are borrow-first: error/type/trace string projections prefer `RefStr<'a>` so `to_tracing_fields()` and `to_otel_envelope()` avoid unnecessary `String` materialization on hot paths.
+The IR and adapter layers are borrow-first: error/type/trace string projections prefer `RefStr<'a>` so `to_tracing_fields()` and `to_otel_envelope()` avoid unnecessary `String` materialization on hot paths. OTEL export is intentionally limited to `DiagnosticIr<'a, HasObservability>`.
 
 ### Usage Example
 ```rust
@@ -487,13 +494,14 @@ let json_str = report.json().to_string();
 
 ### Overview
 Exports diagnostic reports to monitoring systems or log streams.
-- **`trace` feature**: Provides the data model and `TracingExporterTrait` for custom exporters.
-- **`tracing` feature**: Provides the default implementation for the `tracing` crate and the `emit_tracing` shortcut.
+- **`trace` feature**: Provides the data model, `PreparedTracingEmission`, and `TracingExporterTrait` for custom exporters.
+- **`tracing` feature**: Provides the default implementation for the `tracing` crate plus `prepare_tracing` / `emit_tracing` helpers.
 
 ### Core API
 | Method | Description |
 | :--- | :--- |
-| `emit_tracing(&self)` | Triggers an `info` level event under current Span, carrying all Report fields as attributes |
+| `prepare_tracing(&self)` | Available on `Report<_, HasObservability>` / `DiagnosticIr<_, HasObservability>`; resolves final report/event levels and returns a prepared emission typestate |
+| `emit_tracing(&self)` | Convenience wrapper for `prepare_tracing().emit()` |
 | `with_trace_ids(tid, sid)` | Manually binds tracing context (Trace ID / Span ID). Parameters are `TraceId` / `SpanId`. |
 
 ### Export Behavior
@@ -510,7 +518,9 @@ use std::fmt;
 #[cfg(feature = "trace")]
 use diagweave::prelude::{SpanId, TraceId};
 #[cfg(feature = "trace")]
-use diagweave::trace::TracingExporterTrait;
+use diagweave::report::ObservabilityLevel;
+#[cfg(feature = "trace")]
+use diagweave::trace::{EmitStats, PreparedTracingEmission, TracingExporterTrait};
 
 #[derive(Debug)]
 struct MyError;
@@ -528,10 +538,14 @@ struct MyCustomExporter;
 
 #[cfg(feature = "trace")]
 impl TracingExporterTrait for MyCustomExporter {
-    fn export_ir(&self, _ir: &diagweave::render::DiagnosticIr) {}
+    fn export_prepared(&self, emission: PreparedTracingEmission<'_>) -> EmitStats {
+        emission.stats()
+    }
 }
 
 let report = Report::new(MyError);
+#[cfg(feature = "trace")]
+let report = report.with_observability_level(ObservabilityLevel::Error);
 
 // Bind trace/span ids
 #[cfg(feature = "trace")]
@@ -542,11 +556,13 @@ let report = report.with_trace_ids(
 
 // Export to current tracing span with default options
 #[cfg(feature = "tracing")]
-report.emit_tracing();
+report.prepare_tracing().emit();
 
 // Use a custom exporter
 #[cfg(feature = "trace")]
-report.emit_tracing_with(&MyCustomExporter);
+report
+    .prepare_tracing()
+    .emit_with(&MyCustomExporter);
 ```
 
 ---
@@ -559,7 +575,7 @@ report.emit_tracing_with(&MyCustomExporter);
 ### Conversion API
 | Method Declaration | Return Type | Description |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | OTLP-style batch of log/event records |
+| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | Available on `DiagnosticIr<'a, HasObservability>`; converts to an OTLP-style batch of log/event records |
 | `ir.to_tracing_fields()` | `Vec<TracingField<'a>>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
@@ -651,8 +667,12 @@ use diagweave::prelude::*;
 use std::fmt::{self, Display, Formatter};
 
 struct MyHtmlRenderer;
-impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRenderer {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
+impl<E, State> ReportRenderer<E, State> for MyHtmlRenderer
+where
+    E: Display + std::error::Error + 'static,
+    State: ObservabilityState,
+{
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", report.pretty())
     }
 }
@@ -666,9 +686,9 @@ impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRende
 | :--- | :--- | :--- |
 | `std` | Yes | Standard library integrations (capture stack trace, global injector, etc.) |
 | `json` | No | `Json` renderer support (requires `serde` and `serde_json`) |
-| `trace` | No | Trace data model (`ReportTrace`, etc.) and pluggable exporter trait (`TracingExporterTrait`, `emit_tracing_with`) |
-| `otel` | No | OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` |
-| `tracing` | No | Default `tracing` crate integration (`TracingExporter`, `emit_tracing`). Automatically enables `trace`. |
+| `trace` | No | Trace data model (`ReportTrace`, etc.), prepared emission typestate (`PreparedTracingEmission`), and pluggable exporter trait (`TracingExporterTrait`) |
+| `otel` | No | OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` on `DiagnosticIr<'_, HasObservability>` |
+| `tracing` | No | Default `tracing` crate integration (`TracingExporter`, `prepare_tracing`, `emit_tracing`). Automatically enables `trace`. |
 
 ### Requirements Matrix
 - **`no_std`**: Supported by disabling default features. Requires `alloc`.

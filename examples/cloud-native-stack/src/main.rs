@@ -1,9 +1,9 @@
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, GlobalContext, ParentSpanId, Pretty, Report, ReportRenderOptions,
-    ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
-    register_global_injector, set, union,
+    AttachmentValue, Compact, GlobalContext, HasObservability, ObservabilityLevel, ParentSpanId,
+    Pretty, Report, ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEvent,
+    TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 
@@ -35,10 +35,11 @@ mod payment {
         ))
     }
 
-    fn declined_report(amount_cents: u64) -> Report<PaymentError> {
+    fn declined_report(amount_cents: u64) -> Report<PaymentError, HasObservability> {
         Report::new(PaymentError::Declined)
             .with_error_code("PAYMENT.DECLINED")
             .with_severity(Severity::Warn)
+            .with_observability_level(ObservabilityLevel::Warn)
             .with_category("payment")
             .with_retryable(false)
             .with_note("payment provider declined")
@@ -71,10 +72,11 @@ mod payment {
             .with_context("payment_stage", "charge")
     }
 
-    fn timeout_report(amount_cents: u64) -> Report<PaymentError> {
+    fn timeout_report(amount_cents: u64) -> Report<PaymentError, HasObservability> {
         Report::new(PaymentError::from(NetworkError::Timeout(250)))
             .with_error_code("PAYMENT.TIMEOUT")
             .with_severity(Severity::Error)
+            .with_observability_level(ObservabilityLevel::Error)
             .with_category("payment")
             .with_retryable(true)
             .with_note("payment provider timeout")
@@ -114,11 +116,12 @@ mod payment {
         amount_cents: u64,
         io_kind: io::ErrorKind,
         io_message: String,
-    ) -> Report<PaymentError> {
+    ) -> Report<PaymentError, HasObservability> {
         let err = NetworkError::Io(io::Error::new(io_kind, io_message.clone()));
         Report::new(PaymentError::from(err))
             .with_error_code("PAYMENT.NETWORK")
             .with_severity(Severity::Error)
+            .with_observability_level(ObservabilityLevel::Error)
             .with_category("payment")
             .with_retryable(true)
             .with_note("payment provider network error")
@@ -152,7 +155,7 @@ mod payment {
     }
 
     /// Charges the payment provider for the given amount in cents.
-    pub fn charge(amount_cents: u64) -> Result<(), Report<PaymentError>> {
+    pub fn charge(amount_cents: u64) -> Result<(), Report<PaymentError, HasObservability>> {
         match amount_cents {
             0 => Err(declined_report(amount_cents)),
             1 => Err(timeout_report(amount_cents)),
@@ -184,22 +187,26 @@ mod order {
     }
 
     /// Creates an order and runs the payment stage.
-    pub fn create(order_id: u64) -> Result<(), Report<OrderError>> {
+    pub fn create(order_id: u64) -> Result<(), Report<OrderError, HasObservability>> {
         create_with_amount(order_id, 18800)
     }
 
     /// Creates an order and runs payment with a custom amount for scenario simulation.
-    pub fn create_with_amount(order_id: u64, amount_cents: u64) -> Result<(), Report<OrderError>> {
+    pub fn create_with_amount(
+        order_id: u64,
+        amount_cents: u64,
+    ) -> Result<(), Report<OrderError, HasObservability>> {
         if order_id == 0 {
             return Err(invalid_order_report(order_id));
         }
         run_payment_stage(order_id, amount_cents)
     }
 
-    fn invalid_order_report(order_id: u64) -> Report<OrderError> {
+    fn invalid_order_report(order_id: u64) -> Report<OrderError, HasObservability> {
         Report::new(OrderError::invalid_order(order_id))
             .with_error_code("ORDER.INVALID")
             .with_severity(Severity::Warn)
+            .with_observability_level(ObservabilityLevel::Warn)
             .with_category("order")
             .with_retryable(false)
             .with_note("order validation failed")
@@ -224,13 +231,17 @@ mod order {
             .with_context("order_id", order_id)
     }
 
-    fn run_payment_stage(order_id: u64, amount_cents: u64) -> Result<(), Report<OrderError>> {
+    fn run_payment_stage(
+        order_id: u64,
+        amount_cents: u64,
+    ) -> Result<(), Report<OrderError, HasObservability>> {
         payment::charge(amount_cents)
             .with_context("order_id", order_id)
             .with_context("order_amount_cents", amount_cents)
             .with_note("order pipeline entered payment stage")
             .with_error_code("ORDER.PAYMENT_FAILED")
             .with_severity(Severity::Error)
+            .with_observability_level(ObservabilityLevel::Error)
             .with_category("order")
             .with_retryable(true)
             .with_display_cause("order payment stage failed")
@@ -269,7 +280,7 @@ mod gateway {
     }
 
     /// Handles a single API request and maps failures to API errors.
-    pub fn handle_request(request_id: &str) -> Result<String, Report<ApiError>> {
+    pub fn handle_request(request_id: &str) -> Result<String, Report<ApiError, HasObservability>> {
         match request_id {
             "bad-request" => bad_request(),
             "payment-declined" => payment_declined(),
@@ -278,20 +289,22 @@ mod gateway {
         }
     }
 
-    fn bad_request() -> Result<String, Report<ApiError>> {
+    fn bad_request() -> Result<String, Report<ApiError, HasObservability>> {
         Err(
             Report::new(ApiError::bad_request("missing auth header".to_owned()))
+                .with_observability_level(ObservabilityLevel::Warn)
                 .with_note("gateway rejected request")
                 .with_context("route", "/v1/order"),
         )
     }
 
-    fn payment_declined() -> Result<String, Report<ApiError>> {
+    fn payment_declined() -> Result<String, Report<ApiError, HasObservability>> {
         payment::charge(0)
             .with_context("route", "/v1/charge")
             .with_note("gateway forwarding to payment")
             .with_error_code("API.PAYMENT_DECLINED")
             .with_severity(Severity::Warn)
+            .with_observability_level(ObservabilityLevel::Warn)
             .with_category("api")
             .with_retryable(false)
             .with_trace_event(TraceEvent {
@@ -307,12 +320,13 @@ mod gateway {
         Ok("OK".to_owned())
     }
 
-    fn order_network_error() -> Result<String, Report<ApiError>> {
+    fn order_network_error() -> Result<String, Report<ApiError, HasObservability>> {
         order::create_with_amount(9002, 2)
             .with_context("route", "/v1/order")
             .with_note("gateway forwarding to order service")
             .with_error_code("API.ORDER_UPSTREAM_FAILURE")
             .with_severity(Severity::Error)
+            .with_observability_level(ObservabilityLevel::Error)
             .with_category("api")
             .with_retryable(true)
             .with_display_cause("order service call failed")
@@ -329,7 +343,7 @@ mod gateway {
         Ok("OK".to_owned())
     }
 
-    fn success_path() -> Result<String, Report<ApiError>> {
+    fn success_path() -> Result<String, Report<ApiError, HasObservability>> {
         order::create(9001)
             .with_context("route", "/v1/order")
             .with_note("gateway forwarding to order service")
@@ -432,12 +446,12 @@ impl<'a> Scenario<'a> {
 
 enum ScenarioResult {
     Ok(String),
-    Api(Report<gateway::ApiError>),
-    Order(Report<order::OrderError>),
-    Payment(Report<payment::PaymentError>),
+    Api(Report<gateway::ApiError, HasObservability>),
+    Order(Report<order::OrderError, HasObservability>),
+    Payment(Report<payment::PaymentError, HasObservability>),
 }
 
-fn render_report(label: &str, report: Report<impl std::error::Error + 'static>) {
+fn render_report(label: &str, report: Report<impl std::error::Error + 'static, HasObservability>) {
     let pretty_opts = ReportRenderOptions {
         pretty_indent: PrettyIndent::Spaces(2),
         show_empty_sections: false,

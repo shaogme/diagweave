@@ -4,19 +4,21 @@ use crate::render_impl::{
     DiagnosticIr, build_ctx_and_attachments, build_diag_src_errs_val, build_display_causes,
     build_origin_src_errs_val, build_stack_trace_value,
 };
-use crate::report::{AttachmentValue, ReportTrace, Severity, TraceEvent, TraceEventLevel};
+use crate::report::{AttachmentValue, HasObservability, ReportTrace, TraceEvent};
 
-use super::TracingExporterTrait;
+use super::{EmitStats, PreparedTracingEmission, PreparedTracingLevel, TracingExporterTrait};
 
 /// Implementation of `TracingExporterTrait` that emits reports to the `tracing` system.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TracingExporter;
 
 impl TracingExporterTrait for TracingExporter {
-    fn export_ir(&self, ir: &DiagnosticIr) {
-        let report_level = severity_to_level(ir.metadata.severity);
+    fn export_prepared(&self, emission: PreparedTracingEmission<'_>) -> EmitStats {
+        let stats = emission.stats();
+        let report_level = prepared_level_to_tracing(emission.report_level());
+        let ir = emission.ir();
         let (context_items, attachment_items) = build_ctx_and_attachments(ir.attachments);
-        let stack_trace_value = ir.metadata.stack_trace.map(build_stack_trace_value);
+        let stack_trace_value = ir.metadata.stack_trace().map(build_stack_trace_value);
         let display_causes_value = build_display_causes(ir.display_causes, ir.display_causes_state);
         let origin_source_errors_value = ir
             .origin_source_errors
@@ -41,32 +43,27 @@ impl TracingExporterTrait for TracingExporter {
         );
 
         if let Some(trace) = ir.trace {
-            for (idx, trace_event) in trace.events.iter().enumerate() {
-                let trace_level = trace_level_to_tracing(trace_event.level).unwrap_or(report_level);
-                emit_trace_event(trace_level, idx, trace_event, Some(trace));
+            for prepared_event in emission.trace_events() {
+                emit_trace_event(
+                    prepared_level_to_tracing(prepared_event.level()),
+                    prepared_event.index(),
+                    prepared_event.event(),
+                    Some(trace),
+                );
             }
         }
+
+        stats
     }
 }
 
-fn severity_to_level(severity: Option<Severity>) -> Level {
-    match severity {
-        Some(Severity::Debug) => Level::DEBUG,
-        Some(Severity::Info) => Level::INFO,
-        Some(Severity::Warn) => Level::WARN,
-        Some(Severity::Error) | Some(Severity::Fatal) => Level::ERROR,
-        None => Level::ERROR,
-    }
-}
-
-fn trace_level_to_tracing(level: Option<TraceEventLevel>) -> Option<Level> {
+fn prepared_level_to_tracing(level: PreparedTracingLevel) -> Level {
     match level {
-        Some(TraceEventLevel::Trace) => Some(Level::TRACE),
-        Some(TraceEventLevel::Debug) => Some(Level::DEBUG),
-        Some(TraceEventLevel::Info) => Some(Level::INFO),
-        Some(TraceEventLevel::Warn) => Some(Level::WARN),
-        Some(TraceEventLevel::Error) => Some(Level::ERROR),
-        None => None,
+        PreparedTracingLevel::Trace => Level::TRACE,
+        PreparedTracingLevel::Debug => Level::DEBUG,
+        PreparedTracingLevel::Info => Level::INFO,
+        PreparedTracingLevel::Warn => Level::WARN,
+        PreparedTracingLevel::Error => Level::ERROR,
     }
 }
 
@@ -77,10 +74,11 @@ macro_rules! report_event {
             $level,
             error_message = %$ir.error.message,
             error_type = %$ir.error.r#type,
-            error_code = ?$ir.metadata.error_code,
-            error_severity = ?$ir.metadata.severity,
-            error_category = ?$ir.metadata.category,
-            error_retryable = ?$ir.metadata.retryable,
+            error_code = ?$ir.metadata.error_code(),
+            error_severity = ?$ir.metadata.severity(),
+            error_observability_level = ?$ir.metadata.required_observability_level(),
+            error_category = ?$ir.metadata.category(),
+            error_retryable = ?$ir.metadata.retryable(),
             trace_id = ?$ir.trace.as_ref().and_then(|t| t.context.trace_id.as_ref()),
             span_id = ?$ir.trace.as_ref().and_then(|t| t.context.span_id.as_ref()),
             parent_span_id = ?$ir.trace.as_ref().and_then(|t| t.context.parent_span_id.as_ref()),
@@ -102,7 +100,7 @@ macro_rules! report_event {
 }
 
 struct ReportEventFields<'a, 'ir> {
-    ir: &'a DiagnosticIr<'ir>,
+    ir: &'a DiagnosticIr<'ir, HasObservability>,
     context: &'a [AttachmentValue],
     attachments: &'a [AttachmentValue],
     stack_trace: Option<&'a AttachmentValue>,

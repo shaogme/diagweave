@@ -12,7 +12,9 @@ pub(super) fn is_report_wrapper_type(type_name: &str) -> bool {
         .split_once('<')
         .map(|(prefix, _)| prefix)
         .unwrap_or(report_prefix);
-    type_name.starts_with(report_prefix) && type_name[report_prefix.len()..].starts_with('<')
+    type_name
+        .strip_prefix(report_prefix)
+        .is_some_and(|rest| rest.starts_with('<'))
 }
 
 trait ArenaItemLike: Clone {

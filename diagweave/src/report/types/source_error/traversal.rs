@@ -326,10 +326,14 @@ enum ReportSourceTraversalStrategy {
 }
 
 impl ReportSourceTraversalStrategy {
-    fn source_errors(
+    fn source_errors<E, State>(
         self,
-        report: &crate::report::Report<impl Error + 'static>,
-    ) -> Option<&SourceErrorChain> {
+        report: &crate::report::Report<E, State>,
+    ) -> Option<&SourceErrorChain>
+    where
+        E: Error + 'static,
+        State: crate::report::ObservabilityState,
+    {
         match self {
             Self::Origin => report
                 .diagnostics()
@@ -349,11 +353,15 @@ impl ReportSourceTraversalStrategy {
     }
 }
 
-fn traversal_from_report<'a>(
-    report: &'a crate::report::Report<impl Error + 'static>,
+fn traversal_from_report<'a, E, State>(
+    report: &'a crate::report::Report<E, State>,
     options: CauseCollectOptions,
     strategy: ReportSourceTraversalStrategy,
-) -> ReportSourceErrorTraversalImpl<'a, SourceErrorChain> {
+) -> ReportSourceErrorTraversalImpl<'a, SourceErrorChain>
+where
+    E: Error + 'static,
+    State: crate::report::ObservabilityState,
+{
     let source_errors = strategy.source_errors(report);
     let inner_source = if strategy.include_inner_source() {
         report.inner().source()
@@ -375,19 +383,27 @@ pub struct ReportSourceErrorIter<'a> {
 }
 
 impl<'a> ReportSourceErrorIter<'a> {
-    pub(crate) fn new_origin(
-        report: &'a crate::report::Report<impl Error + 'static>,
+    pub(crate) fn new_origin<E, State>(
+        report: &'a crate::report::Report<E, State>,
         options: CauseCollectOptions,
-    ) -> Self {
+    ) -> Self
+    where
+        E: Error + 'static,
+        State: crate::report::ObservabilityState,
+    {
         Self {
             walk: traversal_from_report(report, options, ReportSourceTraversalStrategy::Origin),
         }
     }
 
-    pub(crate) fn new_diagnostic(
-        report: &'a crate::report::Report<impl Error + 'static>,
+    pub(crate) fn new_diagnostic<E, State>(
+        report: &'a crate::report::Report<E, State>,
         options: CauseCollectOptions,
-    ) -> Self {
+    ) -> Self
+    where
+        E: Error + 'static,
+        State: crate::report::ObservabilityState,
+    {
         Self {
             walk: traversal_from_report(report, options, ReportSourceTraversalStrategy::Diagnostic),
         }

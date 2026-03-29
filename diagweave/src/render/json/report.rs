@@ -1,7 +1,7 @@
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-use crate::report::{CauseCollectOptions, Report, StackTrace};
+use crate::report::{CauseCollectOptions, ObservabilityState, Report, StackTrace};
 
 #[cfg(feature = "trace")]
 use super::attachment;
@@ -35,14 +35,15 @@ where
     close_object(f, pretty, depth, first)
 }
 
-pub(super) fn write_metadata_object<E>(
+pub(super) fn write_metadata_object<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     let metadata = report.metadata();
     let mut first = true;
@@ -51,15 +52,16 @@ where
     close_object(f, pretty, depth, first)
 }
 
-pub(super) fn write_diag_bag<E>(
+pub(super) fn write_diag_bag<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     let mut first = true;
     f.write_char('{')?;
@@ -70,16 +72,17 @@ where
     close_object(f, pretty, depth, first)
 }
 
-fn write_diag_stack<E>(
+fn write_diag_stack<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     first: &mut bool,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     if !options.show_stack_trace_section
         || (!options.show_empty_sections && report.stack_trace().is_none())
@@ -94,16 +97,17 @@ where
     })
 }
 
-fn write_diag_display_causes<E>(
+fn write_diag_display_causes<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     first: &mut bool,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     if !options.show_cause_chains_section
         || (!options.show_empty_sections && !has_display_causes(report))
@@ -115,16 +119,17 @@ where
     })
 }
 
-fn write_diag_origin_sources<E>(
+fn write_diag_origin_sources<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     first: &mut bool,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     if !options.show_cause_chains_section
         || (!options.show_empty_sections && !has_origin_source_errors(report))
@@ -144,16 +149,17 @@ where
     })
 }
 
-fn write_diag_extra_sources<E>(
+fn write_diag_extra_sources<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     first: &mut bool,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     if !options.show_cause_chains_section
         || (!options.show_empty_sections && !has_diag_source_errors(report))
@@ -173,54 +179,71 @@ where
     })
 }
 
-fn has_display_causes<E>(report: &Report<E>) -> bool
+fn has_display_causes<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.display_causes_chain().is_some()
 }
 
-fn has_origin_source_errors<E>(report: &Report<E>) -> bool
+fn has_origin_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.origin_src_err_chain().is_some() || report.inner().source().is_some()
 }
 
-fn has_diag_source_errors<E>(report: &Report<E>) -> bool
+fn has_diag_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.diag_src_err_chain().is_some()
 }
 
-fn write_meta_gov_fields(
+fn write_meta_gov_fields<State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
     first: &mut bool,
-    metadata: &crate::report::ReportMetadata,
-) -> fmt::Result {
+    metadata: &crate::report::ReportMetadata<State>,
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     write_object_field(f, pretty, depth, first, "error_code", |f| {
-        match metadata.error_code.as_ref() {
+        match metadata.error_code() {
             Some(code) => write_error_code(f, code),
             None => f.write_str("null"),
         }
     })?;
     write_object_field(f, pretty, depth, first, "severity", |f| {
-        match metadata.severity {
+        match metadata.severity() {
             Some(severity) => write_json_display(f, &severity),
             None => f.write_str("null"),
         }
     })?;
+    write_object_field(
+        f,
+        pretty,
+        depth,
+        first,
+        "observability_level",
+        |f| match metadata.observability_level() {
+            Some(level) => write_json_display(f, &level),
+            None => f.write_str("null"),
+        },
+    )?;
     write_object_field(f, pretty, depth, first, "category", |f| {
-        match metadata.category.as_deref() {
+        match metadata.category() {
             Some(category) => write_json_string(f, category),
             None => f.write_str("null"),
         }
     })?;
     write_object_field(f, pretty, depth, first, "retryable", |f| {
-        match metadata.retryable {
+        match metadata.retryable() {
             Some(retryable) => write!(f, "{retryable}"),
             None => f.write_str("null"),
         }
@@ -228,13 +251,16 @@ fn write_meta_gov_fields(
     Ok(())
 }
 
-fn write_display_causes(
+fn write_display_causes<State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     let Some(display_causes) = report.display_causes_chain() else {
         return f.write_str("null");
     };
@@ -273,18 +299,19 @@ fn write_display_causes(
     close_object(f, pretty, depth, first)
 }
 
-fn write_source_errors_field<E, F>(
+fn write_source_errors_field<E, State, F>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     hide_report_wrapper_types: bool,
     source_chain: F,
 ) -> fmt::Result
 where
     E: Error + 'static,
-    F: FnOnce(&Report<E>, CauseCollectOptions) -> Option<crate::report::SourceErrorChain>,
+    State: ObservabilityState,
+    F: FnOnce(&Report<E, State>, CauseCollectOptions) -> Option<crate::report::SourceErrorChain>,
 {
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
@@ -371,14 +398,15 @@ fn write_source_errors_chain(
 }
 
 #[cfg(feature = "trace")]
-pub(super) fn write_trace_object<E>(
+pub(super) fn write_trace_object<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<E>,
+    report: &Report<E, State>,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     let Some(trace) = report.trace() else {
         return f.write_str("null");

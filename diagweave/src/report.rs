@@ -22,8 +22,9 @@ use std::sync::OnceLock;
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
-    ErrorCodeIntError, ReportMetadata, Severity, SourceErrorChain, SourceErrorEntry,
-    SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
+    ErrorCodeIntError, HasObservability, MissingObservability, ObservabilityLevel,
+    ObservabilityLevelParseError, ObservabilityState, ReportMetadata, Severity, SourceErrorChain,
+    SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
 };
 pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
 
@@ -33,28 +34,40 @@ pub use trace::{
     TraceEventLevel, TraceId,
 };
 
-use types::{
-    ColdData, DiagnosticBag, EMPTY_REPORT_METADATA, append_source_chain, limit_depth_source_chain,
-};
+use types::{DiagnosticBag, append_source_chain, limit_depth_source_chain};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
-pub struct Report<E> {
+pub struct Report<E, State = MissingObservability> {
     inner: E,
-    cold: Option<Box<ColdData>>,
+    metadata: ReportMetadata<State>,
+    cold: Option<Box<DiagnosticBag>>,
 }
 
-impl<E> Report<E> {
+impl<E> Report<E, MissingObservability> {
     /// Creates a new report.
     pub fn new(inner: E) -> Self {
         #[cfg(feature = "std")]
-        let mut report = Self { inner, cold: None };
+        let mut report = Self {
+            inner,
+            metadata: ReportMetadata::default(),
+            cold: None,
+        };
         #[cfg(not(feature = "std"))]
-        let report = Self { inner, cold: None };
+        let report = Self {
+            inner,
+            metadata: ReportMetadata::default(),
+            cold: None,
+        };
         #[cfg(feature = "std")]
         report.apply_global_context();
         report
     }
+}
 
+impl<E, State> Report<E, State>
+where
+    State: ObservabilityState,
+{
     /// Returns a reference to the inner error.
     pub fn inner(&self) -> &E {
         &self.inner
@@ -164,31 +177,33 @@ impl<E> Report<E> {
     }
 
     /// Returns the metadata associated with the report.
-    pub fn metadata(&self) -> &ReportMetadata {
-        self.cold
-            .as_ref()
-            .map(|cold| &cold.metadata)
-            .unwrap_or(&EMPTY_REPORT_METADATA)
+    pub fn metadata(&self) -> &ReportMetadata<State> {
+        &self.metadata
     }
 
     /// Returns the error code from report metadata, if present.
     pub fn error_code(&self) -> Option<&ErrorCode> {
-        self.metadata().error_code.as_ref()
+        self.metadata().error_code()
     }
 
     /// Returns the severity from report metadata, if present.
     pub fn severity(&self) -> Option<Severity> {
-        self.metadata().severity
+        self.metadata().severity()
+    }
+
+    /// Returns the observability level from report metadata, if present.
+    pub fn observability_level(&self) -> Option<ObservabilityLevel> {
+        self.metadata().observability_level()
     }
 
     /// Returns the category from report metadata, if present.
     pub fn category(&self) -> Option<&str> {
-        self.metadata().category.as_deref()
+        self.metadata().category()
     }
 
     /// Returns whether the report is marked retryable, if present.
     pub fn retryable(&self) -> Option<bool> {
-        self.metadata().retryable
+        self.metadata().retryable()
     }
 
     /// Returns the stack trace associated with the report, if any.
@@ -198,17 +213,17 @@ impl<E> Report<E> {
     }
 
     fn diagnostics(&self) -> Option<&DiagnosticBag> {
-        self.cold.as_ref().map(|cold| &cold.diagnostics)
+        self.cold.as_deref()
     }
 
-    fn ensure_cold(&mut self) -> &mut ColdData {
+    fn ensure_cold(&mut self) -> &mut DiagnosticBag {
         self.cold
-            .get_or_insert_with(|| Box::new(ColdData::default()))
+            .get_or_insert_with(|| Box::new(DiagnosticBag::default()))
             .as_mut()
     }
 
     fn diagnostics_mut(&mut self) -> &mut DiagnosticBag {
-        &mut self.ensure_cold().diagnostics
+        self.ensure_cold()
     }
 
     #[cfg(feature = "std")]
@@ -320,32 +335,56 @@ impl<E> Report<E> {
     }
 
     /// Sets the metadata for the report.
-    pub fn with_metadata(mut self, metadata: ReportMetadata) -> Self {
-        self.ensure_cold().metadata = metadata;
-        self
+    pub fn with_metadata<NewState>(self, metadata: ReportMetadata<NewState>) -> Report<E, NewState>
+    where
+        NewState: ObservabilityState,
+    {
+        let Self { inner, cold, .. } = self;
+        Report {
+            inner,
+            metadata,
+            cold,
+        }
     }
 
     /// Sets the error code for the report.
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        self.ensure_cold().metadata.error_code = Some(error_code.into());
+        self.metadata = self.metadata.with_error_code(error_code);
         self
     }
 
     /// Sets the severity for the report.
     pub fn with_severity(mut self, severity: Severity) -> Self {
-        self.ensure_cold().metadata.severity = Some(severity);
+        self.metadata = self.metadata.with_severity(severity);
         self
+    }
+
+    /// Sets the observability level for the report.
+    pub fn with_observability_level(
+        self,
+        level: ObservabilityLevel,
+    ) -> Report<E, HasObservability> {
+        let Self {
+            inner,
+            metadata,
+            cold,
+        } = self;
+        Report {
+            inner,
+            metadata: metadata.with_observability_level(level),
+            cold,
+        }
     }
 
     /// Sets the category for the report.
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        self.ensure_cold().metadata.category = Some(category.into());
+        self.metadata = self.metadata.with_category(category);
         self
     }
 
     /// Sets whether the error is retryable.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
-        self.ensure_cold().metadata.retryable = Some(retryable);
+        self.metadata = self.metadata.with_retryable(retryable);
         self
     }
 
@@ -428,7 +467,7 @@ impl<E> Report<E> {
     }
 
     /// Wraps the report into another error type.
-    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer>
+    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, MissingObservability>
     where
         Self: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static,
@@ -443,8 +482,16 @@ impl<E> Report<E> {
                 detect_cycle: true,
             }),
         };
-        let Report { inner, cold } = self;
-        let source_report = Report { inner, cold };
+        let Report {
+            inner,
+            metadata,
+            cold,
+        } = self;
+        let source_report = Report {
+            inner,
+            metadata,
+            cold,
+        };
         let source_state = origin_source_errors
             .as_ref()
             .map(SourceErrorChain::state)
@@ -453,26 +500,32 @@ impl<E> Report<E> {
             SourceErrorChain::from_root_source(source_report, origin_source_errors, source_state);
         Report {
             inner: outer,
-            cold: Some(Box::new(ColdData {
-                metadata: ReportMetadata::default(),
-                diagnostics: DiagnosticBag {
-                    #[cfg(feature = "trace")]
-                    trace: None,
-                    stack_trace: None,
-                    attachments: Vec::new(),
-                    display_causes: None,
-                    origin_source_errors: Some(origin_source_errors),
-                    diagnostic_source_errors: None,
-                },
+            metadata: ReportMetadata::default(),
+            cold: Some(Box::new(DiagnosticBag {
+                #[cfg(feature = "trace")]
+                trace: None,
+                stack_trace: None,
+                attachments: Vec::new(),
+                display_causes: None,
+                origin_source_errors: Some(origin_source_errors),
+                diagnostic_source_errors: None,
             })),
         }
     }
 
     /// Wraps the report using a mapping function for the inner error.
-    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer> {
-        let Self { inner, cold } = self;
+    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, State> {
+        let Self {
+            inner,
+            metadata,
+            cold,
+        } = self;
         let outer = map(inner);
-        Report { inner: outer, cold }
+        Report {
+            inner: outer,
+            metadata,
+            cold,
+        }
     }
 
     /// Visits display causes using default collection options.

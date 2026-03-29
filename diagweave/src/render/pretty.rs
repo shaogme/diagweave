@@ -2,7 +2,7 @@ use alloc::vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{AttachmentVisit, Report};
+use crate::report::{AttachmentVisit, ObservabilityState, Report};
 
 use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
 
@@ -28,11 +28,12 @@ impl Pretty {
     }
 }
 
-impl<E> ReportRenderer<E> for Pretty
+impl<E, State> ReportRenderer<E, State> for Pretty
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         let options = self.options;
         render_error_section(
             f,
@@ -101,16 +102,20 @@ fn render_error_section(
     Ok(())
 }
 
-fn render_governance_section(
+fn render_governance_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     let metadata = report.metadata();
-    let has_metadata = metadata.error_code.is_some()
-        || metadata.severity.is_some()
-        || metadata.category.is_some()
-        || metadata.retryable.is_some();
+    let has_metadata = metadata.error_code().is_some()
+        || metadata.severity().is_some()
+        || metadata.observability_level().is_some()
+        || metadata.category().is_some()
+        || metadata.retryable().is_some();
 
     if options.show_governance_section && (options.show_empty_sections || has_metadata) {
         writeln!(f, "Governance:")?;
@@ -124,24 +129,31 @@ fn render_governance_section(
     Ok(())
 }
 
-fn render_gov_meta(
+fn render_gov_meta<State>(
     f: &mut Formatter<'_>,
-    metadata: &crate::report::ReportMetadata,
+    metadata: &crate::report::ReportMetadata<State>,
     indent: PrettyIndent,
-) -> fmt::Result {
-    if let Some(error_code) = metadata.error_code.as_ref() {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
+    if let Some(error_code) = metadata.error_code() {
         write_indent(f, indent)?;
         writeln!(f, "- error_code: {error_code}")?;
     }
-    if let Some(severity) = metadata.severity {
+    if let Some(severity) = metadata.severity() {
         write_indent(f, indent)?;
         writeln!(f, "- severity: {severity}")?;
     }
-    if let Some(category) = metadata.category.as_deref() {
+    if let Some(level) = metadata.observability_level() {
+        write_indent(f, indent)?;
+        writeln!(f, "- observability_level: {level}")?;
+    }
+    if let Some(category) = metadata.category() {
         write_indent(f, indent)?;
         writeln!(f, "- category: {category}")?;
     }
-    if let Some(retryable) = metadata.retryable {
+    if let Some(retryable) = metadata.retryable() {
         write_indent(f, indent)?;
         writeln!(f, "- retryable: {retryable}")?;
     }
@@ -149,11 +161,14 @@ fn render_gov_meta(
 }
 
 #[cfg(feature = "trace")]
-fn render_trace_section(
+fn render_trace_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     let Some(trace) = report.trace() else {
         if options.show_trace_section && options.show_empty_sections {
             writeln!(f, "Trace:")?;
@@ -202,11 +217,14 @@ fn render_trace_section(
     Ok(())
 }
 
-fn render_stack_trace(
+fn render_stack_trace<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     let stack_trace = report.stack_trace();
     let has_stack = stack_trace.is_some();
     if !options.show_stack_trace_section || (!options.show_empty_sections && !has_stack) {
@@ -266,21 +284,27 @@ fn render_raw_stack_trace(
     Ok(())
 }
 
-fn render_attachments(
+fn render_attachments<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     render_context_section(f, report, options)?;
     render_attachment_section(f, report, options)?;
     Ok(())
 }
 
-fn render_context_section(
+fn render_context_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     if !options.show_context_section {
         return Ok(());
     }
@@ -306,11 +330,14 @@ fn render_context_section(
     Ok(())
 }
 
-fn render_attachment_section(
+fn render_attachment_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     if !options.show_attachments_section {
         return Ok(());
     }
@@ -364,11 +391,14 @@ fn render_attachment_section(
     Ok(())
 }
 
-fn render_display_causes(
+fn render_display_causes<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static>,
+    report: &Report<impl Error + 'static, State>,
     options: ReportRenderOptions,
-) -> fmt::Result {
+) -> fmt::Result
+where
+    State: ObservabilityState,
+{
     if !options.show_cause_chains_section {
         return Ok(());
     }
@@ -411,9 +441,9 @@ fn render_display_causes(
     Ok(())
 }
 
-fn render_src_errors_section<E, F>(
+fn render_src_errors_section<E, State, F>(
     f: &mut Formatter<'_>,
-    report: &Report<E>,
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     title: &str,
     hide_report_wrapper_types: bool,
@@ -421,8 +451,9 @@ fn render_src_errors_section<E, F>(
 ) -> fmt::Result
 where
     E: Error + 'static,
+    State: ObservabilityState,
     F: FnOnce(
-        &Report<E>,
+        &Report<E, State>,
         crate::report::CauseCollectOptions,
     ) -> Option<crate::report::SourceErrorChain>,
 {

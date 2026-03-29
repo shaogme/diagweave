@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
-use super::{Report, types::AttachmentValue};
+use super::{ObservabilityState, Report, types::AttachmentValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Severity level for a trace event.
@@ -159,7 +159,10 @@ pub type SpanId = HexId<16>;
 /// Parent span id encoded as 16 lowercase hex chars.
 pub type ParentSpanId = HexId<16>;
 
-impl<E> Report<E> {
+impl<E, State> Report<E, State>
+where
+    State: ObservabilityState,
+{
     /// Returns the trace information associated with the report, if any.
     pub fn trace(&self) -> Option<&ReportTrace> {
         self.diagnostics().and_then(|diag| diag.trace.as_ref())

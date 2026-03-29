@@ -180,6 +180,7 @@ pub struct Report<E> {
 | `report.metadata()` | 返回原始元数据引用 (`&ReportMetadata`) |
 | `report.error_code()` | 读取元数据错误码 (`Option<&ErrorCode>`) |
 | `report.severity()` | 读取元数据严重级别 (`Option<Severity>`) |
+| `report.observability_level()` | 读取元数据观测级别 (`Option<ObservabilityLevel>`) |
 | `report.category()` | 读取元数据分类 (`Option<&str>`) |
 | `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
@@ -187,6 +188,8 @@ pub struct Report<E> {
 | `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
 | `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
 | `report.visit_origin_sources(visit)` | 使用默认选项流式遍历原生传播链 |
+
+`ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`severity()`、`observability_level()`、`category()`、`retryable()` 等接口；写入式组合请使用 `with_error_code(...)`、`with_severity(...)` 这类 builder 方法。
 | `report.visit_origin_src_ext(options, visit)` | 使用自定义选项流式遍历原生传播链 |
 | `report.visit_diag_sources(visit)` | 使用默认选项流式遍历诊断补充链 |
 | `report.visit_diag_srcs_ext(options, visit)` | 使用自定义选项流式遍历诊断补充链 |
@@ -238,6 +241,7 @@ pub struct Report<E> {
 | `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
+| `with_observability_level` | `ObservabilityLevel` | 设置导出侧观测级别 (Trace, Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
 | `with_category` | `impl Into<StaticRefStr>` | 设置错误分类 (用于监控指标) |
 | `with_retryable` | `bool` | 标记该错误是否建议重试 |
@@ -303,7 +307,7 @@ let report = report.capture_stack_trace();
 
 #### 2. `ReportResultExt` (作用于 `Result<T, Report<E>>`)
 所有 `Report` 的链式配置方法均有对应的代理版本：
-- **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
+- **元数据**: `with_severity`, `with_observability_level`, `with_error_code`, `with_category`, `with_retryable`
 - **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
 - **延迟加载**: `context_lazy(key, f)`, `note_lazy(f)` (仅在 Err 时执行闭包)
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
@@ -314,7 +318,7 @@ let report = report.capture_stack_trace();
 #### 3. `ReportResultInspectExt` (作用于 `Result<T, Report<E>>`)
 用于在错误路径做只读查询，避免手动 `match Err(report)`：
 - `report_ref()`、`report_metadata()`、`report_attachments()`
-- `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`
+- `report_error_code()`、`report_severity()`、`report_observability_level()`、`report_category()`、`report_retryable()`
 
 
 ### 用法示例
@@ -323,10 +327,11 @@ use diagweave::prelude::*;
 use std::{fs, io};
 use std::time::SystemTime;
 
-fn process() -> Result<(), Report<io::Error>> {
+fn process() -> Result<(), Report<io::Error, HasObservability>> {
     fs::read_to_string("config.toml")
         .diag_context("file", "config.toml") // 转换并附加 context
         .with_severity(Severity::Warn)
+        .with_observability_level(ObservabilityLevel::Warn)
         .context_lazy("timestamp", || format!("{:?}", SystemTime::now()).into())
         .attach_printable("failed to load system config")?;
         
@@ -398,7 +403,7 @@ use diagweave::render::{
     DiagnosticIrError, DiagnosticIrMetadata,
 };
 use diagweave::report::{
-    Attachment, CauseTraversalState, SourceErrorChain,
+    Attachment, CauseTraversalState, MissingObservability, SourceErrorChain,
 };
 use std::fmt::Display;
 use std::sync::Arc;
@@ -407,11 +412,11 @@ use diagweave::report::ReportTrace;
 #[cfg(feature = "json")]
 use diagweave::StaticRefStr;
 
-pub struct DiagnosticIr<'a> {
+pub struct DiagnosticIr<'a, State = MissingObservability> {
     #[cfg(feature = "json")]
     pub schema_version: StaticRefStr,
     pub error: DiagnosticIrError<'a>,
-    pub metadata: DiagnosticIrMetadata<'a>,
+    pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
@@ -423,6 +428,8 @@ pub struct DiagnosticIr<'a> {
     pub attachment_count: usize,
 }
 ```
+
+`DiagnosticIrMetadata` 现在将内部字段完全私有化，并通过 `error_code()`、`severity()`、`observability_level()`、`category()`、`retryable()`、`stack_trace()` 等接口对外暴露只读访问。
 
 逐项访问上下文/note/payload 由 `Report::visit_attachments(...)` 提供。
 
@@ -454,7 +461,7 @@ println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
 `DiagnosticIr` 会保留 `display_causes` 以及两条 source 链作为结构化数据。在 JSON 契约中，`origin_source_errors.type` 与 `diagnostic_source_errors.type` 都是 `string | null`；其中 `origin` 更常见 `null`，因为自然 `Error::source()` 会有信息损耗。
-IR 与适配器层采用借用优先策略：错误/type/trace 等字符串投影尽量使用 `RefStr<'a>`，因此 `to_tracing_fields()` 和 `to_otel_envelope()` 在热点路径上会减少不必要的 `String` 物化。
+IR 与适配器层采用借用优先策略：错误/type/trace 等字符串投影尽量使用 `RefStr<'a>`，因此 `to_tracing_fields()` 和 `to_otel_envelope()` 在热点路径上会减少不必要的 `String` 物化。OTEL 导出被有意限制在 `DiagnosticIr<'a, HasObservability>` 上。
 
 ### 用法示例
 ```rust
@@ -487,13 +494,14 @@ let json_str = report.json().to_string();
 
 ### 概览
 将诊断报告导出到监控系统或日志流。
-- **`trace` 特性**：提供数据模型与 `TracingExporterTrait` 用于自定义导出器。
-- **`tracing` 特性**：提供针对 `tracing` crate 的默认实现及 `emit_tracing` 快捷方法。
+- **`trace` 特性**：提供数据模型、`PreparedTracingEmission` 以及供自定义导出器使用的 `TracingExporterTrait`。
+- **`tracing` 特性**：提供针对 `tracing` crate 的默认实现，以及 `prepare_tracing` / `emit_tracing` 辅助方法。
 
 ### 核心 API
 | 方法 | 说明 |
 | :--- | :--- |
-| `emit_tracing(&self)` | 在当前 Span 下触发一个 `info` 级别的事件，携带所有 Report 字段作为属性 |
+| `prepare_tracing(&self)` | 仅在 `Report<_, HasObservability>` / `DiagnosticIr<_, HasObservability>` 上可用；会解析最终 report/event level 并返回可直接发射的 typestate 对象 |
+| `emit_tracing(&self)` | `prepare_tracing().emit()` 的便捷封装 |
 | `with_trace_ids(tid, sid)` | 手动绑定追踪上下文 (Trace ID / Span ID)，参数为 `TraceId` / `SpanId` |
 
 ### 导出行为
@@ -510,7 +518,9 @@ use std::fmt;
 #[cfg(feature = "trace")]
 use diagweave::prelude::{SpanId, TraceId};
 #[cfg(feature = "trace")]
-use diagweave::trace::TracingExporterTrait;
+use diagweave::report::ObservabilityLevel;
+#[cfg(feature = "trace")]
+use diagweave::trace::{EmitStats, PreparedTracingEmission, TracingExporterTrait};
 
 #[derive(Debug)]
 struct MyError;
@@ -528,10 +538,14 @@ struct MyCustomExporter;
 
 #[cfg(feature = "trace")]
 impl TracingExporterTrait for MyCustomExporter {
-    fn export_ir(&self, _ir: &diagweave::render::DiagnosticIr) {}
+    fn export_prepared(&self, emission: PreparedTracingEmission<'_>) -> EmitStats {
+        emission.stats()
+    }
 }
 
 let report = Report::new(MyError);
+#[cfg(feature = "trace")]
+let report = report.with_observability_level(ObservabilityLevel::Error);
 
 // 绑定 trace/span ids
 #[cfg(feature = "trace")]
@@ -542,11 +556,13 @@ let report = report.with_trace_ids(
 
 // 使用默认选项导出到当前 tracing span
 #[cfg(feature = "tracing")]
-report.emit_tracing();
+report.prepare_tracing().emit();
 
 // 使用自定义导出器
 #[cfg(feature = "trace")]
-report.emit_tracing_with(&MyCustomExporter);
+report
+    .prepare_tracing()
+    .emit_with(&MyCustomExporter);
 ```
 
 ---
@@ -559,7 +575,7 @@ report.emit_tracing_with(&MyCustomExporter);
 ### 转换 API
 | 方法声明 | 返回类型 | 说明 |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | OTLP 风格的日志/事件记录批次 |
+| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | 仅在 `DiagnosticIr<'a, HasObservability>` 上可用；转换为 OTLP 风格的日志/事件记录批次 |
 | `ir.to_tracing_fields()` | `Vec<TracingField<'a>>`| 转换为 KV 形式的 Tracing/Logging 字段 |
 
 ### OTel 映射逻辑
@@ -651,8 +667,12 @@ use diagweave::prelude::*;
 use std::fmt::{self, Display, Formatter};
 
 struct MyHtmlRenderer;
-impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRenderer {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
+impl<E, State> ReportRenderer<E, State> for MyHtmlRenderer
+where
+    E: Display + std::error::Error + 'static,
+    State: ObservabilityState,
+{
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "<div>{}</div>", report.pretty())
     }
 }
@@ -666,9 +686,9 @@ impl<E: Display + std::error::Error + 'static> ReportRenderer<E> for MyHtmlRende
 | :--- | :--- | :--- |
 | `std` | 是 | 标准库集成 (捕获堆栈、全局注入器等) |
 | `json` | 否 | `Json` 渲染器支持 (依赖 `serde` 和 `serde_json`) |
-| `trace` | 否 | Trace 数据模型 (`ReportTrace` 等) 与可插拔导出器 Trait (`TracingExporterTrait`、`emit_tracing_with`) |
-| `otel` | 否 | OTLP envelope 模型 (`OtelEnvelope`、`OtelEvent`、`OtelValue`) 与 `to_otel_envelope()` |
-| `tracing` | 否 | 默认 `tracing` 生态集成 (`TracingExporter`、`emit_tracing`)。会自动开启 `trace`。 |
+| `trace` | 否 | Trace 数据模型 (`ReportTrace` 等)、预校验后的发射 typestate (`PreparedTracingEmission`) 与可插拔导出器 Trait (`TracingExporterTrait`) |
+| `otel` | 否 | OTLP envelope 模型 (`OtelEnvelope`、`OtelEvent`、`OtelValue`) 与仅在 `DiagnosticIr<'_, HasObservability>` 上提供的 `to_otel_envelope()` |
+| `tracing` | 否 | 默认 `tracing` 生态集成 (`TracingExporter`、`prepare_tracing`、`emit_tracing`)。会自动开启 `trace`。 |
 
 ### 依赖矩阵
 - **`no_std`**: 通过关闭默认特性支持。需要 `alloc`。

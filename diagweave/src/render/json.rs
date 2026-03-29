@@ -11,7 +11,7 @@ mod trace;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-use crate::report::Report;
+use crate::report::{ObservabilityState, Report};
 
 use super::{REPORT_JSON_SCHEMA_VERSION, ReportRenderOptions};
 
@@ -20,13 +20,14 @@ pub(super) use helpers::{
     write_json_display, write_json_string, write_object_field, write_option_string,
 };
 
-pub(super) fn write_json_report<E>(
-    report: &Report<E>,
+pub(super) fn write_json_report<E, State>(
+    report: &Report<E, State>,
     options: ReportRenderOptions,
     f: &mut Formatter<'_>,
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     let pretty = options.json_pretty;
     let mut first = true;
@@ -88,15 +89,17 @@ struct JsonSectionFlags {
     has_diag_bag: bool,
 }
 
-fn calc_section_flags<E>(report: &Report<E>) -> JsonSectionFlags
+fn calc_section_flags<E, State>(report: &Report<E, State>) -> JsonSectionFlags
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     let metadata = report.metadata();
-    let has_metadata = metadata.error_code.is_some()
-        || metadata.severity.is_some()
-        || metadata.category.is_some()
-        || metadata.retryable.is_some();
+    let has_metadata = metadata.error_code().is_some()
+        || metadata.severity().is_some()
+        || metadata.observability_level().is_some()
+        || metadata.category().is_some()
+        || metadata.retryable().is_some();
     let has_context = report
         .attachments()
         .iter()
@@ -117,30 +120,34 @@ where
     }
 }
 
-fn has_stack_trace<E>(report: &Report<E>) -> bool
+fn has_stack_trace<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.stack_trace().is_some()
 }
 
-fn has_display_causes<E>(report: &Report<E>) -> bool
+fn has_display_causes<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.display_causes_chain().is_some()
 }
 
-fn has_origin_source_errors<E>(report: &Report<E>) -> bool
+fn has_origin_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.origin_src_err_chain().is_some() || report.inner().source().is_some()
 }
 
-fn has_diag_source_errors<E>(report: &Report<E>) -> bool
+fn has_diag_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
+    State: ObservabilityState,
 {
     report.diag_src_err_chain().is_some()
 }

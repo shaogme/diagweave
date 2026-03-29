@@ -20,12 +20,6 @@ pub struct SourceErrorEntry {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ColdData {
-    pub(crate) metadata: ReportMetadata,
-    pub(crate) diagnostics: DiagnosticBag,
-}
-
-#[derive(Debug, Default)]
 pub(crate) struct DiagnosticBag {
     #[cfg(feature = "trace")]
     pub(crate) trace: Option<ReportTrace>,
@@ -35,13 +29,6 @@ pub(crate) struct DiagnosticBag {
     pub(crate) origin_source_errors: Option<SourceErrorChain>,
     pub(crate) diagnostic_source_errors: Option<SourceErrorChain>,
 }
-
-pub(crate) const EMPTY_REPORT_METADATA: ReportMetadata = ReportMetadata {
-    error_code: None,
-    severity: None,
-    category: None,
-    retryable: None,
-};
 
 /// Global context information that can be injected into reports.
 #[derive(Debug, Clone, Default)]

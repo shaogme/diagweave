@@ -1,7 +1,9 @@
 use alloc::borrow::Cow;
 use alloc::string::{String, ToString};
 use core::convert::TryFrom;
+use core::error::Error;
 use core::fmt::{self, Display, Formatter};
+use core::str::FromStr;
 use ref_str::StaticRefStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +70,115 @@ impl From<Severity> for Cow<'static, str> {
             Severity::Warn => "warn".into(),
             Severity::Error => "error".into(),
             Severity::Fatal => "fatal".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
+pub enum ObservabilityLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fatal,
+}
+
+impl Display for ObservabilityLevel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            Self::Trace => "trace",
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Warn => "warn",
+            Self::Error => "error",
+            Self::Fatal => "fatal",
+        };
+        write!(f, "{label}")
+    }
+}
+
+/// Parsing error for [`ObservabilityLevel`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObservabilityLevelParseError {
+    invalid_value: String,
+}
+
+impl ObservabilityLevelParseError {
+    /// Returns the original input that failed to parse.
+    pub fn invalid_value(&self) -> &str {
+        self.invalid_value.as_str()
+    }
+}
+
+impl Display for ObservabilityLevelParseError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid observability level: {}", self.invalid_value)
+    }
+}
+
+impl Error for ObservabilityLevelParseError {}
+
+impl ObservabilityLevel {
+    /// Parses a textual observability level.
+    pub fn parse(value: &str) -> Result<Self, ObservabilityLevelParseError> {
+        match value.to_lowercase().as_str() {
+            "trace" => Ok(Self::Trace),
+            "debug" => Ok(Self::Debug),
+            "info" => Ok(Self::Info),
+            "warn" | "warning" => Ok(Self::Warn),
+            "error" => Ok(Self::Error),
+            "fatal" | "critical" => Ok(Self::Fatal),
+            _ => Err(ObservabilityLevelParseError {
+                invalid_value: value.into(),
+            }),
+        }
+    }
+}
+
+impl FromStr for ObservabilityLevel {
+    type Err = ObservabilityLevelParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl TryFrom<&str> for ObservabilityLevel {
+    type Error = ObservabilityLevelParseError;
+
+    fn try_from(value: &str) -> Result<Self, ObservabilityLevelParseError> {
+        Self::parse(value)
+    }
+}
+
+impl TryFrom<String> for ObservabilityLevel {
+    type Error = ObservabilityLevelParseError;
+
+    fn try_from(value: String) -> Result<Self, ObservabilityLevelParseError> {
+        Self::parse(value.as_str())
+    }
+}
+
+impl TryFrom<Cow<'static, str>> for ObservabilityLevel {
+    type Error = ObservabilityLevelParseError;
+
+    fn try_from(value: Cow<'static, str>) -> Result<Self, ObservabilityLevelParseError> {
+        Self::parse(value.as_ref())
+    }
+}
+
+impl From<ObservabilityLevel> for Cow<'static, str> {
+    fn from(value: ObservabilityLevel) -> Self {
+        match value {
+            ObservabilityLevel::Trace => "trace".into(),
+            ObservabilityLevel::Debug => "debug".into(),
+            ObservabilityLevel::Info => "info".into(),
+            ObservabilityLevel::Warn => "warn".into(),
+            ObservabilityLevel::Error => "error".into(),
+            ObservabilityLevel::Fatal => "fatal".into(),
         }
     }
 }

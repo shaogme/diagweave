@@ -8,7 +8,7 @@ mod pretty;
 
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::Report;
+use crate::report::{ObservabilityState, Report};
 
 #[cfg(feature = "trace")]
 pub(crate) use ir::build_ctx_and_attachments;
@@ -40,11 +40,12 @@ impl Json {
 }
 
 #[cfg(feature = "json")]
-impl<E> ReportRenderer<E> for Json
+impl<E, State> ReportRenderer<E, State> for Json
 where
     E: core::error::Error + Display + 'static,
+    State: ObservabilityState,
 {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         json::write_json_report(report, self.options, f)
     }
 }
@@ -112,8 +113,11 @@ impl Default for ReportRenderOptions {
 }
 
 /// A trait for rendering a diagnostic report using a specific format.
-pub trait ReportRenderer<E> {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result;
+pub trait ReportRenderer<E, State>
+where
+    State: ObservabilityState,
+{
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result;
 }
 
 /// A renderer that produces a compact display of the report.
@@ -121,30 +125,36 @@ pub trait ReportRenderer<E> {
 pub struct Compact;
 
 /// A report that has been paired with a renderer, implementing `Display`.
-pub struct RenderedReport<'a, E, R> {
-    report: &'a Report<E>,
+pub struct RenderedReport<'a, E, State, R>
+where
+    State: ObservabilityState,
+{
+    report: &'a Report<E, State>,
     renderer: R,
 }
 
-impl<E> Report<E> {
+impl<E, State> Report<E, State>
+where
+    State: ObservabilityState,
+{
     /// Returns a renderer for compact output.
-    pub fn compact(&self) -> RenderedReport<'_, E, Compact> {
+    pub fn compact(&self) -> RenderedReport<'_, E, State, Compact> {
         self.render(Compact)
     }
 
     /// Returns a renderer for pretty-printed output.
-    pub fn pretty(&self) -> RenderedReport<'_, E, Pretty> {
+    pub fn pretty(&self) -> RenderedReport<'_, E, State, Pretty> {
         self.render(Pretty::default())
     }
 
     /// Returns a renderer for JSON output.
     #[cfg(feature = "json")]
-    pub fn json(&self) -> RenderedReport<'_, E, Json> {
+    pub fn json(&self) -> RenderedReport<'_, E, State, Json> {
         self.render(Json::default())
     }
 
     /// Returns a renderer for the given renderer implementation.
-    pub fn render<R>(&self, renderer: R) -> RenderedReport<'_, E, R> {
+    pub fn render<R>(&self, renderer: R) -> RenderedReport<'_, E, State, R> {
         RenderedReport {
             report: self,
             renderer,
@@ -152,18 +162,20 @@ impl<E> Report<E> {
     }
 }
 
-impl<E> ReportRenderer<E> for Compact
+impl<E, State> ReportRenderer<E, State> for Compact
 where
     E: Display,
+    State: ObservabilityState,
 {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> fmt::Result {
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{report}")
     }
 }
 
-impl<E, R> Display for RenderedReport<'_, E, R>
+impl<E, State, R> Display for RenderedReport<'_, E, State, R>
 where
-    R: ReportRenderer<E>,
+    State: ObservabilityState,
+    R: ReportRenderer<E, State>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.renderer.render(self.report, f)

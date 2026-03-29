@@ -22,13 +22,244 @@ pub use attachment::*;
 pub use error::*;
 pub use source_error::*;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub struct ReportMetadata {
-    pub error_code: Option<ErrorCode>,
-    pub severity: Option<Severity>,
-    pub category: Option<StaticRefStr>,
-    pub retryable: Option<bool>,
+mod observability_state {
+    pub trait Sealed {}
+}
+
+/// Typestate marker for reports whose observability level has not been set.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct MissingObservability;
+
+/// Typestate marker for reports whose observability level is present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HasObservability {
+    level: ObservabilityLevel,
+}
+
+impl HasObservability {
+    /// Creates a present observability typestate with the specified level.
+    pub const fn new(level: ObservabilityLevel) -> Self {
+        Self { level }
+    }
+
+    /// Returns the guaranteed observability level carried by this typestate.
+    pub const fn level(self) -> ObservabilityLevel {
+        self.level
+    }
+}
+
+impl observability_state::Sealed for MissingObservability {}
+impl observability_state::Sealed for HasObservability {}
+
+/// Typestate contract for report observability metadata.
+pub trait ObservabilityState: observability_state::Sealed + Clone + Copy + PartialEq + Eq {
+    /// Returns the observability level represented by the typestate, if any.
+    fn observability_level(self) -> Option<ObservabilityLevel>;
+}
+
+impl ObservabilityState for MissingObservability {
+    fn observability_level(self) -> Option<ObservabilityLevel> {
+        None
+    }
+}
+
+impl ObservabilityState for HasObservability {
+    fn observability_level(self) -> Option<ObservabilityLevel> {
+        Some(self.level)
+    }
+}
+
+#[cfg(feature = "json")]
+impl serde::Serialize for MissingObservability {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_none()
+    }
+}
+
+#[cfg(feature = "json")]
+impl<'de> serde::Deserialize<'de> for MissingObservability {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Option::<ObservabilityLevel>::deserialize(deserializer)? {
+            None => Ok(Self),
+            Some(_) => Err(serde::de::Error::custom(
+                "expected null observability typestate",
+            )),
+        }
+    }
+}
+
+#[cfg(feature = "json")]
+impl serde::Serialize for HasObservability {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.level.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "json")]
+impl<'de> serde::Deserialize<'de> for HasObservability {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        ObservabilityLevel::deserialize(deserializer).map(Self::new)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize))]
+/// Report metadata carried alongside a diagnostic.
+///
+/// When the `json` feature is enabled, deserialization is intentionally exposed
+/// only for [`ReportMetadata<HasObservability>`]. The default
+/// [`ReportMetadata`] alias keeps the stricter missing-observability typestate
+/// and does not implement `Deserialize`.
+pub struct ReportMetadata<State = MissingObservability> {
+    error_code: Option<ErrorCode>,
+    severity: Option<Severity>,
+    observability_level: State,
+    category: Option<StaticRefStr>,
+    retryable: Option<bool>,
+}
+
+impl Default for ReportMetadata<MissingObservability> {
+    fn default() -> Self {
+        Self {
+            error_code: None,
+            severity: None,
+            observability_level: MissingObservability,
+            category: None,
+            retryable: None,
+        }
+    }
+}
+
+impl<State> ReportMetadata<State>
+where
+    State: ObservabilityState,
+{
+    /// Returns the error code, if present.
+    pub fn error_code(&self) -> Option<&ErrorCode> {
+        self.error_code.as_ref()
+    }
+
+    /// Returns the severity, if present.
+    pub fn severity(&self) -> Option<Severity> {
+        self.severity
+    }
+
+    /// Returns the observability level, if present.
+    pub fn observability_level(&self) -> Option<ObservabilityLevel> {
+        self.observability_level.observability_level()
+    }
+
+    /// Returns whether the metadata carries an observability level.
+    pub fn has_observability_level(&self) -> bool {
+        self.observability_level().is_some()
+    }
+
+    /// Returns the category, if present.
+    pub fn category(&self) -> Option<&str> {
+        self.category.as_deref()
+    }
+
+    /// Returns whether the metadata marks the diagnostic as retryable, if present.
+    pub fn retryable(&self) -> Option<bool> {
+        self.retryable
+    }
+
+    pub(crate) fn observability_state(&self) -> State {
+        self.observability_level
+    }
+
+    pub(crate) fn map_observability<NewState>(
+        self,
+        observability_level: NewState,
+    ) -> ReportMetadata<NewState>
+    where
+        NewState: ObservabilityState,
+    {
+        ReportMetadata {
+            error_code: self.error_code,
+            severity: self.severity,
+            observability_level,
+            category: self.category,
+            retryable: self.retryable,
+        }
+    }
+
+    /// Returns metadata with the specified error code.
+    pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
+        self.error_code = Some(error_code.into());
+        self
+    }
+
+    /// Returns metadata with the specified severity.
+    pub fn with_severity(mut self, severity: Severity) -> Self {
+        self.severity = Some(severity);
+        self
+    }
+
+    /// Replaces the metadata typestate with a concrete observability level.
+    pub fn with_observability_level(
+        self,
+        level: ObservabilityLevel,
+    ) -> ReportMetadata<HasObservability> {
+        self.map_observability(HasObservability::new(level))
+    }
+
+    /// Returns metadata with the specified category.
+    pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
+        self.category = Some(category.into());
+        self
+    }
+
+    /// Returns metadata with the specified retryability flag.
+    pub fn with_retryable(mut self, retryable: bool) -> Self {
+        self.retryable = Some(retryable);
+        self
+    }
+}
+
+impl ReportMetadata<HasObservability> {
+    /// Returns the guaranteed observability level.
+    pub const fn required_observability_level(&self) -> ObservabilityLevel {
+        self.observability_level.level()
+    }
+}
+
+#[cfg(feature = "json")]
+impl<'de> serde::Deserialize<'de> for ReportMetadata<HasObservability> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct ReportMetadataWire {
+            error_code: Option<ErrorCode>,
+            severity: Option<Severity>,
+            observability_level: ObservabilityLevel,
+            category: Option<StaticRefStr>,
+            retryable: Option<bool>,
+        }
+
+        let wire = ReportMetadataWire::deserialize(deserializer)?;
+        Ok(ReportMetadata {
+            error_code: wire.error_code,
+            severity: wire.severity,
+            observability_level: HasObservability::new(wire.observability_level),
+            category: wire.category,
+            retryable: wire.retryable,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

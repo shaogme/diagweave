@@ -81,11 +81,12 @@ impl Error for LoopError {
 #[derive(Clone, Copy)]
 pub struct TinyRenderer;
 
-impl<E> ReportRenderer<E> for TinyRenderer
+impl<E, State> ReportRenderer<E, State> for TinyRenderer
 where
     E: Display,
+    State: ObservabilityState,
 {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "tiny: {}", report.inner())
     }
 }

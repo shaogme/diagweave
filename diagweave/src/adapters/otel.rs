@@ -9,7 +9,7 @@ use crate::render_impl::{
     DiagnosticIr, build_diag_src_errs_val, build_display_causes, build_error_value,
     build_origin_src_errs_val, build_stack_trace_value,
 };
-use crate::report::{Attachment, AttachmentValue, ErrorCode};
+use crate::report::{Attachment, AttachmentValue, ErrorCode, HasObservability};
 
 fn error_code_otel_value(value: &ErrorCode) -> OtelValue<'_> {
     match value {
@@ -145,8 +145,11 @@ pub fn report_otel_schema() -> &'static str {
     include_str!("../../schemas/report-otel-v0.1.0.schema.json")
 }
 
-impl<'a> DiagnosticIr<'a> {
+impl<'a> DiagnosticIr<'a, HasObservability> {
     /// Converts the diagnostic IR to OpenTelemetry log/event records.
+    ///
+    /// This API is only available once the diagnostic IR carries an explicit
+    /// observability level in its typestate.
     pub fn to_otel_envelope(&'a self) -> OtelEnvelope<'a> {
         let mut records = Vec::new();
         records.push(self.otel_report_ev());
@@ -158,11 +161,8 @@ impl<'a> DiagnosticIr<'a> {
     }
 
     fn otel_report_ev(&'a self) -> OtelEvent<'a> {
-        let severity = self
-            .metadata
-            .severity
-            .unwrap_or(crate::report::Severity::Error);
         let mut attributes = self.otel_base_attrs();
+        let report_level = self.metadata.required_observability_level();
 
         #[cfg(feature = "trace")]
         self.otel_trace_corr(&mut attributes);
@@ -176,8 +176,8 @@ impl<'a> DiagnosticIr<'a> {
             body: Some(otel_value_from_owned(build_error_value(&self.error))),
             timestamp_unix_nano: None,
             observed_timestamp_unix_nano: None,
-            severity_text: Some(severity_ref(severity)),
-            severity_number: Some(severity_to_otel_number(severity)),
+            severity_text: Some(observability_level_ref(report_level)),
+            severity_number: Some(observability_level_to_otel_number(report_level)),
             trace_id,
             span_id,
             trace_flags,
@@ -202,22 +202,22 @@ impl<'a> DiagnosticIr<'a> {
             key: "exception.message".into(),
             value: OtelValue::String(self.error.message.to_string_owned().into()),
         });
-        if let Some(stack_trace) = &self.metadata.stack_trace {
+        if let Some(stack_trace) = self.metadata.stack_trace() {
             attributes.push(OtelAttribute {
                 key: "exception.stacktrace".into(),
                 value: otel_value_from_owned(build_stack_trace_value(stack_trace)),
             });
         }
-        if let Some(error_code) = &self.metadata.error_code {
+        if let Some(error_code) = self.metadata.error_code() {
             attributes.push(Self::otel_error_code_attr("error.code", error_code));
         }
-        if let Some(category) = self.metadata.category {
+        if let Some(category) = self.metadata.category() {
             attributes.push(OtelAttribute {
                 key: "error.category".into(),
                 value: OtelValue::String(category.into()),
             });
         }
-        if let Some(retryable) = self.metadata.retryable {
+        if let Some(retryable) = self.metadata.retryable() {
             attributes.push(OtelAttribute {
                 key: "error.retryable".into(),
                 value: OtelValue::Bool(retryable),
@@ -328,16 +328,17 @@ impl<'a> DiagnosticIr<'a> {
             Some(t) => t,
             None => return,
         };
-        let fallback_severity = self
-            .metadata
-            .severity
-            .unwrap_or(crate::report::Severity::Error);
+        let fallback_level = self.metadata.required_observability_level();
         for trace_event in trace.events.iter() {
             let (severity_text, severity_number) = match trace_event.level {
-                Some(level) => severity_for_trace_level(level),
+                Some(level) => {
+                    let severity_text = trace_event_level_ref(level);
+                    let severity_number = trace_event_level_to_otel_number(level);
+                    (Some(severity_text), Some(severity_number))
+                }
                 None => (
-                    severity_ref(fallback_severity),
-                    severity_to_otel_number(fallback_severity),
+                    Some(observability_level_ref(fallback_level)),
+                    Some(observability_level_to_otel_number(fallback_level)),
                 ),
             };
             let mut attributes = trace_event
@@ -365,8 +366,8 @@ impl<'a> DiagnosticIr<'a> {
                 body: None,
                 timestamp_unix_nano: trace_event.timestamp_unix_nano,
                 observed_timestamp_unix_nano: None,
-                severity_text: Some(severity_text),
-                severity_number: Some(severity_number),
+                severity_text,
+                severity_number,
                 trace_id: trace.context.trace_id.as_ref().map(|v| v.as_ref().into()),
                 span_id: trace.context.span_id.as_ref().map(|v| v.as_ref().into()),
                 trace_flags: trace.context.flags,
@@ -376,34 +377,47 @@ impl<'a> DiagnosticIr<'a> {
     }
 }
 
-fn severity_to_otel_number(severity: crate::report::Severity) -> u8 {
-    match severity {
-        crate::report::Severity::Debug => 5,
-        crate::report::Severity::Info => 9,
-        crate::report::Severity::Warn => 13,
-        crate::report::Severity::Error => 17,
-        crate::report::Severity::Fatal => 21,
+fn observability_level_to_otel_number(level: crate::report::ObservabilityLevel) -> u8 {
+    match level {
+        crate::report::ObservabilityLevel::Trace => 1,
+        crate::report::ObservabilityLevel::Debug => 5,
+        crate::report::ObservabilityLevel::Info => 9,
+        crate::report::ObservabilityLevel::Warn => 13,
+        crate::report::ObservabilityLevel::Error => 17,
+        crate::report::ObservabilityLevel::Fatal => 21,
     }
 }
 
 #[cfg(feature = "trace")]
-fn severity_for_trace_level(level: crate::report::TraceEventLevel) -> (ref_str::StaticRefStr, u8) {
+fn trace_event_level_to_otel_number(level: crate::report::TraceEventLevel) -> u8 {
     match level {
-        crate::report::TraceEventLevel::Trace => ("trace".into(), 1),
-        crate::report::TraceEventLevel::Debug => ("debug".into(), 5),
-        crate::report::TraceEventLevel::Info => ("info".into(), 9),
-        crate::report::TraceEventLevel::Warn => ("warn".into(), 13),
-        crate::report::TraceEventLevel::Error => ("error".into(), 17),
+        crate::report::TraceEventLevel::Trace => 1,
+        crate::report::TraceEventLevel::Debug => 5,
+        crate::report::TraceEventLevel::Info => 9,
+        crate::report::TraceEventLevel::Warn => 13,
+        crate::report::TraceEventLevel::Error => 17,
     }
 }
 
-fn severity_ref(severity: crate::report::Severity) -> ref_str::StaticRefStr {
-    match severity {
-        crate::report::Severity::Debug => "debug".into(),
-        crate::report::Severity::Info => "info".into(),
-        crate::report::Severity::Warn => "warn".into(),
-        crate::report::Severity::Error => "error".into(),
-        crate::report::Severity::Fatal => "fatal".into(),
+#[cfg(feature = "trace")]
+fn trace_event_level_ref(level: crate::report::TraceEventLevel) -> ref_str::StaticRefStr {
+    match level {
+        crate::report::TraceEventLevel::Trace => "trace".into(),
+        crate::report::TraceEventLevel::Debug => "debug".into(),
+        crate::report::TraceEventLevel::Info => "info".into(),
+        crate::report::TraceEventLevel::Warn => "warn".into(),
+        crate::report::TraceEventLevel::Error => "error".into(),
+    }
+}
+
+fn observability_level_ref(level: crate::report::ObservabilityLevel) -> ref_str::StaticRefStr {
+    match level {
+        crate::report::ObservabilityLevel::Trace => "trace".into(),
+        crate::report::ObservabilityLevel::Debug => "debug".into(),
+        crate::report::ObservabilityLevel::Info => "info".into(),
+        crate::report::ObservabilityLevel::Warn => "warn".into(),
+        crate::report::ObservabilityLevel::Error => "error".into(),
+        crate::report::ObservabilityLevel::Fatal => "fatal".into(),
     }
 }
 

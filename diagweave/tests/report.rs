@@ -18,6 +18,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     let report = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_severity(Severity::Warn)
+        .with_observability_level(ObservabilityLevel::Warn)
         .with_category("auth")
         .with_retryable(false)
         .attach("request_id", "tx-100")
@@ -44,12 +45,12 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
     );
     assert!(report.attachments()[2].as_payload().is_some());
     assert_eq!(
-        report.metadata().error_code.as_ref().map(|c| c.to_string()),
+        report.metadata().error_code().map(ToString::to_string),
         Some("AUTH.INVALID_TOKEN".to_owned())
     );
     assert_eq!(
         report.to_string(),
-        "auth invalid token [code=AUTH.INVALID_TOKEN, severity=warn, category=auth, retryable=false, request_id=tx-100, check authorization flow, auth_payload={attempt: 2, method: password} (application/json)]"
+        "auth invalid token [code=AUTH.INVALID_TOKEN, severity=warn, observability_level=warn, category=auth, retryable=false, request_id=tx-100, check authorization flow, auth_payload={attempt: 2, method: password} (application/json)]"
     );
 }
 
@@ -270,6 +271,7 @@ fn pretty_output_is_structured() {
     let pretty = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_severity(Severity::Error)
+        .with_observability_level(ObservabilityLevel::Error)
         .attach("request_id", "tx-pretty")
         .attach_payload(
             "raw_body",
@@ -286,7 +288,7 @@ fn pretty_output_is_structured() {
     assert!(pretty.contains("Context:"));
     assert!(pretty.contains("Attachments:"));
     assert!(pretty.contains("Source Errors:"));
-    assert!(pretty.contains("auth invalid token [code=AUTH.INVALID_TOKEN, severity=error, request_id=tx-pretty, raw_body=<3 bytes> (application/octet-stream)]"));
+    assert!(pretty.contains("auth invalid token [code=AUTH.INVALID_TOKEN, severity=error, observability_level=error, request_id=tx-pretty, raw_body=<3 bytes> (application/octet-stream)]"));
 }
 
 #[test]
@@ -412,6 +414,7 @@ fn report_field_getters_are_exposed() {
     let report = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_severity(Severity::Warn)
+        .with_observability_level(ObservabilityLevel::Warn)
         .with_category("auth")
         .with_retryable(false);
 
@@ -420,6 +423,7 @@ fn report_field_getters_are_exposed() {
         Some("AUTH.INVALID_TOKEN".to_owned())
     );
     assert_eq!(report.severity(), Some(Severity::Warn));
+    assert_eq!(report.observability_level(), Some(ObservabilityLevel::Warn));
     assert_eq!(report.category(), Some("auth"));
     assert_eq!(report.retryable(), Some(false));
 }

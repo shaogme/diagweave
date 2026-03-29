@@ -2,13 +2,14 @@ use std::fmt::{Display, Formatter};
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, Diagnostic, Error, GlobalContext, ParentSpanId, Pretty, Report,
-    ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, SpanId, TraceEvent,
-    TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector, set, union,
+    AttachmentValue, Compact, Diagnostic, Error, GlobalContext, HasObservability,
+    ObservabilityLevel, ObservabilityState, ParentSpanId, Pretty, Report, ReportRenderOptions,
+    ReportRenderer, ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute,
+    TraceEventLevel, TraceId, register_global_injector, set, union,
 };
-use diagweave::render::{DiagnosticIr, Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
+use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
-use diagweave::trace::TracingExporterTrait;
+use diagweave::trace::{EmitStats, PreparedTracingEmission, TracingExporterTrait};
 
 // =============================================================================
 // Part 1: Error Definitions using diagweave macros
@@ -102,8 +103,12 @@ union! {
 
 struct EmojiRenderer;
 
-impl<E: Display> ReportRenderer<E> for EmojiRenderer {
-    fn render(&self, report: &Report<E>, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl<E, State> ReportRenderer<E, State> for EmojiRenderer
+where
+    E: Display,
+    State: ObservabilityState,
+{
+    fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "🚨 ERROR: {} 🚨", report.inner())
     }
 }
@@ -111,15 +116,19 @@ impl<E: Display> ReportRenderer<E> for EmojiRenderer {
 struct ConsoleExporter;
 
 impl TracingExporterTrait for ConsoleExporter {
-    fn export_ir(&self, ir: &DiagnosticIr) {
+    fn export_prepared(&self, emission: PreparedTracingEmission<'_>) -> EmitStats {
+        let stats = emission.stats();
+        let ir = emission.ir();
         println!(
-            "[Tracing Exporter] error={}, severity={:?}, context_count={}, attachment_count={}, stack_trace={}",
+            "[Tracing Exporter] error={}, severity={:?}, observability_level={:?}, context_count={}, attachment_count={}, stack_trace={}",
             ir.error.message,
-            ir.metadata.severity,
+            ir.metadata.severity(),
+            ir.metadata.required_observability_level(),
             ir.context_count,
             ir.attachment_count,
-            ir.metadata.stack_trace.is_some()
+            ir.metadata.stack_trace().is_some()
         );
+        stats
     }
 }
 
@@ -156,18 +165,27 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     Ok(())
 }
 
-fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
+fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasObservability>> {
     let trace_id = match TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736") {
         Ok(v) => v,
-        Err(()) => return Err(Report::new(ApiError::retry_later(1))),
+        Err(()) => {
+            return Err(Report::new(ApiError::retry_later(1))
+                .with_observability_level(ObservabilityLevel::Error));
+        }
     };
     let span_id = match SpanId::new("00f067aa0ba902b7") {
         Ok(v) => v,
-        Err(()) => return Err(Report::new(ApiError::retry_later(1))),
+        Err(()) => {
+            return Err(Report::new(ApiError::retry_later(1))
+                .with_observability_level(ObservabilityLevel::Error));
+        }
     };
     let parent_span_id = match ParentSpanId::new("1111111111111111") {
         Ok(v) => v,
-        Err(()) => return Err(Report::new(ApiError::retry_later(1))),
+        Err(()) => {
+            return Err(Report::new(ApiError::retry_later(1))
+                .with_observability_level(ObservabilityLevel::Error));
+        }
     };
 
     service_layer(1001)
@@ -179,6 +197,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
         )
         .with_error_code("ERR_AUTH_001")
         .with_severity(Severity::Fatal)
+        .with_observability_level(ObservabilityLevel::Error)
         .with_category("auth")
         .with_retryable(false)
         .with_trace_ids(trace_id, span_id)
@@ -206,9 +225,10 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError>> {
     Ok("Success".into())
 }
 
-fn print_render_outputs<E>(report: &Report<E>)
+fn print_render_outputs<E, State>(report: &Report<E, State>)
 where
     E: std::error::Error + Display + 'static,
+    State: ObservabilityState,
 {
     println!("--- Compact Rendering ---");
     println!("{}\n", report.render(Compact));
@@ -256,9 +276,10 @@ where
     println!("{}\n", report.render(Pretty::new(lean_pretty_opts)));
 }
 
-fn print_display_causes<E>(report: &Report<E>)
+fn print_display_causes<E, State>(report: &Report<E, State>)
 where
     E: Display + std::error::Error + 'static,
+    State: ObservabilityState,
 {
     println!("Display Causes:");
     if report.display_causes().is_empty() {
@@ -282,9 +303,10 @@ where
     }
 }
 
-fn print_source_errors<E>(report: &Report<E>)
+fn print_source_errors<E, State>(report: &Report<E, State>)
 where
     E: std::error::Error + 'static,
+    State: ObservabilityState,
 {
     println!("Origin Source Errors:");
     if report.iter_origin_sources().next().is_none() {
@@ -333,15 +355,22 @@ where
     }
 }
 
-fn print_ir_and_adapters<E>(report: &Report<E>)
+fn print_ir_and_adapters<E>(report: &Report<E, HasObservability>)
 where
     E: std::error::Error + Display + 'static,
 {
     let ir = report.to_diagnostic_ir();
     println!("--- Diagnostic IR (Metadata) ---");
-    println!("Error Code: {:?}", ir.metadata.error_code);
-    println!("Severity: {:?}", ir.metadata.severity);
-    println!("StackTrace Present: {}", ir.metadata.stack_trace.is_some());
+    println!("Error Code: {:?}", ir.metadata.error_code());
+    println!("Severity: {:?}", ir.metadata.severity());
+    println!(
+        "Observability Level: {:?}",
+        ir.metadata.observability_level()
+    );
+    println!(
+        "StackTrace Present: {}",
+        ir.metadata.stack_trace().is_some()
+    );
 
     print_display_causes(report);
     print_source_errors(report);
@@ -352,7 +381,7 @@ where
     println!("Tracing fields count: {}", tracing_fields.len());
     println!("OTel records: {}\n", otel.records.len());
 
-    report.emit_tracing_with(&ConsoleExporter);
+    report.prepare_tracing().emit_with(&ConsoleExporter);
     println!();
 }
 

@@ -6,8 +6,7 @@ use crate::render_impl::{
     DiagnosticIr, build_ctx_and_attachments, build_diag_src_errs_val, build_display_causes,
     build_error_value, build_origin_src_errs_val, build_stack_trace_value, build_trace_value,
 };
-use crate::report::AttachmentValue;
-use crate::report::ErrorCode;
+use crate::report::{AttachmentValue, ErrorCode, ObservabilityState};
 
 fn error_code_value(value: &ErrorCode) -> AttachmentValue {
     match value {
@@ -25,7 +24,10 @@ pub struct TracingField<'a> {
     pub value: AttachmentValue,
 }
 
-impl DiagnosticIr<'_> {
+impl<State> DiagnosticIr<'_, State>
+where
+    State: ObservabilityState,
+{
     /// Converts the diagnostic IR to a vector of tracing fields.
     pub fn to_tracing_fields(&self) -> Vec<TracingField<'_>> {
         let mut fields = Vec::new();
@@ -48,25 +50,31 @@ impl DiagnosticIr<'_> {
     }
 
     fn tracing_meta(&self, fields: &mut Vec<TracingField<'_>>) {
-        if let Some(error_code) = &self.metadata.error_code {
+        if let Some(error_code) = self.metadata.error_code() {
             fields.push(TracingField {
                 key: "metadata.error_code".into(),
                 value: error_code_value(error_code),
             });
         }
-        if let Some(severity) = self.metadata.severity {
+        if let Some(severity) = self.metadata.severity() {
             fields.push(TracingField {
                 key: "metadata.severity".into(),
                 value: AttachmentValue::String(severity.to_string().into()),
             });
         }
-        if let Some(category) = self.metadata.category {
+        if let Some(level) = self.metadata.observability_level() {
+            fields.push(TracingField {
+                key: "metadata.observability_level".into(),
+                value: AttachmentValue::String(level.to_string().into()),
+            });
+        }
+        if let Some(category) = self.metadata.category() {
             fields.push(TracingField {
                 key: "metadata.category".into(),
                 value: AttachmentValue::String(category.to_string().into()),
             });
         }
-        if let Some(retryable) = self.metadata.retryable {
+        if let Some(retryable) = self.metadata.retryable() {
             fields.push(TracingField {
                 key: "metadata.retryable".into(),
                 value: AttachmentValue::Bool(retryable),
@@ -91,7 +99,7 @@ impl DiagnosticIr<'_> {
     }
 
     fn tracing_stack_causes(&self, fields: &mut Vec<TracingField<'_>>) {
-        if let Some(stack_trace) = &self.metadata.stack_trace {
+        if let Some(stack_trace) = self.metadata.stack_trace() {
             fields.push(TracingField {
                 key: "diagnostic_bag.stack_trace".into(),
                 value: build_stack_trace_value(stack_trace),

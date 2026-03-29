@@ -2,6 +2,8 @@ mod report_common;
 #[cfg(feature = "otel")]
 use diagweave::adapters::OtelValue;
 use diagweave::prelude::*;
+#[cfg(feature = "tracing")]
+use diagweave::trace::{EmitStats, PreparedTracingEmission, PreparedTracingLevel};
 use report_common::*;
 #[cfg(feature = "tracing")]
 use std::cell::Cell;
@@ -42,12 +44,14 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_metadata(ReportMetadata {
-            error_code: Some("API.UNAUTHORIZED".into()),
-            severity: Some(Severity::Error),
-            category: Some("auth".into()),
-            retryable: Some(false),
-        })
+        .with_metadata(
+            ReportMetadata::default()
+                .with_error_code("API.UNAUTHORIZED")
+                .with_severity(Severity::Error)
+                .with_observability_level(ObservabilityLevel::Error)
+                .with_category("auth")
+                .with_retryable(false),
+        )
         .attach("request_id", "req-ir-1")
         .attach_printable("note")
         .attach_payload(
@@ -65,8 +69,13 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     assert_eq!(ir.error.message, "api unauthorized");
     assert!(!ir.error.r#type.is_empty());
     assert_eq!(
-        ir.metadata.error_code.as_ref().map(|c| c.to_string()),
+        ir.metadata.error_code().map(ToString::to_string),
         Some("API.UNAUTHORIZED".to_owned())
+    );
+    assert_eq!(ir.metadata.severity(), Some(Severity::Error));
+    assert_eq!(
+        ir.metadata.observability_level(),
+        Some(ObservabilityLevel::Error)
     );
     assert_eq!(ir.context_count, 1);
     assert_eq!(ir.attachment_count, 2);
@@ -158,7 +167,9 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         )
         .attach_payload("nested", nested, Some("application/json"));
 
-    let ir = report.to_diagnostic_ir();
+    let ir = report
+        .to_diagnostic_ir()
+        .with_observability_level(ObservabilityLevel::Error);
     let otel = ir.to_otel_envelope();
     let record = otel.records.first().expect("report record should exist");
     assert_eq!(record.name, "exception");
@@ -215,6 +226,23 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
     }
 }
 
+#[cfg(feature = "otel")]
+#[test]
+fn diagnostic_ir_requires_explicit_observability_upgrade_before_otel() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized);
+    let ir = report
+        .to_diagnostic_ir()
+        .with_observability_level(ObservabilityLevel::Warn);
+    let otel = ir.to_otel_envelope();
+    let record = otel.records.first().expect("report record should exist");
+
+    assert_eq!(record.name, "exception");
+    assert_eq!(record.severity_text.as_deref(), Some("warn"));
+    assert_eq!(record.severity_number, Some(13));
+}
+
 #[cfg(all(feature = "trace", feature = "otel"))]
 #[test]
 fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
@@ -223,6 +251,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     let report = Report::new(ApiError::Unauthorized)
         .with_error_code("API.UNAUTHORIZED")
         .with_severity(Severity::Error)
+        .with_observability_level(ObservabilityLevel::Error)
         .with_retryable(false);
     let report = report
         .with_trace_ids(
@@ -271,6 +300,11 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         tracing_fields
             .iter()
             .any(|f| f.key == "metadata.error_code")
+    );
+    assert!(
+        tracing_fields
+            .iter()
+            .any(|f| f.key == "metadata.observability_level")
     );
     let trace_value = tracing_fields
         .iter()
@@ -356,6 +390,7 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_severity(Severity::Error)
+        .with_observability_level(ObservabilityLevel::Error)
         .with_trace_ids(
             TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
             SpanId::new("00f067aa0ba902b7").unwrap(),
@@ -397,7 +432,7 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
 
 #[cfg(feature = "tracing")]
 #[test]
-fn tracing_exporter_trait_receives_diagnostic_ir() {
+fn tracing_exporter_trait_receives_prepared_emission() {
     let _guard = init_test();
 
     // use std::cell::Cell; moved to top
@@ -409,12 +444,15 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
     }
 
     impl TracingExporterTrait for CountingExporter<'_> {
-        fn export_ir(&self, ir: &DiagnosticIr) {
+        fn export_prepared(&self, emission: PreparedTracingEmission<'_>) -> EmitStats {
+            let stats = emission.stats();
+            let ir = emission.ir();
             self.calls.set(self.calls.get() + 1);
             self.stack_trace_present
-                .set(ir.metadata.stack_trace.is_some());
+                .set(ir.metadata.stack_trace().is_some());
             self.trace_events
                 .set(ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0));
+            stats
         }
     }
 
@@ -428,6 +466,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
     };
 
     let report = Report::new(ApiError::Unauthorized)
+        .with_observability_level(ObservabilityLevel::Info)
         .with_trace_ids(
             TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
             SpanId::new("00f067aa0ba902b7").unwrap(),
@@ -443,7 +482,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
         })
         .with_display_cause("fallback path");
 
-    report.emit_tracing_with(&exporter);
+    report.prepare_tracing().emit_with(&exporter);
     assert_eq!(calls.get(), 1);
     assert!(!stack_trace_present.get());
     assert_eq!(trace_events.get(), 1);
@@ -451,7 +490,7 @@ fn tracing_exporter_trait_receives_diagnostic_ir() {
 
 #[cfg(all(feature = "tracing", feature = "std"))]
 #[test]
-fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
+fn tracing_exporter_uses_report_observability_level_for_unset_trace_events_and_carries_context() {
     let _guard = init_test();
 
     #[derive(Default)]
@@ -501,6 +540,7 @@ fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_severity(Severity::Error)
+        .with_observability_level(ObservabilityLevel::Error)
         .with_trace_ids(
             TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
             SpanId::new("00f067aa0ba902b7").unwrap(),
@@ -516,7 +556,13 @@ fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
             attributes: vec![],
         });
 
-    report.emit_tracing();
+    let prepared = report.prepare_tracing();
+    assert_eq!(prepared.report_level(), PreparedTracingLevel::Error);
+    assert_eq!(
+        prepared.trace_event_level(0),
+        Some(PreparedTracingLevel::Error)
+    );
+    prepared.emit();
 
     let events = events.lock().expect("events lock");
     let trace_event = events
@@ -560,5 +606,65 @@ fn tracing_exporter_defaults_trace_event_level_and_carries_context() {
             .fields
             .get("trace_flags")
             .is_some_and(|v| v.contains("1"))
+    );
+}
+
+#[cfg(all(feature = "tracing", feature = "std"))]
+#[test]
+fn diagnostic_ir_requires_explicit_observability_upgrade_before_tracing() {
+    let _guard = init_test();
+
+    #[derive(Clone)]
+    struct EventCollector {
+        events: Arc<Mutex<Vec<()>>>,
+    }
+
+    impl<S> Layer<S> for EventCollector
+    where
+        S: Subscriber + for<'a> LookupSpan<'a>,
+    {
+        fn on_event(&self, _event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+            self.events.lock().expect("event lock").push(());
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let collector = EventCollector {
+        events: Arc::clone(&events),
+    };
+    let subscriber = tracing_subscriber::registry().with(collector);
+    let _subscriber = tracing::subscriber::set_default(subscriber);
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_trace_ids(
+            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::new("00f067aa0ba902b7").unwrap(),
+        )
+        .with_trace_event(TraceEvent {
+            name: "db.query".into(),
+            level: Some(TraceEventLevel::Info),
+            timestamp_unix_nano: Some(1_713_337_100_000_000_000),
+            attributes: vec![],
+        });
+
+    let ir = report
+        .to_diagnostic_ir()
+        .with_observability_level(ObservabilityLevel::Warn);
+    let prepared = ir.prepare_tracing();
+    assert_eq!(prepared.report_level(), PreparedTracingLevel::Warn);
+
+    let captured_events = events.lock().expect("events lock");
+    assert!(
+        captured_events.is_empty(),
+        "preparing a tracing emission should not emit eagerly"
+    );
+    drop(captured_events);
+
+    prepared.emit();
+
+    let captured_events = events.lock().expect("events lock");
+    assert!(
+        !captured_events.is_empty(),
+        "upgraded diagnostic ir should emit through tracing"
     );
 }

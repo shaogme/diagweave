@@ -18,7 +18,8 @@ use crate::report::SourceErrorChain;
 #[cfg(any(feature = "trace", feature = "otel"))]
 use crate::report::StackFrame;
 use crate::report::{
-    Attachment, AttachmentVisit, CauseCollectOptions, CauseTraversalState, ErrorCode, Report,
+    Attachment, AttachmentVisit, CauseCollectOptions, CauseTraversalState, ErrorCode,
+    HasObservability, MissingObservability, ObservabilityLevel, ObservabilityState, Report,
     Severity, StackTrace,
 };
 #[cfg(feature = "trace")]
@@ -100,20 +101,95 @@ impl serde::Serialize for DiagnosticIrMessage<'_> {
 }
 
 /// Metadata information in the Diagnostic Intermediate Representation.
-pub struct DiagnosticIrMetadata<'a> {
-    pub error_code: Option<&'a ErrorCode>,
-    pub severity: Option<Severity>,
-    pub category: Option<&'a str>,
-    pub retryable: Option<bool>,
-    pub stack_trace: Option<&'a StackTrace>,
+#[derive(Clone)]
+pub struct DiagnosticIrMetadata<'a, State = MissingObservability> {
+    error_code: Option<&'a ErrorCode>,
+    severity: Option<Severity>,
+    observability_level: State,
+    category: Option<&'a str>,
+    retryable: Option<bool>,
+    stack_trace: Option<&'a StackTrace>,
+}
+
+impl<'a, State> DiagnosticIrMetadata<'a, State>
+where
+    State: ObservabilityState,
+{
+    /// Returns the error code, if present.
+    pub fn error_code(&self) -> Option<&'a ErrorCode> {
+        self.error_code
+    }
+
+    /// Returns the severity, if present.
+    pub fn severity(&self) -> Option<Severity> {
+        self.severity
+    }
+
+    /// Returns the observability level, if present.
+    pub fn observability_level(&self) -> Option<ObservabilityLevel> {
+        self.observability_level.observability_level()
+    }
+
+    /// Returns whether the metadata carries an observability level.
+    pub fn has_observability_level(&self) -> bool {
+        self.observability_level().is_some()
+    }
+
+    /// Returns the category, if present.
+    pub fn category(&self) -> Option<&'a str> {
+        self.category
+    }
+
+    /// Returns whether the diagnostic is retryable, if present.
+    pub fn retryable(&self) -> Option<bool> {
+        self.retryable
+    }
+
+    /// Returns the attached stack trace, if present.
+    pub fn stack_trace(&self) -> Option<&'a StackTrace> {
+        self.stack_trace
+    }
+
+    fn map_observability<NewState>(
+        self,
+        observability_level: NewState,
+    ) -> DiagnosticIrMetadata<'a, NewState>
+    where
+        NewState: ObservabilityState,
+    {
+        DiagnosticIrMetadata {
+            error_code: self.error_code,
+            severity: self.severity,
+            observability_level,
+            category: self.category,
+            retryable: self.retryable,
+            stack_trace: self.stack_trace,
+        }
+    }
+
+    /// Replaces the metadata typestate with a concrete observability level.
+    pub fn with_observability_level(
+        self,
+        level: ObservabilityLevel,
+    ) -> DiagnosticIrMetadata<'a, HasObservability> {
+        self.map_observability(HasObservability::new(level))
+    }
+}
+
+impl DiagnosticIrMetadata<'_, HasObservability> {
+    /// Returns the guaranteed observability level.
+    pub const fn required_observability_level(&self) -> ObservabilityLevel {
+        self.observability_level.level()
+    }
 }
 
 /// A platform-agnostic intermediate representation of a diagnostic report.
-pub struct DiagnosticIr<'a> {
+#[derive(Clone)]
+pub struct DiagnosticIr<'a, State = MissingObservability> {
     #[cfg(feature = "json")]
     pub schema_version: StaticRefStr,
     pub error: DiagnosticIrError<'a>,
-    pub metadata: DiagnosticIrMetadata<'a>,
+    pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub attachments: &'a [Attachment],
@@ -125,9 +201,52 @@ pub struct DiagnosticIr<'a> {
     pub attachment_count: usize,
 }
 
-impl<E> Report<E> {
+impl<'a> DiagnosticIr<'a, MissingObservability> {
+    /// Replaces the IR typestate with a concrete observability level.
+    pub fn with_observability_level(
+        self,
+        level: ObservabilityLevel,
+    ) -> DiagnosticIr<'a, HasObservability> {
+        let Self {
+            #[cfg(feature = "json")]
+            schema_version,
+            error,
+            metadata,
+            #[cfg(feature = "trace")]
+            trace,
+            attachments,
+            display_causes,
+            display_causes_state,
+            origin_source_errors,
+            diagnostic_source_errors,
+            context_count,
+            attachment_count,
+        } = self;
+
+        DiagnosticIr {
+            #[cfg(feature = "json")]
+            schema_version,
+            error,
+            metadata: metadata.with_observability_level(level),
+            #[cfg(feature = "trace")]
+            trace,
+            attachments,
+            display_causes,
+            display_causes_state,
+            origin_source_errors,
+            diagnostic_source_errors,
+            context_count,
+            attachment_count,
+        }
+    }
+}
+
+impl<E, State> Report<E, State>
+where
+    State: ObservabilityState,
+{
     /// Builds the renderer-agnostic diagnostic intermediate representation.
-    pub fn to_diagnostic_ir(&self) -> DiagnosticIr<'_>
+    pub fn to_diagnostic_ir(&self) -> DiagnosticIr<'_, State>
     where
         E: Error + Display + 'static,
     {
@@ -144,10 +263,11 @@ impl<E> Report<E> {
                 r#type: any::type_name::<E>().into(),
             },
             metadata: DiagnosticIrMetadata {
-                error_code: metadata.error_code.as_ref(),
-                severity: metadata.severity,
-                category: metadata.category.as_deref(),
-                retryable: metadata.retryable,
+                error_code: metadata.error_code(),
+                severity: metadata.severity(),
+                observability_level: metadata.observability_state(),
+                category: metadata.category(),
+                retryable: metadata.retryable(),
                 stack_trace: self.stack_trace(),
             },
             #[cfg(feature = "trace")]
@@ -163,7 +283,10 @@ impl<E> Report<E> {
     }
 }
 
-fn count_attachments(report: &Report<impl Error + 'static>) -> (usize, usize) {
+fn count_attachments<State>(report: &Report<impl Error + 'static, State>) -> (usize, usize)
+where
+    State: ObservabilityState,
+{
     let mut context = 0usize;
     let mut attachments = 0usize;
     match report.visit_attachments(|item| {

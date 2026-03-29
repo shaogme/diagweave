@@ -109,6 +109,14 @@ pub struct CauseTraversalState {
     pub cycle_detected: bool,
 }
 
+impl CauseTraversalState {
+    /// Merges traversal flags from another state.
+    pub fn merge_from(&mut self, other: Self) {
+        self.truncated |= other.truncated;
+        self.cycle_detected |= other.cycle_detected;
+    }
+}
+
 /// A streamed attachment item for visitor-based traversal.
 pub enum AttachmentVisit<'a> {
     Context {

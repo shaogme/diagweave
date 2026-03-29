@@ -24,6 +24,52 @@ impl PathSeenErrorAddrs {
     }
 }
 
+struct WalkerCore {
+    options: CauseCollectOptions,
+    path_seen: PathSeenErrorAddrs,
+    state: CauseTraversalState,
+}
+
+impl WalkerCore {
+    fn new(options: CauseCollectOptions) -> Self {
+        Self {
+            options,
+            path_seen: PathSeenErrorAddrs::default(),
+            state: CauseTraversalState::default(),
+        }
+    }
+
+    fn options(&self) -> CauseCollectOptions {
+        self.options
+    }
+
+    fn state(&self) -> CauseTraversalState {
+        self.state
+    }
+
+    fn allow_depth(&mut self, depth: usize) -> bool {
+        if depth >= self.options.max_depth {
+            self.state.truncated = true;
+            false
+        } else {
+            true
+        }
+    }
+
+    fn allow_cycle(&mut self, depth: usize, addr: ErrorIdentity) -> bool {
+        if self.options.detect_cycle && !self.path_seen.enter(depth, addr) {
+            self.state.cycle_detected = true;
+            false
+        } else {
+            true
+        }
+    }
+
+    fn mark_truncated(&mut self) {
+        self.state.truncated = true;
+    }
+}
+
 trait SourceArenaChain: Sized {
     type Item;
 
@@ -81,9 +127,7 @@ where
 {
     chain: &'a C,
     stack: Vec<ChainFrame<'a>>,
-    options: CauseCollectOptions,
-    path_seen: PathSeenErrorAddrs,
-    state: CauseTraversalState,
+    core: WalkerCore,
 }
 
 impl<'a, C> ChainWalker<'a, C>
@@ -98,26 +142,21 @@ where
         Self {
             chain,
             stack,
-            options,
-            path_seen: PathSeenErrorAddrs::default(),
-            state: CauseTraversalState::default(),
+            core: WalkerCore::new(options),
         }
     }
 
     fn state(&self) -> CauseTraversalState {
-        self.state
+        self.core.state()
     }
 
     fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
         loop {
-            let options = self.options;
+            let options = self.core.options();
             let (item, depth, source_ids) = {
-                let Some(frame) = self.stack.last_mut() else {
-                    return None;
-                };
+                let frame = self.stack.last_mut()?;
 
-                if frame.depth >= options.max_depth {
-                    self.state.truncated = true;
+                if !self.core.allow_depth(frame.depth) {
                     self.stack.pop();
                     continue;
                 }
@@ -132,12 +171,10 @@ where
                     continue;
                 };
 
-                if options.detect_cycle
-                    && !self
-                        .path_seen
-                        .enter(frame.depth, error_addr(C::error_ref(item)))
+                if !self
+                    .core
+                    .allow_cycle(frame.depth, error_addr(C::error_ref(item)))
                 {
-                    self.state.cycle_detected = true;
                     continue;
                 }
 
@@ -148,7 +185,7 @@ where
                 if depth + 1 < options.max_depth {
                     self.stack.push(ChainFrame::new(source_ids, depth + 1));
                 } else {
-                    self.state.truncated = true;
+                    self.core.mark_truncated();
                 }
             }
 
@@ -160,9 +197,7 @@ where
 struct ErrorWalker<'a> {
     current: Option<&'a (dyn Error + 'static)>,
     depth: usize,
-    options: CauseCollectOptions,
-    path_seen: PathSeenErrorAddrs,
-    state: CauseTraversalState,
+    core: WalkerCore,
 }
 
 impl<'a> ErrorWalker<'a> {
@@ -170,30 +205,26 @@ impl<'a> ErrorWalker<'a> {
         Self {
             current,
             depth: 0,
-            options,
-            path_seen: PathSeenErrorAddrs::default(),
-            state: CauseTraversalState::default(),
+            core: WalkerCore::new(options),
         }
     }
 
     fn state(&self) -> CauseTraversalState {
-        self.state
+        self.core.state()
     }
 
     fn next_visit<C>(&mut self) -> Option<SourceErrorVisit<'a, C>>
     where
         C: SourceArenaChain,
     {
-        if self.depth >= self.options.max_depth {
-            self.state.truncated = true;
+        if !self.core.allow_depth(self.depth) {
             self.current = None;
             return None;
         }
 
         let error = self.current.take()?;
 
-        if self.options.detect_cycle && !self.path_seen.enter(self.depth, error_addr(error)) {
-            self.state.cycle_detected = true;
+        if !self.core.allow_cycle(self.depth, error_addr(error)) {
             return None;
         }
 
@@ -206,11 +237,6 @@ impl<'a> ErrorWalker<'a> {
             depth: entry_depth,
         })
     }
-}
-
-fn merge_state(base: &mut CauseTraversalState, next: CauseTraversalState) {
-    base.truncated |= next.truncated;
-    base.cycle_detected |= next.cycle_detected;
 }
 
 struct ReportSourceErrorTraversalImpl<'a, C>
@@ -241,14 +267,7 @@ where
     }
 
     fn state(&self) -> CauseTraversalState {
-        let mut state = self.finished_state;
-        if let Some(walk) = self.chain_walk.as_ref() {
-            merge_state(&mut state, walk.state());
-        }
-        if let Some(walk) = self.error_walk.as_ref() {
-            merge_state(&mut state, walk.state());
-        }
-        state
+        self.finished_state
     }
 
     fn next_entry(&mut self) -> Option<SourceErrorEntry> {
@@ -260,17 +279,19 @@ where
     fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
         if let Some(chain_walk) = self.chain_walk.as_mut() {
             if let Some(visit) = chain_walk.next_visit() {
+                self.finished_state.merge_from(chain_walk.state());
                 return Some(visit);
             }
-            merge_state(&mut self.finished_state, chain_walk.state());
+            self.finished_state.merge_from(chain_walk.state());
             self.chain_walk = None;
         }
 
         if let Some(error_walk) = self.error_walk.as_mut() {
             if let Some(visit) = error_walk.next_visit::<C>() {
+                self.finished_state.merge_from(error_walk.state());
                 return Some(visit);
             }
-            merge_state(&mut self.finished_state, error_walk.state());
+            self.finished_state.merge_from(error_walk.state());
             self.error_walk = None;
         }
 
@@ -305,10 +326,10 @@ enum ReportSourceTraversalStrategy {
 }
 
 impl ReportSourceTraversalStrategy {
-    fn source_errors<'a>(
+    fn source_errors(
         self,
-        report: &'a crate::report::Report<impl Error + 'static>,
-    ) -> Option<&'a SourceErrorChain> {
+        report: &crate::report::Report<impl Error + 'static>,
+    ) -> Option<&SourceErrorChain> {
         match self {
             Self::Origin => report
                 .diagnostics()

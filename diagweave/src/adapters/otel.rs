@@ -9,7 +9,7 @@ use crate::render_impl::{
     DiagnosticIr, build_diag_src_errs_val, build_display_causes, build_error_value,
     build_origin_src_errs_val, build_stack_trace_value,
 };
-use crate::report::{Attachment, AttachmentValue, ErrorCode, HasObservability};
+use crate::report::{Attachment, AttachmentValue, ErrorCode, HasSeverity};
 
 fn error_code_otel_value(value: &ErrorCode) -> OtelValue<'_> {
     match value {
@@ -145,11 +145,11 @@ pub fn report_otel_schema() -> &'static str {
     include_str!("../../schemas/report-otel-v0.1.0.schema.json")
 }
 
-impl<'a> DiagnosticIr<'a, HasObservability> {
+impl<'a> DiagnosticIr<'a, HasSeverity> {
     /// Converts the diagnostic IR to OpenTelemetry log/event records.
     ///
     /// This API is only available once the diagnostic IR carries an explicit
-    /// observability level in its typestate.
+    /// severity in its typestate.
     pub fn to_otel_envelope(&'a self) -> OtelEnvelope<'a> {
         let mut records = Vec::new();
         records.push(self.otel_report_ev());
@@ -162,7 +162,7 @@ impl<'a> DiagnosticIr<'a, HasObservability> {
 
     fn otel_report_ev(&'a self) -> OtelEvent<'a> {
         let mut attributes = self.otel_base_attrs();
-        let report_level = self.metadata.required_observability_level();
+        let report_level = self.metadata.required_severity();
 
         #[cfg(feature = "trace")]
         self.otel_trace_corr(&mut attributes);
@@ -176,8 +176,8 @@ impl<'a> DiagnosticIr<'a, HasObservability> {
             body: Some(otel_value_from_owned(build_error_value(&self.error))),
             timestamp_unix_nano: None,
             observed_timestamp_unix_nano: None,
-            severity_text: Some(observability_level_ref(report_level)),
-            severity_number: Some(observability_level_to_otel_number(report_level)),
+            severity_text: Some(severity_ref(report_level)),
+            severity_number: Some(severity_to_otel_number(report_level)),
             trace_id,
             span_id,
             trace_flags,
@@ -328,7 +328,7 @@ impl<'a> DiagnosticIr<'a, HasObservability> {
             Some(t) => t,
             None => return,
         };
-        let fallback_level = self.metadata.required_observability_level();
+        let fallback_level = self.metadata.required_severity();
         for trace_event in trace.events.iter() {
             let (severity_text, severity_number) = match trace_event.level {
                 Some(level) => {
@@ -337,8 +337,8 @@ impl<'a> DiagnosticIr<'a, HasObservability> {
                     (Some(severity_text), Some(severity_number))
                 }
                 None => (
-                    Some(observability_level_ref(fallback_level)),
-                    Some(observability_level_to_otel_number(fallback_level)),
+                    Some(severity_ref(fallback_level)),
+                    Some(severity_to_otel_number(fallback_level)),
                 ),
             };
             let mut attributes = trace_event
@@ -377,14 +377,14 @@ impl<'a> DiagnosticIr<'a, HasObservability> {
     }
 }
 
-fn observability_level_to_otel_number(level: crate::report::ObservabilityLevel) -> u8 {
+fn severity_to_otel_number(level: crate::report::Severity) -> u8 {
     match level {
-        crate::report::ObservabilityLevel::Trace => 1,
-        crate::report::ObservabilityLevel::Debug => 5,
-        crate::report::ObservabilityLevel::Info => 9,
-        crate::report::ObservabilityLevel::Warn => 13,
-        crate::report::ObservabilityLevel::Error => 17,
-        crate::report::ObservabilityLevel::Fatal => 21,
+        crate::report::Severity::Trace => 1,
+        crate::report::Severity::Debug => 5,
+        crate::report::Severity::Info => 9,
+        crate::report::Severity::Warn => 13,
+        crate::report::Severity::Error => 17,
+        crate::report::Severity::Fatal => 21,
     }
 }
 
@@ -410,14 +410,14 @@ fn trace_event_level_ref(level: crate::report::TraceEventLevel) -> ref_str::Stat
     }
 }
 
-fn observability_level_ref(level: crate::report::ObservabilityLevel) -> ref_str::StaticRefStr {
+fn severity_ref(level: crate::report::Severity) -> ref_str::StaticRefStr {
     match level {
-        crate::report::ObservabilityLevel::Trace => "trace".into(),
-        crate::report::ObservabilityLevel::Debug => "debug".into(),
-        crate::report::ObservabilityLevel::Info => "info".into(),
-        crate::report::ObservabilityLevel::Warn => "warn".into(),
-        crate::report::ObservabilityLevel::Error => "error".into(),
-        crate::report::ObservabilityLevel::Fatal => "fatal".into(),
+        crate::report::Severity::Trace => "trace".into(),
+        crate::report::Severity::Debug => "debug".into(),
+        crate::report::Severity::Info => "info".into(),
+        crate::report::Severity::Warn => "warn".into(),
+        crate::report::Severity::Error => "error".into(),
+        crate::report::Severity::Fatal => "fatal".into(),
     }
 }
 

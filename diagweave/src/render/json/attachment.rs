@@ -2,7 +2,7 @@ use super::{
     close_array, close_object, write_array_item_prefix, write_json_display, write_json_string,
     write_object_field, write_option_string,
 };
-use crate::report::{AttachmentValue, AttachmentVisit, ObservabilityState, Report};
+use crate::report::{AttachmentValue, AttachmentVisit, SeverityState, Report};
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
@@ -14,7 +14,7 @@ pub(super) fn write_context_array<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let mut first = true;
     f.write_char('[')?;
@@ -36,7 +36,7 @@ pub(super) fn write_attachments_array<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let mut first = true;
     f.write_char('[')?;

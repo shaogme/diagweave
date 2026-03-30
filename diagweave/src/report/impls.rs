@@ -4,12 +4,12 @@ use core::fmt::{self, Debug, Display, Formatter};
 use crate::report::Attachment;
 use crate::report::SourceErrorChain;
 
-use super::{ObservabilityState, Report};
+use super::{SeverityState, Report};
 
 impl<E, State> Debug for Report<E, State>
 where
     E: Debug,
-    State: ObservabilityState + Debug,
+    State: SeverityState + Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         #[cfg(debug_assertions)]
@@ -62,14 +62,13 @@ where
 impl<E, State> Display for Report<E, State>
 where
     E: Display,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.inner())?;
         let metadata = self.metadata();
         let has_metadata = metadata.error_code().is_some()
             || metadata.severity().is_some()
-            || metadata.observability_level().is_some()
             || metadata.category().is_some()
             || metadata.retryable().is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
@@ -98,7 +97,7 @@ where
 impl<E, State> Report<E, State>
 where
     E: Display,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn fmt_metadata_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
         let metadata = self.metadata();
@@ -115,9 +114,6 @@ where
         }
         if let Some(sev) = metadata.severity() {
             write_field("severity", &sev)?;
-        }
-        if let Some(level) = metadata.observability_level() {
-            write_field("observability_level", &level)?;
         }
         if let Some(cat) = metadata.category() {
             write_field("category", &cat)?;
@@ -185,7 +181,7 @@ where
 impl<E, State> Error for Report<E, State>
 where
     E: Error + 'static,
-    State: ObservabilityState + Debug,
+    State: SeverityState + Debug,
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()

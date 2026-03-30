@@ -1,7 +1,7 @@
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-use crate::report::{CauseCollectOptions, ObservabilityState, Report, StackTrace};
+use crate::report::{CauseCollectOptions, SeverityState, Report, StackTrace};
 
 #[cfg(feature = "trace")]
 use super::attachment;
@@ -43,7 +43,7 @@ pub(super) fn write_metadata_object<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let metadata = report.metadata();
     let mut first = true;
@@ -61,7 +61,7 @@ pub(super) fn write_diag_bag<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let mut first = true;
     f.write_char('{')?;
@@ -82,7 +82,7 @@ fn write_diag_stack<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_stack_trace_section
         || (!options.show_empty_sections && report.stack_trace().is_none())
@@ -107,7 +107,7 @@ fn write_diag_display_causes<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_cause_chains_section
         || (!options.show_empty_sections && !has_display_causes(report))
@@ -129,7 +129,7 @@ fn write_diag_origin_sources<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_cause_chains_section
         || (!options.show_empty_sections && !has_origin_source_errors(report))
@@ -159,7 +159,7 @@ fn write_diag_extra_sources<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_cause_chains_section
         || (!options.show_empty_sections && !has_diag_source_errors(report))
@@ -182,7 +182,7 @@ where
 fn has_display_causes<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.display_causes_chain().is_some()
 }
@@ -190,7 +190,7 @@ where
 fn has_origin_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.origin_src_err_chain().is_some() || report.inner().source().is_some()
 }
@@ -198,7 +198,7 @@ where
 fn has_diag_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.diag_src_err_chain().is_some()
 }
@@ -211,7 +211,7 @@ fn write_meta_gov_fields<State>(
     metadata: &crate::report::ReportMetadata<State>,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     write_object_field(f, pretty, depth, first, "error_code", |f| {
         match metadata.error_code() {
@@ -225,17 +225,6 @@ where
             None => f.write_str("null"),
         }
     })?;
-    write_object_field(
-        f,
-        pretty,
-        depth,
-        first,
-        "observability_level",
-        |f| match metadata.observability_level() {
-            Some(level) => write_json_display(f, &level),
-            None => f.write_str("null"),
-        },
-    )?;
     write_object_field(f, pretty, depth, first, "category", |f| {
         match metadata.category() {
             Some(category) => write_json_string(f, category),
@@ -259,7 +248,7 @@ fn write_display_causes<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let Some(display_causes) = report.display_causes_chain() else {
         return f.write_str("null");
@@ -310,7 +299,7 @@ fn write_source_errors_field<E, State, F>(
 ) -> fmt::Result
 where
     E: Error + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
     F: FnOnce(&Report<E, State>, CauseCollectOptions) -> Option<crate::report::SourceErrorChain>,
 {
     let traversal_options = CauseCollectOptions {
@@ -406,7 +395,7 @@ pub(super) fn write_trace_object<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let Some(trace) = report.trace() else {
         return f.write_str("null");

@@ -271,7 +271,7 @@ pub enum MyError {
 常用链式增强（`Result<T, Report<E>>`）：
 
 - `with_context`、`with_note`、`with_payload`
-- `with_error_code`、`with_severity`、`with_observability_level`、`with_category`、`with_retryable`
+- `with_error_code`、`with_severity`、`with_category`、`with_retryable`
 - `with_display_cause`、`with_display_causes`、`with_diag_src_err`
 - `context_lazy`、`note_lazy`
 - `wrap`、`wrap_with`
@@ -283,7 +283,7 @@ pub enum MyError {
 `Report<E>` 的读取接口：
 
 - `attachments()`、`metadata()`、`stack_trace()`
-- `error_code()`、`severity()`、`observability_level()`、`category()`、`retryable()`
+- `error_code()`、`severity()`、`category()`、`retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
 - `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`
 - `visit_diag_sources(visit)` / `visit_diag_srcs_ext(options, visit)`
@@ -298,7 +298,7 @@ Note 附件读取：
 `Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
 
 - `report_ref()`、`report_metadata()`、`report_attachments()`
-- `report_error_code()`、`report_severity()`、`report_observability_level()`、`report_category()`、`report_retryable()`
+- `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`
 
 `ErrorCode` 设计：
 
@@ -361,7 +361,7 @@ IR 与适配器：
 ```rust
 # use diagweave::prelude::set;
 # use diagweave::render::ReportRenderOptions;
-# use diagweave::report::{ObservabilityLevel, Report};
+# use diagweave::report::{Severity, Report};
 # set! {
 #     AuthError = {
 #         #[display("invalid token")]
@@ -369,7 +369,7 @@ IR 与适配器：
 #     }
 # }
 # let report = Report::new(AuthError::invalid_token())
-#     .with_observability_level(ObservabilityLevel::Error);
+#     .with_severity(Severity::Error);
 
 let ir = report.to_diagnostic_ir();
 #[cfg(feature = "trace")]
@@ -380,7 +380,7 @@ assert!(!tracing_fields.is_empty());
 let otel = ir.to_otel_envelope();
 ```
 
-`DiagnosticIr` 以及 tracing/OTEL 适配器输出现在优先采用借用视图：能借用 report 内部字符串时使用 `RefStr<'a>`，只有在无法安全借用的投影值上才物化 owned 字符串。OTEL 导出被有意限制在 `DiagnosticIr<'_, HasObservability>` 上，因此在生成 OTEL envelope 之前必须先显式设置 `observability_level`。
+`DiagnosticIr` 以及 tracing/OTEL 适配器输出现在优先采用借用视图：能借用 report 内部字符串时使用 `RefStr<'a>`，只有在无法安全借用的投影值上才物化 owned 字符串。OTEL 导出被有意限制在 `DiagnosticIr<'_, HasSeverity>` 上，因此在生成 OTEL envelope 之前必须先显式设置 `severity`。
 
 `DiagnosticIr` 主要包含稳定的头部/元数据和聚合计数：
 
@@ -456,7 +456,7 @@ tracing 导出：
 #[cfg(feature = "tracing")]
 {
 #    use diagweave::prelude::set;
-#    use diagweave::report::{ObservabilityLevel, Report};
+#    use diagweave::report::{Severity, Report};
 #    set! {
 #        AuthError = {
 #            #[display("invalid token")]
@@ -464,7 +464,7 @@ tracing 导出：
 #        }
 #    }
 #    let report = Report::new(AuthError::invalid_token())
-#        .with_observability_level(ObservabilityLevel::Error);
+#        .with_severity(Severity::Error);
     report.emit_tracing();
 }
 ```
@@ -504,7 +504,7 @@ cargo run -p showcase
 - `std`（默认）：标准库能力
 - `json`：`Json` 渲染器（`serde` / `serde_json`）
 - `trace`：trace 数据模型（`ReportTrace` 等）、预校验后的发射 typestate（`PreparedTracingEmission`）与可插拔导出器 Trait（`TracingExporterTrait`）
-- `otel`：OTLP envelope 模型（`OtelEnvelope`、`OtelEvent`、`OtelValue`）与仅在 `DiagnosticIr<'_, HasObservability>` 上提供的 `to_otel_envelope()`
+- `otel`：OTLP envelope 模型（`OtelEnvelope`、`OtelEvent`、`OtelValue`）与仅在 `DiagnosticIr<'_, HasSeverity>` 上提供的 `to_otel_envelope()`
 - `tracing`：默认 `tracing` 生态集成（`TracingExporter`、`prepare_tracing`、`emit_tracing`）
 
 ## 仓库结构

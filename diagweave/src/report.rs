@@ -22,8 +22,8 @@ use std::sync::OnceLock;
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
-    ErrorCodeIntError, HasObservability, MissingObservability, ObservabilityLevel,
-    ObservabilityLevelParseError, ObservabilityState, ReportMetadata, Severity, SourceErrorChain,
+    ErrorCodeIntError, HasSeverity, MissingSeverity, Severity,
+    SeverityParseError, SeverityState, ReportMetadata, SourceErrorChain,
     SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
 };
 pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
@@ -37,13 +37,13 @@ pub use trace::{
 use types::{DiagnosticBag, append_source_chain, limit_depth_source_chain};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
-pub struct Report<E, State = MissingObservability> {
+pub struct Report<E, State = MissingSeverity> {
     inner: E,
     metadata: ReportMetadata<State>,
     cold: Option<Box<DiagnosticBag>>,
 }
 
-impl<E> Report<E, MissingObservability> {
+impl<E> Report<E, MissingSeverity> {
     /// Creates a new report.
     pub fn new(inner: E) -> Self {
         #[cfg(feature = "std")]
@@ -66,7 +66,7 @@ impl<E> Report<E, MissingObservability> {
 
 impl<E, State> Report<E, State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Returns a reference to the inner error.
     pub fn inner(&self) -> &E {
@@ -189,11 +189,6 @@ where
     /// Returns the severity from report metadata, if present.
     pub fn severity(&self) -> Option<Severity> {
         self.metadata().severity()
-    }
-
-    /// Returns the observability level from report metadata, if present.
-    pub fn observability_level(&self) -> Option<ObservabilityLevel> {
-        self.metadata().observability_level()
     }
 
     /// Returns the category from report metadata, if present.
@@ -337,7 +332,7 @@ where
     /// Sets the metadata for the report.
     pub fn with_metadata<NewState>(self, metadata: ReportMetadata<NewState>) -> Report<E, NewState>
     where
-        NewState: ObservabilityState,
+        NewState: SeverityState,
     {
         let Self { inner, cold, .. } = self;
         Report {
@@ -354,16 +349,10 @@ where
     }
 
     /// Sets the severity for the report.
-    pub fn with_severity(mut self, severity: Severity) -> Self {
-        self.metadata = self.metadata.with_severity(severity);
-        self
-    }
-
-    /// Sets the observability level for the report.
-    pub fn with_observability_level(
+    pub fn with_severity(
         self,
-        level: ObservabilityLevel,
-    ) -> Report<E, HasObservability> {
+        severity: Severity,
+    ) -> Report<E, HasSeverity> {
         let Self {
             inner,
             metadata,
@@ -371,7 +360,7 @@ where
         } = self;
         Report {
             inner,
-            metadata: metadata.with_observability_level(level),
+            metadata: metadata.with_severity(severity),
             cold,
         }
     }
@@ -467,7 +456,7 @@ where
     }
 
     /// Wraps the report into another error type.
-    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, MissingObservability>
+    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, MissingSeverity>
     where
         Self: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static,

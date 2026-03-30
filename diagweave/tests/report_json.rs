@@ -80,7 +80,6 @@ fn json_document_carries_metadata_and_structured_attachments() {
     let report = Report::new(ApiError::Unauthorized)
         .with_error_code("API.UNAUTHORIZED")
         .with_severity(Severity::Error)
-        .with_observability_level(ObservabilityLevel::Error)
         .with_category("auth")
         .with_retryable(false)
         .attach("request_id", "req-json")
@@ -100,7 +99,7 @@ fn json_document_carries_metadata_and_structured_attachments() {
     );
     assert_eq!(parsed["metadata"]["severity"].as_str(), Some("error"));
     assert_eq!(
-        parsed["metadata"]["observability_level"].as_str(),
+        parsed["metadata"]["severity"].as_str(),
         Some("error")
     );
     assert_eq!(parsed["metadata"]["category"].as_str(), Some("auth"));
@@ -117,17 +116,16 @@ fn json_document_carries_metadata_and_structured_attachments() {
 
 #[cfg(feature = "json")]
 #[test]
-fn report_metadata_requires_explicit_observability_typestate_for_deserialization() {
+fn report_metadata_requires_explicit_severity_typestate_for_deserialization() {
     let json = serde_json::json!({
         "error_code": "API.UNAUTHORIZED",
         "severity": "error",
-        "observability_level": "error",
         "category": "auth",
         "retryable": false
     })
     .to_string();
 
-    let metadata: ReportMetadata<HasObservability> =
+    let metadata: ReportMetadata<HasSeverity> =
         serde_json::from_str(&json).expect("explicit typestate should deserialize");
 
     assert_eq!(
@@ -136,8 +134,8 @@ fn report_metadata_requires_explicit_observability_typestate_for_deserialization
     );
     assert_eq!(metadata.severity(), Some(Severity::Error));
     assert_eq!(
-        metadata.observability_level(),
-        Some(ObservabilityLevel::Error)
+        metadata.severity(),
+        Some(Severity::Error)
     );
     assert_eq!(metadata.category(), Some("auth"));
     assert_eq!(metadata.retryable(), Some(false));

@@ -10,6 +10,7 @@ use ref_str::StaticRefStr;
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
 pub enum Severity {
+    Trace,
     Debug,
     Info,
     Warn,
@@ -20,6 +21,7 @@ pub enum Severity {
 impl Display for Severity {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let label = match self {
+            Self::Trace => "trace",
             Self::Debug => "debug",
             Self::Info => "info",
             Self::Warn => "warn",
@@ -33,6 +35,7 @@ impl Display for Severity {
 impl From<&str> for Severity {
     fn from(value: &str) -> Self {
         match value.to_lowercase().as_str() {
+            "trace" => Self::Trace,
             "debug" => Self::Debug,
             "info" => Self::Info,
             "warn" | "warning" => Self::Warn,
@@ -52,6 +55,7 @@ impl From<String> for Severity {
 impl From<Cow<'static, str>> for Severity {
     fn from(value: Cow<'static, str>) -> Self {
         match value.to_lowercase().as_str() {
+            "trace" => Self::Trace,
             "debug" => Self::Debug,
             "info" => Self::Info,
             "warn" | "warning" => Self::Warn,
@@ -65,6 +69,7 @@ impl From<Cow<'static, str>> for Severity {
 impl From<Severity> for Cow<'static, str> {
     fn from(value: Severity) -> Self {
         match value {
+            Severity::Trace => "trace".into(),
             Severity::Debug => "debug".into(),
             Severity::Info => "info".into(),
             Severity::Warn => "warn".into(),
@@ -74,56 +79,30 @@ impl From<Severity> for Cow<'static, str> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
-pub enum ObservabilityLevel {
-    Trace,
-    Debug,
-    Info,
-    Warn,
-    Error,
-    Fatal,
-}
-
-impl Display for ObservabilityLevel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let label = match self {
-            Self::Trace => "trace",
-            Self::Debug => "debug",
-            Self::Info => "info",
-            Self::Warn => "warn",
-            Self::Error => "error",
-            Self::Fatal => "fatal",
-        };
-        write!(f, "{label}")
-    }
-}
-
-/// Parsing error for [`ObservabilityLevel`].
+/// Parsing error for [`Severity`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ObservabilityLevelParseError {
+pub struct SeverityParseError {
     invalid_value: String,
 }
 
-impl ObservabilityLevelParseError {
+impl SeverityParseError {
     /// Returns the original input that failed to parse.
     pub fn invalid_value(&self) -> &str {
         self.invalid_value.as_str()
     }
 }
 
-impl Display for ObservabilityLevelParseError {
+impl Display for SeverityParseError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid observability level: {}", self.invalid_value)
+        write!(f, "invalid severity: {}", self.invalid_value)
     }
 }
 
-impl Error for ObservabilityLevelParseError {}
+impl Error for SeverityParseError {}
 
-impl ObservabilityLevel {
-    /// Parses a textual observability level.
-    pub fn parse(value: &str) -> Result<Self, ObservabilityLevelParseError> {
+impl Severity {
+    /// Parses a textual severity level.
+    pub fn parse(value: &str) -> Result<Self, SeverityParseError> {
         match value.to_lowercase().as_str() {
             "trace" => Ok(Self::Trace),
             "debug" => Ok(Self::Debug),
@@ -131,57 +110,21 @@ impl ObservabilityLevel {
             "warn" | "warning" => Ok(Self::Warn),
             "error" => Ok(Self::Error),
             "fatal" | "critical" => Ok(Self::Fatal),
-            _ => Err(ObservabilityLevelParseError {
+            _ => Err(SeverityParseError {
                 invalid_value: value.into(),
             }),
         }
     }
 }
 
-impl FromStr for ObservabilityLevel {
-    type Err = ObservabilityLevelParseError;
+impl FromStr for Severity {
+    type Err = SeverityParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::parse(s)
     }
 }
 
-impl TryFrom<&str> for ObservabilityLevel {
-    type Error = ObservabilityLevelParseError;
-
-    fn try_from(value: &str) -> Result<Self, ObservabilityLevelParseError> {
-        Self::parse(value)
-    }
-}
-
-impl TryFrom<String> for ObservabilityLevel {
-    type Error = ObservabilityLevelParseError;
-
-    fn try_from(value: String) -> Result<Self, ObservabilityLevelParseError> {
-        Self::parse(value.as_str())
-    }
-}
-
-impl TryFrom<Cow<'static, str>> for ObservabilityLevel {
-    type Error = ObservabilityLevelParseError;
-
-    fn try_from(value: Cow<'static, str>) -> Result<Self, ObservabilityLevelParseError> {
-        Self::parse(value.as_ref())
-    }
-}
-
-impl From<ObservabilityLevel> for Cow<'static, str> {
-    fn from(value: ObservabilityLevel) -> Self {
-        match value {
-            ObservabilityLevel::Trace => "trace".into(),
-            ObservabilityLevel::Debug => "debug".into(),
-            ObservabilityLevel::Info => "info".into(),
-            ObservabilityLevel::Warn => "warn".into(),
-            ObservabilityLevel::Error => "error".into(),
-            ObservabilityLevel::Fatal => "fatal".into(),
-        }
-    }
-}
 
 /// An error code that can be either an integer or a string.
 #[derive(Debug, Clone, PartialEq, Eq)]

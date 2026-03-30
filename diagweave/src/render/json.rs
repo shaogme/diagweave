@@ -11,7 +11,7 @@ mod trace;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-use crate::report::{ObservabilityState, Report};
+use crate::report::{SeverityState, Report};
 
 use super::{REPORT_JSON_SCHEMA_VERSION, ReportRenderOptions};
 
@@ -27,7 +27,7 @@ pub(super) fn write_json_report<E, State>(
 ) -> fmt::Result
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let pretty = options.json_pretty;
     let mut first = true;
@@ -92,12 +92,11 @@ struct JsonSectionFlags {
 fn calc_section_flags<E, State>(report: &Report<E, State>) -> JsonSectionFlags
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let metadata = report.metadata();
     let has_metadata = metadata.error_code().is_some()
         || metadata.severity().is_some()
-        || metadata.observability_level().is_some()
         || metadata.category().is_some()
         || metadata.retryable().is_some();
     let has_context = report
@@ -123,7 +122,7 @@ where
 fn has_stack_trace<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.stack_trace().is_some()
 }
@@ -131,7 +130,7 @@ where
 fn has_display_causes<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.display_causes_chain().is_some()
 }
@@ -139,7 +138,7 @@ where
 fn has_origin_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.origin_src_err_chain().is_some() || report.inner().source().is_some()
 }
@@ -147,7 +146,7 @@ where
 fn has_diag_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report.diag_src_err_chain().is_some()
 }

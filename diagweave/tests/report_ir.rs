@@ -48,7 +48,6 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
             ReportMetadata::default()
                 .with_error_code("API.UNAUTHORIZED")
                 .with_severity(Severity::Error)
-                .with_observability_level(ObservabilityLevel::Error)
                 .with_category("auth")
                 .with_retryable(false),
         )
@@ -74,8 +73,8 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     );
     assert_eq!(ir.metadata.severity(), Some(Severity::Error));
     assert_eq!(
-        ir.metadata.observability_level(),
-        Some(ObservabilityLevel::Error)
+        ir.metadata.severity(),
+        Some(Severity::Error)
     );
     assert_eq!(ir.context_count, 1);
     assert_eq!(ir.attachment_count, 2);
@@ -169,7 +168,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
 
     let ir = report
         .to_diagnostic_ir()
-        .with_observability_level(ObservabilityLevel::Error);
+        .with_severity(Severity::Error);
     let otel = ir.to_otel_envelope();
     let record = otel.records.first().expect("report record should exist");
     assert_eq!(record.name, "exception");
@@ -228,13 +227,13 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
 
 #[cfg(feature = "otel")]
 #[test]
-fn diagnostic_ir_requires_explicit_observability_upgrade_before_otel() {
+fn diagnostic_ir_requires_explicit_severity_upgrade_before_otel() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized);
     let ir = report
         .to_diagnostic_ir()
-        .with_observability_level(ObservabilityLevel::Warn);
+        .with_severity(Severity::Warn);
     let otel = ir.to_otel_envelope();
     let record = otel.records.first().expect("report record should exist");
 
@@ -251,7 +250,6 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     let report = Report::new(ApiError::Unauthorized)
         .with_error_code("API.UNAUTHORIZED")
         .with_severity(Severity::Error)
-        .with_observability_level(ObservabilityLevel::Error)
         .with_retryable(false);
     let report = report
         .with_trace_ids(
@@ -304,7 +302,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     assert!(
         tracing_fields
             .iter()
-            .any(|f| f.key == "metadata.observability_level")
+            .any(|f| f.key == "metadata.severity")
     );
     let trace_value = tracing_fields
         .iter()
@@ -390,7 +388,6 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_severity(Severity::Error)
-        .with_observability_level(ObservabilityLevel::Error)
         .with_trace_ids(
             TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
             SpanId::new("00f067aa0ba902b7").unwrap(),
@@ -466,7 +463,7 @@ fn tracing_exporter_trait_receives_prepared_emission() {
     };
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_observability_level(ObservabilityLevel::Info)
+        .with_severity(Severity::Info)
         .with_trace_ids(
             TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
             SpanId::new("00f067aa0ba902b7").unwrap(),
@@ -490,7 +487,7 @@ fn tracing_exporter_trait_receives_prepared_emission() {
 
 #[cfg(all(feature = "tracing", feature = "std"))]
 #[test]
-fn tracing_exporter_uses_report_observability_level_for_unset_trace_events_and_carries_context() {
+fn tracing_exporter_uses_report_severity_for_unset_trace_events_and_carries_context() {
     let _guard = init_test();
 
     #[derive(Default)]
@@ -540,7 +537,6 @@ fn tracing_exporter_uses_report_observability_level_for_unset_trace_events_and_c
 
     let report = Report::new(ApiError::Unauthorized)
         .with_severity(Severity::Error)
-        .with_observability_level(ObservabilityLevel::Error)
         .with_trace_ids(
             TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
             SpanId::new("00f067aa0ba902b7").unwrap(),
@@ -611,7 +607,7 @@ fn tracing_exporter_uses_report_observability_level_for_unset_trace_events_and_c
 
 #[cfg(all(feature = "tracing", feature = "std"))]
 #[test]
-fn diagnostic_ir_requires_explicit_observability_upgrade_before_tracing() {
+fn diagnostic_ir_requires_explicit_severity_upgrade_before_tracing() {
     let _guard = init_test();
 
     #[derive(Clone)]
@@ -649,7 +645,7 @@ fn diagnostic_ir_requires_explicit_observability_upgrade_before_tracing() {
 
     let ir = report
         .to_diagnostic_ir()
-        .with_observability_level(ObservabilityLevel::Warn);
+        .with_severity(Severity::Warn);
     let prepared = ir.prepare_tracing();
     assert_eq!(prepared.report_level(), PreparedTracingLevel::Warn);
 

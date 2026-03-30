@@ -4,8 +4,8 @@ use core::fmt::Display;
 use ref_str::StaticRefStr;
 
 use super::{
-    Attachment, AttachmentValue, ErrorCode, HasObservability, MissingObservability,
-    ObservabilityLevel, ObservabilityState, Report, ReportMetadata, Severity, StackTrace,
+    Attachment, AttachmentValue, ErrorCode, HasSeverity, MissingSeverity,
+    Severity, SeverityState, Report, ReportMetadata, StackTrace,
 };
 #[cfg(feature = "trace")]
 use super::{
@@ -53,9 +53,9 @@ impl<T, E> Diagnostic for Result<T, E> {
 }
 
 /// Extension trait for `Result<T, Report<E, State>>` to add diagnostic information.
-pub trait ReportResultExt<T, E, State = MissingObservability>
+pub trait ReportResultExt<T, E, State = MissingSeverity>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn attach(
         self,
@@ -98,7 +98,7 @@ where
         metadata: ReportMetadata<NewState>,
     ) -> Result<T, Report<E, NewState>>
     where
-        NewState: ObservabilityState;
+        NewState: SeverityState;
 
     #[cfg(feature = "trace")]
     fn with_trace(self, trace: ReportTrace) -> Result<T, Report<E, State>>;
@@ -135,12 +135,10 @@ where
 
     fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E, State>>;
 
-    fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E, State>>;
-
-    fn with_observability_level(
+    fn with_severity(
         self,
-        level: ObservabilityLevel,
-    ) -> Result<T, Report<E, HasObservability>>;
+        severity: Severity,
+    ) -> Result<T, Report<E, HasSeverity>>;
 
     fn with_category(self, category: impl Into<StaticRefStr>) -> Result<T, Report<E, State>>;
 
@@ -176,7 +174,7 @@ where
 
     fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>>;
 
-    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingObservability>>
+    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
     where
         Report<E, State>: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static;
@@ -185,9 +183,9 @@ where
 }
 
 /// Read-only extension trait for `Result<T, Report<E, State>>`.
-pub trait ReportResultInspectExt<T, E, State = MissingObservability>
+pub trait ReportResultInspectExt<T, E, State = MissingSeverity>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn report_ref(&self) -> Option<&Report<E, State>>;
 
@@ -199,8 +197,6 @@ where
 
     fn report_severity(&self) -> Option<Severity>;
 
-    fn report_observability_level(&self) -> Option<ObservabilityLevel>;
-
     fn report_category(&self) -> Option<&str>;
 
     fn report_retryable(&self) -> Option<bool>;
@@ -208,7 +204,7 @@ where
 
 impl<T, E, State> ReportResultExt<T, E, State> for Result<T, Report<E, State>>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn attach(
         self,
@@ -264,7 +260,7 @@ where
         metadata: ReportMetadata<NewState>,
     ) -> Result<T, Report<E, NewState>>
     where
-        NewState: ObservabilityState,
+        NewState: SeverityState,
     {
         self.map_err(|report| report.with_metadata(metadata))
     }
@@ -326,16 +322,11 @@ where
         self.map_err(|report| report.with_error_code(error_code))
     }
 
-    fn with_severity(self, severity: impl Into<Severity>) -> Result<T, Report<E, State>> {
-        let severity = severity.into();
-        self.map_err(|report| report.with_severity(severity))
-    }
-
-    fn with_observability_level(
+    fn with_severity(
         self,
-        level: ObservabilityLevel,
-    ) -> Result<T, Report<E, HasObservability>> {
-        self.map_err(|report| report.with_observability_level(level))
+        severity: Severity,
+    ) -> Result<T, Report<E, HasSeverity>> {
+        self.map_err(|report| report.with_severity(severity))
     }
 
     fn with_category(self, category: impl Into<StaticRefStr>) -> Result<T, Report<E, State>> {
@@ -393,7 +384,7 @@ where
         self.map_err(|report| report.attach_printable(make_message()))
     }
 
-    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingObservability>>
+    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
     where
         Report<E, State>: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static,
@@ -408,7 +399,7 @@ where
 
 impl<T, E, State> ReportResultInspectExt<T, E, State> for Result<T, Report<E, State>>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn report_ref(&self) -> Option<&Report<E, State>> {
         self.as_ref().err()
@@ -428,10 +419,6 @@ where
 
     fn report_severity(&self) -> Option<Severity> {
         self.report_ref().and_then(Report::severity)
-    }
-
-    fn report_observability_level(&self) -> Option<ObservabilityLevel> {
-        self.report_ref().and_then(Report::observability_level)
     }
 
     fn report_category(&self) -> Option<&str> {

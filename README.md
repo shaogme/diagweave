@@ -271,7 +271,7 @@ From `Result<T, E>`:
 Common enrichers on `Result<T, Report<E>>`:
 
 - `with_context`, `with_note`, `with_payload`
-- `with_error_code`, `with_severity`, `with_observability_level`, `with_category`, `with_retryable`
+- `with_error_code`, `with_severity`, `with_category`, `with_retryable`
 - `with_display_cause`, `with_display_causes`, `with_diag_src_err`
 - `context_lazy`, `note_lazy`
 - `wrap`, `wrap_with`
@@ -283,7 +283,7 @@ The matching setters accept `impl Into<StaticRefStr>`, so callers can pass owned
 Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
-- `error_code()`, `severity()`, `observability_level()`, `category()`, `retryable()`
+- `error_code()`, `severity()`, `category()`, `retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
 - `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`
 - `visit_diag_sources(visit)` / `visit_diag_srcs_ext(options, visit)`
@@ -298,7 +298,7 @@ Attachment note access:
 Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
 
 - `report_ref()`, `report_metadata()`, `report_attachments()`
-- `report_error_code()`, `report_severity()`, `report_observability_level()`, `report_category()`, `report_retryable()`
+- `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`
 
 `ErrorCode` design:
 
@@ -361,7 +361,7 @@ IR and adapters:
 ```rust
 # use diagweave::prelude::set;
 # use diagweave::render::ReportRenderOptions;
-# use diagweave::report::{ObservabilityLevel, Report};
+# use diagweave::report::{Severity, Report};
 # set! {
 #     AuthError = {
 #         #[display("invalid token")]
@@ -369,7 +369,7 @@ IR and adapters:
 #     }
 # }
 # let report = Report::new(AuthError::invalid_token())
-#     .with_observability_level(ObservabilityLevel::Error);
+#     .with_severity(Severity::Error);
 
 let ir = report.to_diagnostic_ir();
 #[cfg(feature = "trace")]
@@ -380,7 +380,7 @@ assert!(!tracing_fields.is_empty());
 let otel = ir.to_otel_envelope();
 ```
 
-`DiagnosticIr` and the tracing/OTEL adapter outputs are borrow-first views: string fields use `RefStr<'a>` where possible and only materialize owned strings when a projected value cannot safely borrow from the source report. OTEL export is intentionally gated to `DiagnosticIr<'_, HasObservability>`, so reports must set an explicit `observability_level` before producing an OTEL envelope.
+`DiagnosticIr` and the tracing/OTEL adapter outputs are borrow-first views: string fields use `RefStr<'a>` where possible and only materialize owned strings when a projected value cannot safely borrow from the source report. OTEL export is intentionally gated to `DiagnosticIr<'_, HasSeverity>`, so reports must set an explicit `severity` before producing an OTEL envelope.
 
 `DiagnosticIr` keeps render-stable header/metadata plus aggregate counters:
 
@@ -456,7 +456,7 @@ Tracing export:
 #[cfg(feature = "tracing")]
 {
 #    use diagweave::prelude::set;
-#    use diagweave::report::{ObservabilityLevel, Report};
+#    use diagweave::report::{Severity, Report};
 #    set! {
 #        AuthError = {
 #            #[display("invalid token")]
@@ -464,7 +464,7 @@ Tracing export:
 #        }
 #    }
 #    let report = Report::new(AuthError::invalid_token())
-#        .with_observability_level(ObservabilityLevel::Error);
+#        .with_severity(Severity::Error);
     report.emit_tracing();
 }
 ```
@@ -504,7 +504,7 @@ cargo run -p showcase
 - `std` (default): std integrations
 - `json`: `Json` renderer (`serde` / `serde_json`)
 - `trace`: trace data model (`ReportTrace`, etc.), prepared emission typestate (`PreparedTracingEmission`), and pluggable exporter trait (`TracingExporterTrait`)
-- `otel`: OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` on `DiagnosticIr<'_, HasObservability>`
+- `otel`: OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` on `DiagnosticIr<'_, HasSeverity>`
 - `tracing`: default `tracing` crate integration (`TracingExporter`, `prepare_tracing`, `emit_tracing`)
 
 ## Workspace layout

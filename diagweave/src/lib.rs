@@ -51,9 +51,9 @@ pub mod report {
     pub use crate::report_impl::{
         Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseKind,
         CauseTraversalState, Diagnostic, DisplayCauseChain, ErrorCode, ErrorCodeIntError,
-        GlobalContext, HasObservability, MissingObservability, ObservabilityLevel,
-        ObservabilityLevelParseError, ObservabilityState, Report, ReportMetadata, ReportResultExt,
-        ReportResultInspectExt, ReportSourceErrorIter, Severity, SourceErrorChain,
+        GlobalContext, HasSeverity, MissingSeverity, Severity,
+        SeverityParseError, SeverityState, Report, ReportMetadata, ReportResultExt,
+        ReportResultInspectExt, ReportSourceErrorIter, SourceErrorChain,
         SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "trace")]
@@ -78,8 +78,8 @@ pub mod trace {
 pub mod prelude {
     pub use crate::render::{Compact, Pretty, ReportRenderOptions, ReportRenderer};
     pub use crate::report::{
-        AttachmentValue, Diagnostic, HasObservability, MissingObservability, ObservabilityLevel,
-        ObservabilityState, Report, ReportResultExt, ReportResultInspectExt, Severity,
+        AttachmentValue, Diagnostic, HasSeverity, MissingSeverity, Severity,
+        SeverityState, Report, ReportResultExt, ReportResultInspectExt,
         SourceErrorItem,
     };
     #[cfg(feature = "std")]

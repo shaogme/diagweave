@@ -7,12 +7,12 @@ use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 
 use crate::render::DiagnosticIr;
-use crate::report::{HasObservability, ObservabilityLevel, Report, TraceEvent, TraceEventLevel};
+use crate::report::{HasSeverity, Severity, Report, TraceEvent, TraceEventLevel};
 
 #[cfg(feature = "tracing")]
 pub use tracing::TracingExporter;
 
-/// Resolved tracing level after observability fallback has been applied.
+/// Resolved tracing level after severity fallback has been applied.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreparedTracingLevel {
     Trace,
@@ -51,7 +51,7 @@ impl EmitStats {
 
 /// A fully validated tracing emission with all fallback levels resolved.
 pub struct PreparedTracingEmission<'a> {
-    ir: DiagnosticIr<'a, HasObservability>,
+    ir: DiagnosticIr<'a, HasSeverity>,
     report_level: PreparedTracingLevel,
     trace_event_levels: Vec<PreparedTracingLevel>,
 }
@@ -67,9 +67,8 @@ impl Debug for PreparedTracingEmission<'_> {
 }
 
 impl<'a> PreparedTracingEmission<'a> {
-    fn prepare(ir: DiagnosticIr<'a, HasObservability>) -> Self {
-        let report_level =
-            observability_level_to_prepared_level(ir.metadata.required_observability_level());
+    fn prepare(ir: DiagnosticIr<'a, HasSeverity>) -> Self {
+        let report_level = severity_to_prepared_level(ir.metadata.required_severity());
         let trace_event_levels = ir
             .trace
             .map(|trace| {
@@ -91,7 +90,7 @@ impl<'a> PreparedTracingEmission<'a> {
     }
 
     /// Returns the frozen diagnostic IR captured during preparation.
-    pub fn ir(&self) -> &DiagnosticIr<'a, HasObservability> {
+    pub fn ir(&self) -> &DiagnosticIr<'a, HasSeverity> {
         &self.ir
     }
 
@@ -182,7 +181,7 @@ pub trait TracingExporterTrait {
     fn export_prepared(&self, emission: PreparedTracingEmission<'_>) -> EmitStats;
 }
 
-impl DiagnosticIr<'_, HasObservability> {
+impl DiagnosticIr<'_, HasSeverity> {
     /// Prepares this diagnostic IR for tracing emission by resolving every final
     /// tracing level up front.
     pub fn prepare_tracing(&self) -> PreparedTracingEmission<'_> {
@@ -204,7 +203,7 @@ impl DiagnosticIr<'_, HasObservability> {
     }
 }
 
-impl<E> Report<E, HasObservability>
+impl<E> Report<E, HasSeverity>
 where
     E: Error + Display + 'static,
 {
@@ -229,13 +228,13 @@ where
     }
 }
 
-fn observability_level_to_prepared_level(level: ObservabilityLevel) -> PreparedTracingLevel {
+fn severity_to_prepared_level(level: Severity) -> PreparedTracingLevel {
     match level {
-        ObservabilityLevel::Trace => PreparedTracingLevel::Trace,
-        ObservabilityLevel::Debug => PreparedTracingLevel::Debug,
-        ObservabilityLevel::Info => PreparedTracingLevel::Info,
-        ObservabilityLevel::Warn => PreparedTracingLevel::Warn,
-        ObservabilityLevel::Error | ObservabilityLevel::Fatal => PreparedTracingLevel::Error,
+        Severity::Trace => PreparedTracingLevel::Trace,
+        Severity::Debug => PreparedTracingLevel::Debug,
+        Severity::Info => PreparedTracingLevel::Info,
+        Severity::Warn => PreparedTracingLevel::Warn,
+        Severity::Error | Severity::Fatal => PreparedTracingLevel::Error,
     }
 }
 

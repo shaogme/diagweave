@@ -4,7 +4,7 @@ use crate::render_impl::{
     DiagnosticIr, build_ctx_and_attachments, build_diag_src_errs_val, build_display_causes,
     build_origin_src_errs_val, build_stack_trace_value,
 };
-use crate::report::{AttachmentValue, HasObservability, ReportTrace, TraceEvent};
+use crate::report::{AttachmentValue, HasSeverity, ReportTrace, TraceEvent};
 
 use super::{EmitStats, PreparedTracingEmission, PreparedTracingLevel, TracingExporterTrait};
 
@@ -76,7 +76,7 @@ macro_rules! report_event {
             error_type = %$ir.error.r#type,
             error_code = ?$ir.metadata.error_code(),
             error_severity = ?$ir.metadata.severity(),
-            error_observability_level = ?$ir.metadata.required_observability_level(),
+            error_required_severity = ?$ir.metadata.required_severity(),
             error_category = ?$ir.metadata.category(),
             error_retryable = ?$ir.metadata.retryable(),
             trace_id = ?$ir.trace.as_ref().and_then(|t| t.context.trace_id.as_ref()),
@@ -100,7 +100,7 @@ macro_rules! report_event {
 }
 
 struct ReportEventFields<'a, 'ir> {
-    ir: &'a DiagnosticIr<'ir, HasObservability>,
+    ir: &'a DiagnosticIr<'ir, HasSeverity>,
     context: &'a [AttachmentValue],
     attachments: &'a [AttachmentValue],
     stack_trace: Option<&'a AttachmentValue>,

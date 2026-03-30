@@ -6,7 +6,7 @@ use crate::render_impl::{
     DiagnosticIr, build_ctx_and_attachments, build_diag_src_errs_val, build_display_causes,
     build_error_value, build_origin_src_errs_val, build_stack_trace_value, build_trace_value,
 };
-use crate::report::{AttachmentValue, ErrorCode, ObservabilityState};
+use crate::report::{AttachmentValue, ErrorCode, SeverityState};
 
 fn error_code_value(value: &ErrorCode) -> AttachmentValue {
     match value {
@@ -26,7 +26,7 @@ pub struct TracingField<'a> {
 
 impl<State> DiagnosticIr<'_, State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Converts the diagnostic IR to a vector of tracing fields.
     pub fn to_tracing_fields(&self) -> Vec<TracingField<'_>> {
@@ -60,12 +60,6 @@ where
             fields.push(TracingField {
                 key: "metadata.severity".into(),
                 value: AttachmentValue::String(severity.to_string().into()),
-            });
-        }
-        if let Some(level) = self.metadata.observability_level() {
-            fields.push(TracingField {
-                key: "metadata.observability_level".into(),
-                value: AttachmentValue::String(level.to_string().into()),
             });
         }
         if let Some(category) = self.metadata.category() {

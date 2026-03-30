@@ -5,10 +5,6 @@
   "$defs": {
     "severity": {
       "type": "string",
-      "enum": ["debug", "info", "warn", "error", "fatal"]
-    },
-    "observability_level": {
-      "type": "string",
       "enum": ["trace", "debug", "info", "warn", "error", "fatal"]
     },
     "trace_event_level": {
@@ -374,7 +370,7 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["error_code", "severity", "observability_level", "category", "retryable"],
+      "required": ["error_code", "severity", "category", "retryable"],
       "properties": {
         "error_code": {
           "oneOf": [
@@ -386,12 +382,6 @@
         "severity": {
           "oneOf": [
             { "$ref": "#/$defs/severity" },
-            { "type": "null" }
-          ]
-        },
-        "observability_level": {
-          "oneOf": [
-            { "$ref": "#/$defs/observability_level" },
             { "type": "null" }
           ]
         },

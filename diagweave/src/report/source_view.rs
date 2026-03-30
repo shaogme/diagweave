@@ -3,7 +3,7 @@ use super::*;
 impl<E, State> Report<E, State>
 where
     E: Error + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Iterates origin source errors using default collection options.
     pub fn iter_origin_sources(&self) -> ReportSourceErrorIter<'_> {
@@ -29,7 +29,7 @@ where
 impl<E, State> Report<E, State>
 where
     E: Error + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn source_errors_view(
         &self,

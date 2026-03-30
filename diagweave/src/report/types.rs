@@ -22,55 +22,55 @@ pub use attachment::*;
 pub use error::*;
 pub use source_error::*;
 
-mod observability_state {
+mod severity_state {
     pub trait Sealed {}
 }
 
-/// Typestate marker for reports whose observability level has not been set.
+/// Typestate marker for reports whose severity has not been set.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct MissingObservability;
+pub struct MissingSeverity;
 
-/// Typestate marker for reports whose observability level is present.
+/// Typestate marker for reports whose severity is present.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HasObservability {
-    level: ObservabilityLevel,
+pub struct HasSeverity {
+    severity: Severity,
 }
 
-impl HasObservability {
-    /// Creates a present observability typestate with the specified level.
-    pub const fn new(level: ObservabilityLevel) -> Self {
-        Self { level }
+impl HasSeverity {
+    /// Creates a present severity typestate with the specified severity.
+    pub const fn new(severity: Severity) -> Self {
+        Self { severity }
     }
 
-    /// Returns the guaranteed observability level carried by this typestate.
-    pub const fn level(self) -> ObservabilityLevel {
-        self.level
+    /// Returns the guaranteed severity carried by this typestate.
+    pub const fn severity(self) -> Severity {
+        self.severity
     }
 }
 
-impl observability_state::Sealed for MissingObservability {}
-impl observability_state::Sealed for HasObservability {}
+impl severity_state::Sealed for MissingSeverity {}
+impl severity_state::Sealed for HasSeverity {}
 
-/// Typestate contract for report observability metadata.
-pub trait ObservabilityState: observability_state::Sealed + Clone + Copy + PartialEq + Eq {
-    /// Returns the observability level represented by the typestate, if any.
-    fn observability_level(self) -> Option<ObservabilityLevel>;
+/// Typestate contract for report severity metadata.
+pub trait SeverityState: severity_state::Sealed + Clone + Copy + PartialEq + Eq {
+    /// Returns the severity represented by the typestate, if any.
+    fn severity(self) -> Option<Severity>;
 }
 
-impl ObservabilityState for MissingObservability {
-    fn observability_level(self) -> Option<ObservabilityLevel> {
+impl SeverityState for MissingSeverity {
+    fn severity(self) -> Option<Severity> {
         None
     }
 }
 
-impl ObservabilityState for HasObservability {
-    fn observability_level(self) -> Option<ObservabilityLevel> {
-        Some(self.level)
+impl SeverityState for HasSeverity {
+    fn severity(self) -> Option<Severity> {
+        Some(self.severity)
     }
 }
 
 #[cfg(feature = "json")]
-impl serde::Serialize for MissingObservability {
+impl serde::Serialize for MissingSeverity {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -80,37 +80,35 @@ impl serde::Serialize for MissingObservability {
 }
 
 #[cfg(feature = "json")]
-impl<'de> serde::Deserialize<'de> for MissingObservability {
+impl<'de> serde::Deserialize<'de> for MissingSeverity {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        match Option::<ObservabilityLevel>::deserialize(deserializer)? {
+        match Option::<Severity>::deserialize(deserializer)? {
             None => Ok(Self),
-            Some(_) => Err(serde::de::Error::custom(
-                "expected null observability typestate",
-            )),
+            Some(_) => Err(serde::de::Error::custom("expected null severity typestate")),
         }
     }
 }
 
 #[cfg(feature = "json")]
-impl serde::Serialize for HasObservability {
+impl serde::Serialize for HasSeverity {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        self.level.serialize(serializer)
+        self.severity.serialize(serializer)
     }
 }
 
 #[cfg(feature = "json")]
-impl<'de> serde::Deserialize<'de> for HasObservability {
+impl<'de> serde::Deserialize<'de> for HasSeverity {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        ObservabilityLevel::deserialize(deserializer).map(Self::new)
+        Severity::deserialize(deserializer).map(Self::new)
     }
 }
 
@@ -119,23 +117,21 @@ impl<'de> serde::Deserialize<'de> for HasObservability {
 /// Report metadata carried alongside a diagnostic.
 ///
 /// When the `json` feature is enabled, deserialization is intentionally exposed
-/// only for [`ReportMetadata<HasObservability>`]. The default
-/// [`ReportMetadata`] alias keeps the stricter missing-observability typestate
+/// only for [`ReportMetadata<HasSeverity>`]. The default
+/// [`ReportMetadata`] alias keeps the stricter missing-severity typestate
 /// and does not implement `Deserialize`.
-pub struct ReportMetadata<State = MissingObservability> {
+pub struct ReportMetadata<State = MissingSeverity> {
     error_code: Option<ErrorCode>,
-    severity: Option<Severity>,
-    observability_level: State,
+    severity: State,
     category: Option<StaticRefStr>,
     retryable: Option<bool>,
 }
 
-impl Default for ReportMetadata<MissingObservability> {
+impl Default for ReportMetadata<MissingSeverity> {
     fn default() -> Self {
         Self {
             error_code: None,
-            severity: None,
-            observability_level: MissingObservability,
+            severity: MissingSeverity,
             category: None,
             retryable: None,
         }
@@ -144,7 +140,7 @@ impl Default for ReportMetadata<MissingObservability> {
 
 impl<State> ReportMetadata<State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Returns the error code, if present.
     pub fn error_code(&self) -> Option<&ErrorCode> {
@@ -154,16 +150,7 @@ where
     /// Returns the severity, if present.
     pub fn severity(&self) -> Option<Severity> {
         self.severity
-    }
-
-    /// Returns the observability level, if present.
-    pub fn observability_level(&self) -> Option<ObservabilityLevel> {
-        self.observability_level.observability_level()
-    }
-
-    /// Returns whether the metadata carries an observability level.
-    pub fn has_observability_level(&self) -> bool {
-        self.observability_level().is_some()
+            .severity()
     }
 
     /// Returns the category, if present.
@@ -176,21 +163,20 @@ where
         self.retryable
     }
 
-    pub(crate) fn observability_state(&self) -> State {
-        self.observability_level
+    pub(crate) fn severity_state(&self) -> State {
+        self.severity
     }
 
-    pub(crate) fn map_observability<NewState>(
+    pub(crate) fn map_severity<NewState>(
         self,
-        observability_level: NewState,
+        severity: NewState,
     ) -> ReportMetadata<NewState>
     where
-        NewState: ObservabilityState,
+        NewState: SeverityState,
     {
         ReportMetadata {
             error_code: self.error_code,
-            severity: self.severity,
-            observability_level,
+            severity,
             category: self.category,
             retryable: self.retryable,
         }
@@ -202,18 +188,12 @@ where
         self
     }
 
-    /// Returns metadata with the specified severity.
-    pub fn with_severity(mut self, severity: Severity) -> Self {
-        self.severity = Some(severity);
-        self
-    }
-
-    /// Replaces the metadata typestate with a concrete observability level.
-    pub fn with_observability_level(
+    /// Replaces the metadata typestate with a concrete severity.
+    pub fn with_severity(
         self,
-        level: ObservabilityLevel,
-    ) -> ReportMetadata<HasObservability> {
-        self.map_observability(HasObservability::new(level))
+        severity: Severity,
+    ) -> ReportMetadata<HasSeverity> {
+        self.map_severity(HasSeverity::new(severity))
     }
 
     /// Returns metadata with the specified category.
@@ -229,15 +209,15 @@ where
     }
 }
 
-impl ReportMetadata<HasObservability> {
-    /// Returns the guaranteed observability level.
-    pub const fn required_observability_level(&self) -> ObservabilityLevel {
-        self.observability_level.level()
+impl ReportMetadata<HasSeverity> {
+    /// Returns the guaranteed severity.
+    pub const fn required_severity(&self) -> Severity {
+        self.severity.severity()
     }
 }
 
 #[cfg(feature = "json")]
-impl<'de> serde::Deserialize<'de> for ReportMetadata<HasObservability> {
+impl<'de> serde::Deserialize<'de> for ReportMetadata<HasSeverity> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -245,8 +225,7 @@ impl<'de> serde::Deserialize<'de> for ReportMetadata<HasObservability> {
         #[derive(serde::Deserialize)]
         struct ReportMetadataWire {
             error_code: Option<ErrorCode>,
-            severity: Option<Severity>,
-            observability_level: ObservabilityLevel,
+            severity: Severity,
             category: Option<StaticRefStr>,
             retryable: Option<bool>,
         }
@@ -254,8 +233,7 @@ impl<'de> serde::Deserialize<'de> for ReportMetadata<HasObservability> {
         let wire = ReportMetadataWire::deserialize(deserializer)?;
         Ok(ReportMetadata {
             error_code: wire.error_code,
-            severity: wire.severity,
-            observability_level: HasObservability::new(wire.observability_level),
+            severity: HasSeverity::new(wire.severity),
             category: wire.category,
             retryable: wire.retryable,
         })

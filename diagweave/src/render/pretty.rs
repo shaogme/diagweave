@@ -2,7 +2,7 @@ use alloc::vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{AttachmentVisit, ObservabilityState, Report};
+use crate::report::{AttachmentVisit, SeverityState, Report};
 
 use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
 
@@ -31,7 +31,7 @@ impl Pretty {
 impl<E, State> ReportRenderer<E, State> for Pretty
 where
     E: Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         let options = self.options;
@@ -108,12 +108,11 @@ fn render_governance_section<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let metadata = report.metadata();
     let has_metadata = metadata.error_code().is_some()
         || metadata.severity().is_some()
-        || metadata.observability_level().is_some()
         || metadata.category().is_some()
         || metadata.retryable().is_some();
 
@@ -135,7 +134,7 @@ fn render_gov_meta<State>(
     indent: PrettyIndent,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if let Some(error_code) = metadata.error_code() {
         write_indent(f, indent)?;
@@ -144,10 +143,6 @@ where
     if let Some(severity) = metadata.severity() {
         write_indent(f, indent)?;
         writeln!(f, "- severity: {severity}")?;
-    }
-    if let Some(level) = metadata.observability_level() {
-        write_indent(f, indent)?;
-        writeln!(f, "- observability_level: {level}")?;
     }
     if let Some(category) = metadata.category() {
         write_indent(f, indent)?;
@@ -167,7 +162,7 @@ fn render_trace_section<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let Some(trace) = report.trace() else {
         if options.show_trace_section && options.show_empty_sections {
@@ -223,7 +218,7 @@ fn render_stack_trace<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let stack_trace = report.stack_trace();
     let has_stack = stack_trace.is_some();
@@ -290,7 +285,7 @@ fn render_attachments<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     render_context_section(f, report, options)?;
     render_attachment_section(f, report, options)?;
@@ -303,7 +298,7 @@ fn render_context_section<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_context_section {
         return Ok(());
@@ -336,7 +331,7 @@ fn render_attachment_section<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_attachments_section {
         return Ok(());
@@ -397,7 +392,7 @@ fn render_display_causes<State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     if !options.show_cause_chains_section {
         return Ok(());
@@ -451,7 +446,7 @@ fn render_src_errors_section<E, State, F>(
 ) -> fmt::Result
 where
     E: Error + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
     F: FnOnce(
         &Report<E, State>,
         crate::report::CauseCollectOptions,

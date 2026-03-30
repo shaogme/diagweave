@@ -84,7 +84,7 @@ pub struct TinyRenderer;
 impl<E, State> ReportRenderer<E, State> for TinyRenderer
 where
     E: Display,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "tiny: {}", report.inner())

@@ -8,7 +8,7 @@ mod pretty;
 
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{ObservabilityState, Report};
+use crate::report::{SeverityState, Report};
 
 #[cfg(feature = "trace")]
 pub(crate) use ir::build_ctx_and_attachments;
@@ -43,7 +43,7 @@ impl Json {
 impl<E, State> ReportRenderer<E, State> for Json
 where
     E: core::error::Error + Display + 'static,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         json::write_json_report(report, self.options, f)
@@ -115,7 +115,7 @@ impl Default for ReportRenderOptions {
 /// A trait for rendering a diagnostic report using a specific format.
 pub trait ReportRenderer<E, State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result;
 }
@@ -127,7 +127,7 @@ pub struct Compact;
 /// A report that has been paired with a renderer, implementing `Display`.
 pub struct RenderedReport<'a, E, State, R>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     report: &'a Report<E, State>,
     renderer: R,
@@ -135,7 +135,7 @@ where
 
 impl<E, State> Report<E, State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Returns a renderer for compact output.
     pub fn compact(&self) -> RenderedReport<'_, E, State, Compact> {
@@ -165,7 +165,7 @@ where
 impl<E, State> ReportRenderer<E, State> for Compact
 where
     E: Display,
-    State: ObservabilityState,
+    State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{report}")
@@ -174,7 +174,7 @@ where
 
 impl<E, State, R> Display for RenderedReport<'_, E, State, R>
 where
-    State: ObservabilityState,
+    State: SeverityState,
     R: ReportRenderer<E, State>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

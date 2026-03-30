@@ -19,8 +19,7 @@ use crate::report::SourceErrorChain;
 use crate::report::StackFrame;
 use crate::report::{
     Attachment, AttachmentVisit, CauseCollectOptions, CauseTraversalState, ErrorCode,
-    HasObservability, MissingObservability, ObservabilityLevel, ObservabilityState, Report,
-    Severity, StackTrace,
+    HasSeverity, MissingSeverity, Severity, SeverityState, Report, StackTrace,
 };
 #[cfg(feature = "trace")]
 use crate::report::{ReportTrace, TraceContext, TraceEvent};
@@ -102,10 +101,9 @@ impl serde::Serialize for DiagnosticIrMessage<'_> {
 
 /// Metadata information in the Diagnostic Intermediate Representation.
 #[derive(Clone)]
-pub struct DiagnosticIrMetadata<'a, State = MissingObservability> {
+pub struct DiagnosticIrMetadata<'a, State = MissingSeverity> {
     error_code: Option<&'a ErrorCode>,
-    severity: Option<Severity>,
-    observability_level: State,
+    severity: State,
     category: Option<&'a str>,
     retryable: Option<bool>,
     stack_trace: Option<&'a StackTrace>,
@@ -113,7 +111,7 @@ pub struct DiagnosticIrMetadata<'a, State = MissingObservability> {
 
 impl<'a, State> DiagnosticIrMetadata<'a, State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Returns the error code, if present.
     pub fn error_code(&self) -> Option<&'a ErrorCode> {
@@ -122,17 +120,7 @@ where
 
     /// Returns the severity, if present.
     pub fn severity(&self) -> Option<Severity> {
-        self.severity
-    }
-
-    /// Returns the observability level, if present.
-    pub fn observability_level(&self) -> Option<ObservabilityLevel> {
-        self.observability_level.observability_level()
-    }
-
-    /// Returns whether the metadata carries an observability level.
-    pub fn has_observability_level(&self) -> bool {
-        self.observability_level().is_some()
+        self.severity.severity()
     }
 
     /// Returns the category, if present.
@@ -150,42 +138,41 @@ where
         self.stack_trace
     }
 
-    fn map_observability<NewState>(
+    fn map_severity<NewState>(
         self,
-        observability_level: NewState,
+        severity: NewState,
     ) -> DiagnosticIrMetadata<'a, NewState>
     where
-        NewState: ObservabilityState,
+        NewState: SeverityState,
     {
         DiagnosticIrMetadata {
             error_code: self.error_code,
-            severity: self.severity,
-            observability_level,
+            severity,
             category: self.category,
             retryable: self.retryable,
             stack_trace: self.stack_trace,
         }
     }
 
-    /// Replaces the metadata typestate with a concrete observability level.
-    pub fn with_observability_level(
+    /// Replaces the metadata typestate with a concrete severity.
+    pub fn with_severity(
         self,
-        level: ObservabilityLevel,
-    ) -> DiagnosticIrMetadata<'a, HasObservability> {
-        self.map_observability(HasObservability::new(level))
+        level: Severity,
+    ) -> DiagnosticIrMetadata<'a, HasSeverity> {
+        self.map_severity(HasSeverity::new(level))
     }
 }
 
-impl DiagnosticIrMetadata<'_, HasObservability> {
-    /// Returns the guaranteed observability level.
-    pub const fn required_observability_level(&self) -> ObservabilityLevel {
-        self.observability_level.level()
+impl DiagnosticIrMetadata<'_, HasSeverity> {
+    /// Returns the guaranteed severity.
+    pub const fn required_severity(&self) -> Severity {
+        self.severity.severity()
     }
 }
 
 /// A platform-agnostic intermediate representation of a diagnostic report.
 #[derive(Clone)]
-pub struct DiagnosticIr<'a, State = MissingObservability> {
+pub struct DiagnosticIr<'a, State = MissingSeverity> {
     #[cfg(feature = "json")]
     pub schema_version: StaticRefStr,
     pub error: DiagnosticIrError<'a>,
@@ -201,12 +188,12 @@ pub struct DiagnosticIr<'a, State = MissingObservability> {
     pub attachment_count: usize,
 }
 
-impl<'a> DiagnosticIr<'a, MissingObservability> {
-    /// Replaces the IR typestate with a concrete observability level.
-    pub fn with_observability_level(
+impl<'a> DiagnosticIr<'a, MissingSeverity> {
+    /// Replaces the IR typestate with a concrete severity.
+    pub fn with_severity(
         self,
-        level: ObservabilityLevel,
-    ) -> DiagnosticIr<'a, HasObservability> {
+        level: Severity,
+    ) -> DiagnosticIr<'a, HasSeverity> {
         let Self {
             #[cfg(feature = "json")]
             schema_version,
@@ -227,7 +214,7 @@ impl<'a> DiagnosticIr<'a, MissingObservability> {
             #[cfg(feature = "json")]
             schema_version,
             error,
-            metadata: metadata.with_observability_level(level),
+            metadata: metadata.with_severity(level),
             #[cfg(feature = "trace")]
             trace,
             attachments,
@@ -243,7 +230,7 @@ impl<'a> DiagnosticIr<'a, MissingObservability> {
 
 impl<E, State> Report<E, State>
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     /// Builds the renderer-agnostic diagnostic intermediate representation.
     pub fn to_diagnostic_ir(&self) -> DiagnosticIr<'_, State>
@@ -264,8 +251,7 @@ where
             },
             metadata: DiagnosticIrMetadata {
                 error_code: metadata.error_code(),
-                severity: metadata.severity(),
-                observability_level: metadata.observability_state(),
+                severity: metadata.severity_state(),
                 category: metadata.category(),
                 retryable: metadata.retryable(),
                 stack_trace: self.stack_trace(),
@@ -285,7 +271,7 @@ where
 
 fn count_attachments<State>(report: &Report<impl Error + 'static, State>) -> (usize, usize)
 where
-    State: ObservabilityState,
+    State: SeverityState,
 {
     let mut context = 0usize;
     let mut attachments = 0usize;

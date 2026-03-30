@@ -86,11 +86,10 @@ fn wrap_preserves_deep_source_chains() {
 fn result_inspect_ext_reads_report_fields() {
     let _guard = init_test();
 
-    let err: Result<(), Report<AuthError, HasObservability>> = fail_auth()
+    let err: Result<(), Report<AuthError, HasSeverity>> = fail_auth()
         .diag()
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_severity(Severity::Error)
-        .with_observability_level(ObservabilityLevel::Error)
         .with_category("auth")
         .with_retryable(false)
         .with_context("request_id", "req-inspect");
@@ -101,8 +100,8 @@ fn result_inspect_ext_reads_report_fields() {
     );
     assert_eq!(err.report_severity(), Some(Severity::Error));
     assert_eq!(
-        err.report_observability_level(),
-        Some(ObservabilityLevel::Error)
+        err.report_severity(),
+        Some(Severity::Error)
     );
     assert_eq!(err.report_category(), Some("auth"));
     assert_eq!(err.report_retryable(), Some(false));
@@ -198,15 +197,14 @@ fn report_is_send_sync_when_inner_error_is_send_sync() {
 }
 
 #[test]
-fn observability_level_parsing_is_explicit_and_rejects_unknown_values() {
+fn severity_parsing_is_explicit_and_rejects_unknown_values() {
     let _guard = init_test();
 
     assert_eq!(
-        ObservabilityLevel::try_from("warning").expect("warning alias should parse"),
-        ObservabilityLevel::Warn
+        Severity::parse("warning").expect("warning alias should parse"),
+        Severity::Warn
     );
 
-    let err =
-        ObservabilityLevel::try_from("urgent").expect_err("unknown level should fail parsing");
+    let err = Severity::parse("urgent").expect_err("unknown level should fail parsing");
     assert_eq!(err.invalid_value(), "urgent");
 }

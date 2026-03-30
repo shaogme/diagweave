@@ -332,7 +332,7 @@ impl ReportSourceTraversalStrategy {
     ) -> Option<&SourceErrorChain>
     where
         E: Error + 'static,
-        State: crate::report::ObservabilityState,
+        State: crate::report::SeverityState,
     {
         match self {
             Self::Origin => report
@@ -360,7 +360,7 @@ fn traversal_from_report<'a, E, State>(
 ) -> ReportSourceErrorTraversalImpl<'a, SourceErrorChain>
 where
     E: Error + 'static,
-    State: crate::report::ObservabilityState,
+    State: crate::report::SeverityState,
 {
     let source_errors = strategy.source_errors(report);
     let inner_source = if strategy.include_inner_source() {
@@ -389,7 +389,7 @@ impl<'a> ReportSourceErrorIter<'a> {
     ) -> Self
     where
         E: Error + 'static,
-        State: crate::report::ObservabilityState,
+        State: crate::report::SeverityState,
     {
         Self {
             walk: traversal_from_report(report, options, ReportSourceTraversalStrategy::Origin),
@@ -402,7 +402,7 @@ impl<'a> ReportSourceErrorIter<'a> {
     ) -> Self
     where
         E: Error + 'static,
-        State: crate::report::ObservabilityState,
+        State: crate::report::SeverityState,
     {
         Self {
             walk: traversal_from_report(report, options, ReportSourceTraversalStrategy::Diagnostic),

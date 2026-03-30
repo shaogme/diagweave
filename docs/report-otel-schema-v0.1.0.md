@@ -27,10 +27,10 @@ This document defines the machine-consumable OpenTelemetry envelope emitted by `
 Record semantics:
 
 - The primary `exception` record uses a structured `body` value that mirrors the report error node rather than a plain message string.
-- For the primary record, `severity_text` / `severity_number` are projected from `metadata.observability_level`.
+- For the primary record, `severity_text` / `severity_number` are projected from `metadata.severity`.
 - Trace-event records keep `body: null` and carry their data in top-level fields and attributes.
-- For trace-event records, top-level severity comes from `trace.events[*].level`; when an event level is absent, the exporter falls back to the report `metadata.observability_level`.
-- `to_otel_envelope()` is only available on `DiagnosticIr<'_, HasObservability>`, so export always carries a report-level observability fallback and event severity fields are always populated.
+- For trace-event records, top-level severity comes from `trace.events[*].level`; when an event level is absent, the exporter falls back to the report `metadata.severity`.
+- `to_otel_envelope()` is only available on `DiagnosticIr<'_, HasSeverity>`, so export always carries a report-level severity fallback and event severity fields are always populated.
 
 ## OtelAttribute model
 

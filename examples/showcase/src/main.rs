@@ -151,7 +151,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     db_operation()
         .diag()
         .with_ctx("user_id", user_id)
-        .with_note("failing over to secondary database")
+        .attach_note("failing over to secondary database")
         .with_display_cause("db operation failed")
         .with_display_cause("query plan fallback selected")
         .with_diag_src_err(io::Error::other("replica lag detected"))
@@ -386,7 +386,7 @@ fn demo_specialized_stores() {
         .diag()
         .with_display_cause("cache invalidated")
         .with_display_cause(io::Error::other("hardware failure"))
-        .with_note("local processing delayed")
+        .attach_note("local processing delayed")
         .expect_err("demo");
     println!("Report:\n{}\n", report.pretty());
 }

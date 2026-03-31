@@ -237,7 +237,7 @@ fn result_ext_diagweave_with_maps_error() {
 
     let err = fail_auth()
         .diag()
-        .with_note("incoming token is stale")
+        .attach_note("incoming token is stale")
         .with_category("auth")
         .wrap_with(|_| ApiError::Wrapped { code: 403 })
         .expect_err("should fail");
@@ -256,11 +256,11 @@ fn lazy_context_and_note_evaluate_only_on_error() {
     let ok: Result<(), Report<AuthError>> = Ok(());
     let counter = std::cell::Cell::new(0usize);
     let _ = ok
-        .context_lazy("hot_path", || {
+        .with_ctx_lazy("hot_path", || {
             counter.set(counter.get() + 1);
             AttachmentValue::Bool(true)
         })
-        .note_lazy(|| {
+        .attach_note_lazy(|| {
             counter.set(counter.get() + 1);
             "should not allocate".to_owned()
         });
@@ -268,8 +268,8 @@ fn lazy_context_and_note_evaluate_only_on_error() {
 
     let err = fail_auth()
         .diag()
-        .context_lazy("retry", || AttachmentValue::Unsigned(3))
-        .note_lazy(|| "token stale".to_owned())
+        .with_ctx_lazy("retry", || AttachmentValue::Unsigned(3))
+        .attach_note_lazy(|| "token stale".to_owned())
         .expect_err("must fail");
     assert_eq!(err.to_string(), "auth invalid token [retry=3, token stale]");
 }

@@ -28,7 +28,7 @@ pub trait Diagnostic {
     where
         Self: Sized,
     {
-        self.diag().with_note(message)
+        self.diag().attach_note(message)
     }
 }
 
@@ -57,6 +57,14 @@ where
         value: impl Into<AttachmentValue>,
         media_type: Option<impl Into<StaticRefStr>>,
     ) -> Result<T, Report<E, State>>;
+    
+    fn attach_note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>>;
+
+    fn attach_note(
+        self,
+        message: impl Display + Send + Sync + 'static,
+    ) -> Result<T, Report<E, State>>;
+
 
     fn with_ctx(
         self,
@@ -64,15 +72,16 @@ where
         value: impl Into<ContextValue>,
     ) -> Result<T, Report<E, State>>;
 
+    fn with_ctx_lazy(
+        self,
+        key: impl Into<StaticRefStr>,
+        make_value: impl FnOnce() -> ContextValue,
+    ) -> Result<T, Report<E, State>>;
+
     fn with_system(
         self,
         key: impl Into<StaticRefStr>,
         value: impl Into<ContextValue>,
-    ) -> Result<T, Report<E, State>>;
-
-    fn with_note(
-        self,
-        message: impl Display + Send + Sync + 'static,
     ) -> Result<T, Report<E, State>>;
 
     fn with_payload(
@@ -152,14 +161,6 @@ where
         err: impl Error + Send + Sync + 'static,
     ) -> Result<T, Report<E, State>>;
 
-    fn context_lazy(
-        self,
-        key: impl Into<StaticRefStr>,
-        make_value: impl FnOnce() -> ContextValue,
-    ) -> Result<T, Report<E, State>>;
-
-    fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>>;
-
     fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
     where
         Report<E, State>: Error + Send + Sync + 'static,
@@ -224,7 +225,7 @@ where
         self.map_err(|report| report.with_system(key, value))
     }
 
-    fn with_note(
+    fn attach_note(
         self,
         message: impl Display + Send + Sync + 'static,
     ) -> Result<T, Report<E, State>> {
@@ -354,7 +355,7 @@ where
         self.map_err(|report| report.with_diag_src_err(err))
     }
 
-    fn context_lazy(
+    fn with_ctx_lazy(
         self,
         key: impl Into<StaticRefStr>,
         make_value: impl FnOnce() -> ContextValue,
@@ -362,7 +363,7 @@ where
         self.map_err(|report| report.with_ctx(key, make_value()))
     }
 
-    fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>> {
+    fn attach_note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>> {
         self.map_err(|report| report.attach_printable(make_message()))
     }
 

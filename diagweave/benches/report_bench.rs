@@ -100,7 +100,7 @@ fn make_report(
     }
 
     for idx in 0..note_count {
-        report = report.with_note(format!("note_{idx}"));
+        report = report.attach_note(format!("note_{idx}"));
     }
 
     for idx in 0..payload_count {

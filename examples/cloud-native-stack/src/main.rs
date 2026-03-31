@@ -41,7 +41,7 @@ mod payment {
             .with_severity(Severity::Warn)
             .with_category("payment")
             .with_retryable(false)
-            .with_note("payment provider declined")
+            .attach_note("payment provider declined")
             .with_display_cause("risk policy rejected the transaction")
             .with_diag_src_err(io::Error::other("issuer hard decline"))
             .with_payload(
@@ -77,7 +77,7 @@ mod payment {
             .with_severity(Severity::Error)
             .with_category("payment")
             .with_retryable(true)
-            .with_note("payment provider timeout")
+            .attach_note("payment provider timeout")
             .with_display_cause("upstream provider exceeded SLA")
             .with_diag_src_err(io::Error::new(
                 io::ErrorKind::TimedOut,
@@ -121,7 +121,7 @@ mod payment {
             .with_severity(Severity::Error)
             .with_category("payment")
             .with_retryable(true)
-            .with_note("payment provider network error")
+            .attach_note("payment provider network error")
             .with_display_cause("tcp dial to provider failed")
             .with_diag_src_err(io::Error::new(io_kind, io_message))
             .with_payload(
@@ -205,7 +205,7 @@ mod order {
             .with_severity(Severity::Warn)
             .with_category("order")
             .with_retryable(false)
-            .with_note("order validation failed")
+            .attach_note("order validation failed")
             .with_display_cause("required fields missing")
             .with_payload(
                 "order_validation",
@@ -234,7 +234,7 @@ mod order {
         payment::charge(amount_cents)
             .with_ctx("order_id", order_id)
             .with_ctx("order_amount_cents", amount_cents)
-            .with_note("order pipeline entered payment stage")
+            .attach_note("order pipeline entered payment stage")
             .with_error_code("ORDER.PAYMENT_FAILED")
             .with_severity(Severity::Error)
             .with_category("order")
@@ -288,7 +288,7 @@ mod gateway {
         Err(
             Report::new(ApiError::bad_request("missing auth header".to_owned()))
                 .with_severity(Severity::Warn)
-                .with_note("gateway rejected request")
+                .attach_note("gateway rejected request")
                 .with_ctx("route", "/v1/order"),
         )
     }
@@ -296,7 +296,7 @@ mod gateway {
     fn payment_declined() -> Result<String, Report<ApiError, HasSeverity>> {
         payment::charge(0)
             .with_ctx("route", "/v1/charge")
-            .with_note("gateway forwarding to payment")
+            .attach_note("gateway forwarding to payment")
             .with_error_code("API.PAYMENT_DECLINED")
             .with_severity(Severity::Warn)
             .with_category("api")
@@ -317,7 +317,7 @@ mod gateway {
     fn order_network_error() -> Result<String, Report<ApiError, HasSeverity>> {
         order::create_with_amount(9002, 2)
             .with_ctx("route", "/v1/order")
-            .with_note("gateway forwarding to order service")
+            .attach_note("gateway forwarding to order service")
             .with_error_code("API.ORDER_UPSTREAM_FAILURE")
             .with_severity(Severity::Error)
             .with_category("api")
@@ -339,7 +339,7 @@ mod gateway {
     fn success_path() -> Result<String, Report<ApiError, HasSeverity>> {
         order::create(9001)
             .with_ctx("route", "/v1/order")
-            .with_note("gateway forwarding to order service")
+            .attach_note("gateway forwarding to order service")
             .with_trace_event(TraceEvent {
                 name: "gateway.forward.order".into(),
                 level: Some(TraceEventLevel::Info),

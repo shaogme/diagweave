@@ -241,7 +241,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_system_context` | `(SystemContext)` | Replace the structured system context object |
 
 `system` is no longer a flat free-form map in rendered JSON. It is emitted as a typed governance object with fixed top-level sections: `system.service`, `system.deployment`, `system.runtime`, and `system.request`.
-| `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
+| `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
@@ -290,7 +290,7 @@ let report = Report::new(MyError::Timeout)
         "request_id",
         "req-123",
     )
-    .with_note("please check the network connection")
+    .attach_note("please check the network connection")
     .with_retryable(true)
     .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
 #[cfg(feature = "std")]
@@ -312,9 +312,9 @@ Provides pipelines for seamless diagnostic info injection on error paths by impl
 #### 2. `ReportResultExt` (on `Result<T, Report<E>>`)
 Proxy versions of all `Report` chained configuration methods:
 - **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **Context/Attachments**: `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
+- **Context/Attachments**: `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`, `attach_printable`/`attach_note`, `attach_payload`/`with_payload`
 - **System Shape**: rendered `system` is structured as `system.service`, `system.deployment`, `system.runtime`, `system.request`
-- **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
+- **Lazy Loading**: `with_ctx_lazy(key, f)`, `attach_note_lazy(f)` (closure runs only on Err)
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **Source Errors**: `with_diag_src_err(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
@@ -339,7 +339,7 @@ fn process() -> Result<(), Report<io::Error, HasSeverity>> {
         .diag()
         .with_ctx(file_key, "config.toml") // Converts and attaches context
         .with_severity(Severity::Warn)
-        .context_lazy(timestamp_key, || format!("{:?}", SystemTime::now()).into())
+        .with_ctx_lazy(timestamp_key, || format!("{:?}", SystemTime::now()).into())
         .attach_printable("failed to load system config")?;
         
     Ok(())

@@ -341,7 +341,7 @@ where
     }
 
     /// Adds a note to the report (alias for `attach_printable`).
-    pub fn with_note(self, message: impl Display + Send + Sync + 'static) -> Self {
+    pub fn attach_note(self, message: impl Display + Send + Sync + 'static) -> Self {
         self.attach_printable(message)
     }
 

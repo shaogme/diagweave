@@ -101,7 +101,7 @@ fn main() {
         .diag()
         .with_ctx("request_id", "req-001")
         .with_ctx("retry", 0)
-        .with_note("auth gate rejected")
+        .attach_note("auth gate rejected")
         .expect_err("demo");
 
     println!("{}", report);          // 紧凑输出
@@ -271,10 +271,10 @@ pub enum MyError {
 常用链式增强（`Result<T, Report<E>>`）：
 
 - `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`
-- `with_note`、`with_payload`
+- `attach_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
 - `with_display_cause`、`with_display_causes`、`with_diag_src_err`
-- `context_lazy(key, make_value)`、`note_lazy`
+- `with_ctx_lazy(key, make_value)`、`attach_note_lazy`
 - `wrap`、`wrap_with`
 
 `category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `StaticRefStr` 共享存储。

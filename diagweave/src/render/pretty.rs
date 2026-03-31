@@ -1,5 +1,4 @@
 use alloc::vec;
-use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
@@ -346,9 +345,7 @@ fn render_system_subsection(
     write_indent(f, indent)?;
     writeln!(f, "- {section_name}:")?;
 
-    let mut entries: Vec<_> = section.iter().collect();
-    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-    for (key, value) in entries {
+    for (key, value) in section.sorted_entries() {
         write_indent(f, indent)?;
         write_indent(f, indent)?;
         writeln!(f, "- {}: {}", key.as_ref(), value)?;
@@ -370,9 +367,7 @@ where
 
     let mut wrote_header = false;
     if let Some(context) = report.context() {
-        let mut entries: Vec<_> = context.iter().collect();
-        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-        for (key, value) in entries {
+        for (key, value) in context.sorted_entries() {
             if !wrote_header {
                 wrote_header = true;
                 writeln!(f, "Context:")?;

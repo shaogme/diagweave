@@ -54,9 +54,7 @@ impl Display for AttachmentValue {
             }
             Self::Object(values) => {
                 write!(f, "{{")?;
-                let mut entries: Vec<_> = values.iter().collect();
-                entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-                for (idx, (key, value)) in entries.into_iter().enumerate() {
+                for (idx, (key, value)) in values.sorted_entries().into_iter().enumerate() {
                     if idx > 0 {
                         write!(f, ", ")?;
                     }

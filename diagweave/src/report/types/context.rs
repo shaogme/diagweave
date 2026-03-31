@@ -29,6 +29,10 @@ impl ContextMap {
     pub fn iter(&self) -> impl Iterator<Item = (&StaticRefStr, &ContextValue)> {
         self.0.iter()
     }
+
+    pub fn sorted_entries(&self) -> Vec<(&StaticRefStr, &ContextValue)> {
+        self.0.sorted_entries()
+    }
 }
 
 impl<'a> IntoIterator for &'a ContextMap {

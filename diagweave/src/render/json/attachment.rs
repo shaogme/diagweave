@@ -67,10 +67,11 @@ where
 fn build_json_context(context: Option<&crate::report::ContextMap>) -> JsonContext
 where
 {
-    let mut entries: Vec<JsonContextEntry> = context
+    let entries: Vec<JsonContextEntry> = context
         .map(|system| {
             system
-                .iter()
+                .sorted_entries()
+                .into_iter()
                 .map(|(key, value)| JsonContextEntry {
                     key: key.clone(),
                     value: value.clone(),
@@ -78,7 +79,6 @@ where
                 .collect()
         })
         .unwrap_or_default();
-    entries.sort_by(|left, right| left.key.cmp(&right.key));
     JsonContext { entries }
 }
 
@@ -232,9 +232,7 @@ pub(super) fn write_attachment_value(
         AttachmentValue::Object(values) => write_kind_and_value(f, pretty, depth, "object", |f| {
             let mut first = true;
             f.write_char('{')?;
-            let mut entries: Vec<_> = values.iter().collect();
-            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-            for (key, item) in entries {
+            for (key, item) in values.sorted_entries() {
                 write_object_field(f, pretty, depth + 1, &mut first, key, |f| {
                     write_attachment_value(f, pretty, depth + 2, item)
                 })?;

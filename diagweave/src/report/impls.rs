@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
 
@@ -160,9 +159,7 @@ where
                 *idx += 1;
             }
 
-            let mut context_entries: Vec<_> = diag.context.iter().collect();
-            context_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-            for (key, value) in context_entries {
+            for (key, value) in diag.context.sorted_entries() {
                 if *idx > 0 {
                     write!(f, ", ")?;
                 }
@@ -170,9 +167,7 @@ where
                 *idx += 1;
             }
             for (section_name, section) in diag.system.sections() {
-                let mut system_entries: Vec<_> = section.iter().collect();
-                system_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-                for (key, value) in system_entries {
+                for (key, value) in section.sorted_entries() {
                     if *idx > 0 {
                         write!(f, ", ")?;
                     }

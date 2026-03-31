@@ -1,5 +1,7 @@
 #[cfg(not(feature = "std"))]
 use alloc::collections::{BTreeMap, BTreeSet};
+#[cfg(not(feature = "std"))]
+use alloc::vec::Vec;
 use core::borrow::Borrow;
 #[cfg(feature = "std")]
 use core::hash::Hash;
@@ -95,6 +97,42 @@ impl<K, V> FastMap<K, V> {
     /// Returns a mutable iterator over key-value pairs.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
         self.0.iter_mut()
+    }
+}
+
+#[cfg(feature = "std")]
+impl<K, V> FastMap<K, V>
+where
+    K: Eq + Hash + Ord,
+{
+    /// Returns all entries sorted by key.
+    pub fn sorted_entries(&self) -> Vec<(&K, &V)> {
+        let mut entries: Vec<_> = self.0.iter().collect();
+        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+        entries
+    }
+
+    /// Consumes the map and returns all entries sorted by key.
+    pub fn into_sorted_entries(self) -> Vec<(K, V)> {
+        let mut entries: Vec<_> = self.0.into_iter().collect();
+        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+        entries
+    }
+}
+
+#[cfg(not(feature = "std"))]
+impl<K, V> FastMap<K, V>
+where
+    K: Ord,
+{
+    /// Returns all entries sorted by key.
+    pub fn sorted_entries(&self) -> Vec<(&K, &V)> {
+        self.0.iter().collect()
+    }
+
+    /// Consumes the map and returns all entries sorted by key.
+    pub fn into_sorted_entries(self) -> Vec<(K, V)> {
+        self.0.into_iter().collect()
     }
 }
 

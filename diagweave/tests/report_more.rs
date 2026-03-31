@@ -1,5 +1,6 @@
 mod report_common;
 use diagweave::prelude::*;
+use diagweave::report::Attachment;
 use diagweave::report::{CauseCollectOptions, ErrorCode, ErrorCodeIntError};
 use report_common::*;
 use std::error::Error;
@@ -92,23 +93,20 @@ fn result_inspect_ext_reads_report_fields() {
         .with_severity(Severity::Error)
         .with_category("auth")
         .with_retryable(false)
-        .with_context("request_id", "req-inspect");
+        .with_ctx("request_id", "req-inspect");
 
     assert_eq!(
         err.report_error_code().map(ToString::to_string),
         Some("AUTH.INVALID_TOKEN".to_owned())
     );
     assert_eq!(err.report_severity(), Some(Severity::Error));
-    assert_eq!(
-        err.report_severity(),
-        Some(Severity::Error)
-    );
+    assert_eq!(err.report_severity(), Some(Severity::Error));
     assert_eq!(err.report_category(), Some("auth"));
     assert_eq!(err.report_retryable(), Some(false));
     assert_eq!(
         err.report_attachments()
             .map(|items: &[Attachment]| items.len()),
-        Some(1)
+        Some(0)
     );
 
     let ok: Result<(), Report<AuthError>> = Ok(());
@@ -121,7 +119,7 @@ fn pretty_options_can_hide_specific_sections() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_error_code("API.UNAUTHORIZED")
-        .attach("request_id", "req-sec-1");
+        .with_ctx("request_id", "req-sec-1");
     let opts = ReportRenderOptions {
         show_empty_sections: true,
         show_governance_section: false,

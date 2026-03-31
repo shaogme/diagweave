@@ -2,6 +2,9 @@ mod report_common;
 #[cfg(feature = "otel")]
 use diagweave::adapters::OtelValue;
 use diagweave::prelude::*;
+use diagweave::report::ReportMetadata;
+#[cfg(feature = "tracing")]
+use diagweave::trace::TracingExporterTrait;
 #[cfg(feature = "tracing")]
 use diagweave::trace::{EmitStats, PreparedTracingEmission, PreparedTracingLevel};
 use report_common::*;
@@ -51,7 +54,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
                 .with_category("auth")
                 .with_retryable(false),
         )
-        .attach("request_id", "req-ir-1")
+        .with_ctx("request_id", "req-ir-1")
         .attach_printable("note")
         .attach_payload(
             "response",
@@ -72,10 +75,7 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
         Some("API.UNAUTHORIZED".to_owned())
     );
     assert_eq!(ir.metadata.severity(), Some(Severity::Error));
-    assert_eq!(
-        ir.metadata.severity(),
-        Some(Severity::Error)
-    );
+    assert_eq!(ir.metadata.severity(), Some(Severity::Error));
     assert_eq!(ir.context_count, 1);
     assert_eq!(ir.attachment_count, 2);
 }
@@ -156,8 +156,8 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
     ]));
 
     let report = Report::new(ApiError::Unauthorized)
-        .attach("overflow", AttachmentValue::Unsigned(u64::MAX))
-        .attach(
+        .with_ctx("overflow", AttachmentValue::Unsigned(u64::MAX))
+        .with_ctx(
             "secret",
             AttachmentValue::Redacted {
                 kind: Some("token".into()),
@@ -166,9 +166,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         )
         .attach_payload("nested", nested, Some("application/json"));
 
-    let ir = report
-        .to_diagnostic_ir()
-        .with_severity(Severity::Error);
+    let ir = report.to_diagnostic_ir().with_severity(Severity::Error);
     let otel = ir.to_otel_envelope();
     let record = otel.records.first().expect("report record should exist");
     assert_eq!(record.name, "exception");
@@ -231,9 +229,7 @@ fn diagnostic_ir_requires_explicit_severity_upgrade_before_otel() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized);
-    let ir = report
-        .to_diagnostic_ir()
-        .with_severity(Severity::Warn);
+    let ir = report.to_diagnostic_ir().with_severity(Severity::Warn);
     let otel = ir.to_otel_envelope();
     let record = otel.records.first().expect("report record should exist");
 
@@ -278,7 +274,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
                 },
             ],
         })
-        .attach("request_id", "req-otel-1")
+        .with_ctx("request_id", "req-otel-1")
         .attach_printable("attachment-note")
         .attach_payload(
             "payload",
@@ -299,11 +295,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|f| f.key == "metadata.error_code")
     );
-    assert!(
-        tracing_fields
-            .iter()
-            .any(|f| f.key == "metadata.severity")
-    );
+    assert!(tracing_fields.iter().any(|f| f.key == "metadata.severity"));
     let trace_value = tracing_fields
         .iter()
         .find(|f| f.key == "trace")
@@ -643,9 +635,7 @@ fn diagnostic_ir_requires_explicit_severity_upgrade_before_tracing() {
             attributes: vec![],
         });
 
-    let ir = report
-        .to_diagnostic_ir()
-        .with_severity(Severity::Warn);
+    let ir = report.to_diagnostic_ir().with_severity(Severity::Warn);
     let prepared = ir.prepare_tracing();
     assert_eq!(prepared.report_level(), PreparedTracingLevel::Warn);
 

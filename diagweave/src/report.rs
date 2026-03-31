@@ -21,18 +21,22 @@ use std::sync::OnceLock;
 
 pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
 pub use types::{
-    Attachment, AttachmentValue, CauseCollectOptions, CauseKind, DisplayCauseChain, ErrorCode,
-    ErrorCodeIntError, HasSeverity, MissingSeverity, Severity,
-    SeverityParseError, SeverityState, ReportMetadata, SourceErrorChain,
-    SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
+    Attachment, AttachmentValue, CauseCollectOptions, CauseKind, ContextMap, ContextValue,
+    DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalErrorMeta, HasSeverity, MissingSeverity,
+    ReportMetadata, Severity, SeverityParseError, SeverityState, SourceErrorChain,
+    SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat, SystemContext,
 };
 pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
+#[cfg(feature = "json")]
+pub use types::{JsonContext, JsonContextEntry};
 
 #[cfg(feature = "trace")]
 pub use trace::{
     ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
-    TraceEventLevel, TraceId,
+    TraceEventLevel, TraceFlags, TraceId, TraceState,
 };
+#[cfg(feature = "trace")]
+pub use types::GlobalTraceContext;
 
 use types::{DiagnosticBag, append_source_chain, limit_depth_source_chain};
 
@@ -86,6 +90,16 @@ where
         }
     }
 
+    /// Returns context key-value pairs associated with the report.
+    pub fn context(&self) -> Option<&ContextMap> {
+        self.diagnostics().map(|diag| &diag.context)
+    }
+
+    /// Returns structured system fields associated with the report.
+    pub fn system(&self) -> Option<&SystemContext> {
+        self.diagnostics().map(|diag| &diag.system)
+    }
+
     /// Visits attachments in insertion order without building intermediate allocations.
     pub fn visit_attachments<F>(&self, mut visit: F) -> Result<(), fmt::Error>
     where
@@ -96,9 +110,6 @@ where
         };
         for attachment in &diag.attachments {
             match attachment {
-                Attachment::Context { key, value } => {
-                    visit(AttachmentVisit::Context { key, value })?;
-                }
                 Attachment::Note { message } => {
                     visit(AttachmentVisit::Note {
                         message: message.as_ref(),
@@ -222,7 +233,10 @@ where
     }
 
     #[cfg(feature = "std")]
-    fn apply_global_context(&mut self) {
+    fn apply_global_context(&mut self)
+    where
+        State: Clone,
+    {
         let Some(injector) = global_context_injector().get() else {
             return;
         };
@@ -231,54 +245,75 @@ where
             return;
         };
 
-        #[cfg(feature = "trace")]
         let GlobalContext {
+            #[cfg(feature = "trace")]
+            trace,
+            error,
+            system,
             context,
-            trace_id,
-            span_id,
-            parent_span_id,
         } = global;
-        #[cfg(not(feature = "trace"))]
-        let GlobalContext { context } = global;
 
-        let has_context = !context.is_empty();
-        #[cfg(feature = "trace")]
-        let has_trace = trace_id.is_some() || span_id.is_some() || parent_span_id.is_some();
-        #[cfg(not(feature = "trace"))]
-        let has_trace = false;
-
-        if !has_context && !has_trace {
-            return;
+        if let Some(error) = error {
+            if let Some(error_code) = error.error_code {
+                self.metadata = self.metadata.clone().with_error_code(error_code);
+            }
+            if let Some(category) = error.category {
+                self.metadata = self.metadata.clone().with_category(category);
+            }
+            if let Some(retryable) = error.retryable {
+                self.metadata = self.metadata.clone().with_retryable(retryable);
+            }
         }
 
-        let diag = self.diagnostics_mut();
-        for (key, value) in context {
-            diag.attachments.push(Attachment::context(key, value));
+        if !system.is_empty() {
+            let diag = self.diagnostics_mut();
+            diag.system = system;
         }
+        if !context.is_empty() {
+            let diag = self.diagnostics_mut();
+            for (key, value) in &context {
+                diag.context.insert(key.clone(), value.clone());
+            }
+        }
+
         #[cfg(feature = "trace")]
-        if has_trace {
-            let trace = diag.trace.get_or_insert_with(ReportTrace::default);
-            if trace.context.trace_id.is_none() {
-                trace.context.trace_id = trace_id;
-            }
-            if trace.context.span_id.is_none() {
-                trace.context.span_id = span_id;
-            }
-            if trace.context.parent_span_id.is_none() {
-                trace.context.parent_span_id = parent_span_id;
-            }
+        if let Some(trace) = trace {
+            let report_trace = self
+                .diagnostics_mut()
+                .trace
+                .get_or_insert_with(ReportTrace::default);
+            report_trace.context.trace_id = trace.trace_id;
+            report_trace.context.span_id = trace.span_id;
+            report_trace.context.parent_span_id = trace.parent_span_id;
+            report_trace.context.sampled = trace.sampled;
+            report_trace.context.trace_state = trace.trace_state;
+            report_trace.context.flags = trace.flags;
         }
     }
 
-    /// Attaches a context key-value pair to the report.
-    pub fn attach(
+    /// Adds a business context key-value pair to the report.
+    pub fn with_ctx(
         mut self,
         key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
+        value: impl Into<ContextValue>,
     ) -> Self {
-        self.diagnostics_mut()
-            .attachments
-            .push(Attachment::context(key, value));
+        self.diagnostics_mut().context.insert(key, value.into());
+        self
+    }
+
+    /// Adds a system context key-value pair to the report.
+    pub fn with_system(
+        mut self,
+        key: impl Into<StaticRefStr>,
+        value: impl Into<ContextValue>,
+    ) -> Self {
+        self.diagnostics_mut().system.insert(key, value.into());
+        self
+    }
+
+    /// Replaces the structured system context for the report.
+    pub fn with_system_context(mut self, system: SystemContext) -> Self {
+        self.diagnostics_mut().system = system;
         self
     }
 
@@ -303,15 +338,6 @@ where
             media_type.map(|m| m.into()),
         ));
         self
-    }
-
-    /// Adds context to the report (alias for `attach`).
-    pub fn with_context(
-        self,
-        key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-    ) -> Self {
-        self.attach(key, value)
     }
 
     /// Adds a note to the report (alias for `attach_printable`).
@@ -349,10 +375,7 @@ where
     }
 
     /// Sets the severity for the report.
-    pub fn with_severity(
-        self,
-        severity: Severity,
-    ) -> Report<E, HasSeverity> {
+    pub fn with_severity(self, severity: Severity) -> Report<E, HasSeverity> {
         let Self {
             inner,
             metadata,
@@ -494,6 +517,8 @@ where
                 #[cfg(feature = "trace")]
                 trace: None,
                 stack_trace: None,
+                context: ContextMap::default(),
+                system: SystemContext::default(),
                 attachments: Vec::new(),
                 display_causes: None,
                 origin_source_errors: Some(origin_source_errors),

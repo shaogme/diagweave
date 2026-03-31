@@ -235,7 +235,9 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
             let span_id = self
                 .trace
                 .and_then(|trace| trace.context.span_id.as_ref().map(|v| v.as_ref().into()));
-            let trace_flags = self.trace.and_then(|trace| trace.context.flags);
+            let trace_flags = self
+                .trace
+                .and_then(|trace| trace.context.flags.map(|flags| flags.bits()));
             (trace_id, span_id, trace_flags)
         }
         #[cfg(not(feature = "trace"))]
@@ -258,7 +260,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         if let Some(trace_state) = trace.context.trace_state.as_ref() {
             attributes.push(OtelAttribute {
                 key: "trace.state".into(),
-                value: OtelValue::String(trace_state.clone().into()),
+                value: OtelValue::String(trace_state.as_str().into()),
             });
         }
     }
@@ -288,14 +290,26 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     }
 
     fn otel_attach_attrs(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
-        for attachment in self.attachments {
-            match attachment {
-                Attachment::Context { key, value } => {
+        if let Some(context) = self.context {
+            for (key, value) in context {
+                attributes.push(OtelAttribute {
+                    key: key.as_ref().into(),
+                    value: OtelValue::from(value),
+                });
+            }
+        }
+        if let Some(system) = self.system {
+            for (section_name, section) in system.sections() {
+                for (key, value) in section {
                     attributes.push(OtelAttribute {
-                        key: key.clone().into(),
+                        key: format!("system.{section_name}.{}", key.as_ref()).into(),
                         value: OtelValue::from(value),
                     });
                 }
+            }
+        }
+        for attachment in self.attachments {
+            match attachment {
                 Attachment::Note { message } => {
                     attributes.push(OtelAttribute {
                         key: "attachment.note".into(),
@@ -358,7 +372,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
             if let Some(trace_state) = trace.context.trace_state.as_ref() {
                 attributes.push(OtelAttribute {
                     key: "trace.state".into(),
-                    value: OtelValue::String(trace_state.clone().into()),
+                    value: OtelValue::String(trace_state.as_str().into()),
                 });
             }
             records.push(OtelEvent {
@@ -370,7 +384,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 severity_number,
                 trace_id: trace.context.trace_id.as_ref().map(|v| v.as_ref().into()),
                 span_id: trace.context.span_id.as_ref().map(|v| v.as_ref().into()),
-                trace_flags: trace.context.flags,
+                trace_flags: trace.context.flags.map(|flags| flags.bits()),
                 attributes,
             });
         }

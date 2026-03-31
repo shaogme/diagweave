@@ -1,5 +1,7 @@
 #[path = "types/attachment.rs"]
 pub mod attachment;
+#[path = "types/context.rs"]
+pub mod context;
 #[path = "types/error.rs"]
 pub mod error;
 #[path = "types/source_error.rs"]
@@ -16,9 +18,10 @@ use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
 #[cfg(feature = "trace")]
-use super::trace::{ParentSpanId, ReportTrace, SpanId, TraceId};
+use super::trace::ReportTrace;
 
 pub use attachment::*;
+pub use context::*;
 pub use error::*;
 pub use source_error::*;
 
@@ -149,8 +152,7 @@ where
 
     /// Returns the severity, if present.
     pub fn severity(&self) -> Option<Severity> {
-        self.severity
-            .severity()
+        self.severity.severity()
     }
 
     /// Returns the category, if present.
@@ -167,10 +169,7 @@ where
         self.severity
     }
 
-    pub(crate) fn map_severity<NewState>(
-        self,
-        severity: NewState,
-    ) -> ReportMetadata<NewState>
+    pub(crate) fn map_severity<NewState>(self, severity: NewState) -> ReportMetadata<NewState>
     where
         NewState: SeverityState,
     {
@@ -189,10 +188,7 @@ where
     }
 
     /// Replaces the metadata typestate with a concrete severity.
-    pub fn with_severity(
-        self,
-        severity: Severity,
-    ) -> ReportMetadata<HasSeverity> {
+    pub fn with_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
         self.map_severity(HasSeverity::new(severity))
     }
 
@@ -328,10 +324,6 @@ impl CauseTraversalState {
 
 /// A streamed attachment item for visitor-based traversal.
 pub enum AttachmentVisit<'a> {
-    Context {
-        key: &'a StaticRefStr,
-        value: &'a AttachmentValue,
-    },
     Note {
         message: &'a (dyn Display + Send + Sync + 'static),
     },

@@ -17,7 +17,8 @@ impl TracingExporterTrait for TracingExporter {
         let stats = emission.stats();
         let report_level = prepared_level_to_tracing(emission.report_level());
         let ir = emission.ir();
-        let (context_items, attachment_items) = build_ctx_and_attachments(ir.attachments);
+        let (context_value, system_value, attachment_items) =
+            build_ctx_and_attachments(ir.context, ir.system, ir.attachments);
         let stack_trace_value = ir.metadata.stack_trace().map(build_stack_trace_value);
         let display_causes_value = build_display_causes(ir.display_causes, ir.display_causes_state);
         let origin_source_errors_value = ir
@@ -33,7 +34,8 @@ impl TracingExporterTrait for TracingExporter {
             report_level,
             ReportEventFields {
                 ir,
-                context: context_items.as_slice(),
+                context: &context_value,
+                system: &system_value,
                 attachments: attachment_items.as_slice(),
                 stack_trace: stack_trace_value.as_ref(),
                 display_causes: &display_causes_value,
@@ -68,7 +70,7 @@ fn prepared_level_to_tracing(level: PreparedTracingLevel) -> Level {
 }
 
 macro_rules! report_event {
-    ($level:expr, $ir:expr, $context:expr, $attachments:expr, $stack:expr, $display:expr, $origin_sources:expr, $diagnostic_sources:expr) => {
+    ($level:expr, $ir:expr, $context:expr, $system:expr, $attachments:expr, $stack:expr, $display:expr, $origin_sources:expr, $diagnostic_sources:expr) => {
         event!(
             target: "diagweave::report",
             $level,
@@ -86,9 +88,11 @@ macro_rules! report_event {
             trace_state = ?$ir.trace.as_ref().and_then(|t| t.context.trace_state.as_ref()),
             trace_flags = ?$ir.trace.as_ref().and_then(|t| t.context.flags),
             report_context_count = $ir.context_count,
+            report_system_count = $ir.system_count,
             report_attachment_count = $ir.attachment_count,
             trace_event_count = $ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0),
             report_context = ?$context,
+            report_system = ?$system,
             report_attachments = ?$attachments,
             report_stack_trace = ?$stack,
             report_display_causes = ?$display,
@@ -101,7 +105,8 @@ macro_rules! report_event {
 
 struct ReportEventFields<'a, 'ir> {
     ir: &'a DiagnosticIr<'ir, HasSeverity>,
-    context: &'a [AttachmentValue],
+    context: &'a AttachmentValue,
+    system: &'a AttachmentValue,
     attachments: &'a [AttachmentValue],
     stack_trace: Option<&'a AttachmentValue>,
     display_causes: &'a AttachmentValue,
@@ -116,6 +121,7 @@ fn emit_report_event(level: Level, fields: ReportEventFields<'_, '_>) {
                 $fixed,
                 fields.ir,
                 fields.context,
+                fields.system,
                 fields.attachments,
                 fields.stack_trace,
                 fields.display_causes,

@@ -1,6 +1,8 @@
 mod report_common;
 use diagweave::prelude::*;
+use diagweave::render::PrettyIndent;
 use diagweave::report::CauseCollectOptions;
+use diagweave::report::{Attachment, StackTrace, StackTraceFormat};
 use report_common::*;
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -20,7 +22,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
         .with_severity(Severity::Warn)
         .with_category("auth")
         .with_retryable(false)
-        .attach("request_id", "tx-100")
+        .with_ctx("request_id", "tx-100")
         .attach_printable("check authorization flow")
         .attach_payload(
             "auth_payload",
@@ -28,21 +30,23 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
             Some("application/json"),
         );
 
-    assert_eq!(report.attachments().len(), 3);
-    assert!(matches!(
-        &report.attachments()[0],
-        Attachment::Context { key, value: AttachmentValue::String(value) }
-            if key == "request_id" && value == "tx-100"
-    ));
+    assert_eq!(report.context().map_or(0, |ctx| ctx.len()), 1);
+    assert_eq!(report.attachments().len(), 2);
     assert_eq!(
-        report.attachments()[0].as_context(),
-        Some(("request_id", &AttachmentValue::String("tx-100".into())))
+        report
+            .context()
+            .and_then(|ctx| ctx.iter().next())
+            .map(|(key, value)| (key.as_ref().to_owned(), value.clone())),
+        Some((
+            "request_id".to_owned(),
+            AttachmentValue::String("tx-100".into())
+        ))
     );
     assert_eq!(
-        report.attachments()[1].as_note(),
+        report.attachments()[0].as_note(),
         Some("check authorization flow".to_owned())
     );
-    assert!(report.attachments()[2].as_payload().is_some());
+    assert!(report.attachments()[1].as_payload().is_some());
     assert_eq!(
         report.metadata().error_code().map(ToString::to_string),
         Some("AUTH.INVALID_TOKEN".to_owned())
@@ -59,7 +63,7 @@ fn diagweave_wraps_previous_report_as_source() {
 
     let inner = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
-        .attach("request_id", "tx-2");
+        .with_ctx("request_id", "tx-2");
     let outer = inner.wrap(ApiError::Unauthorized);
 
     assert_eq!(outer.to_string(), "api unauthorized");
@@ -76,7 +80,7 @@ fn diagweave_with_changes_context_and_keeps_metadata() {
 
     let outer = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
-        .attach("request_id", "tx-9")
+        .with_ctx("request_id", "tx-9")
         .wrap_with(|_| ApiError::Wrapped { code: 401 });
 
     assert_eq!(
@@ -110,7 +114,7 @@ fn report_debug_is_pretty_like_in_debug_profile() {
         "{:?}",
         Report::new(AuthError::InvalidToken)
             .with_error_code("AUTH.INVALID_TOKEN")
-            .attach("request_id", "tx-debug")
+            .with_ctx("request_id", "tx-debug")
     );
     assert!(debug_text.contains("Report:"));
     assert!(debug_text.contains("attachments:"));
@@ -132,7 +136,7 @@ fn result_ext_builds_report_chain() {
 
     let err = fail_auth()
         .diag()
-        .with_context("request_id", 77u64)
+        .with_ctx("request_id", 77u64)
         .with_error_code("AUTH.INVALID_TOKEN")
         .wrap(ApiError::Unauthorized)
         .expect_err("should fail");
@@ -185,11 +189,17 @@ fn global_context_injector_applies_to_new_reports() {
 
     let report = Report::new(AuthError::InvalidToken);
 
-    assert!(matches!(
-        &report.attachments()[0],
-        Attachment::Context { key, value: AttachmentValue::String(value) }
-            if key == "request_id" && value == "req-42"
-    ));
+    assert_eq!(report.context().map_or(0, |ctx| ctx.len()), 1);
+    assert_eq!(
+        report
+            .context()
+            .and_then(|ctx| ctx.iter().next())
+            .map(|(key, value)| (key.as_ref().to_owned(), value.clone())),
+        Some((
+            "request_id".to_owned(),
+            AttachmentValue::String("req-42".into())
+        ))
+    );
     #[cfg(feature = "trace")]
     {
         let trace = report.trace().expect("trace should be injected");
@@ -214,9 +224,10 @@ fn global_context_injector_can_be_disabled_by_user_logic() {
     let report = Report::new(AuthError::InvalidToken);
     assert!(
         report
-            .attachments()
-            .iter()
-            .all(|attachment| attachment.as_context().map(|(k, _)| k) != Some("request_id"))
+            .context()
+            .into_iter()
+            .flat_map(|map| map.iter())
+            .all(|(key, _)| key.as_ref() != "request_id")
     );
 }
 
@@ -270,7 +281,7 @@ fn pretty_output_is_structured() {
     let pretty = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_severity(Severity::Error)
-        .attach("request_id", "tx-pretty")
+        .with_ctx("request_id", "tx-pretty")
         .attach_payload(
             "raw_body",
             AttachmentValue::Bytes(vec![1, 2, 3]),

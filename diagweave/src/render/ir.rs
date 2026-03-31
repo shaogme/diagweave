@@ -12,19 +12,19 @@ use ref_str::StaticRefStr;
 
 #[cfg(feature = "json")]
 use crate::render_impl::REPORT_JSON_SCHEMA_VERSION;
-#[cfg(any(feature = "trace", feature = "otel"))]
+#[cfg(feature = "trace")]
 use crate::report::AttachmentValue;
 use crate::report::SourceErrorChain;
 #[cfg(any(feature = "trace", feature = "otel"))]
 use crate::report::StackFrame;
 use crate::report::{
-    Attachment, AttachmentVisit, CauseCollectOptions, CauseTraversalState, ErrorCode,
-    HasSeverity, MissingSeverity, Severity, SeverityState, Report, StackTrace,
+    Attachment, CauseCollectOptions, CauseTraversalState, ContextMap, ErrorCode, HasSeverity,
+    MissingSeverity, Report, Severity, SeverityState, StackTrace, SystemContext,
 };
 #[cfg(feature = "trace")]
 use crate::report::{ReportTrace, TraceContext, TraceEvent};
 #[cfg(any(feature = "trace", feature = "otel"))]
-use crate::utils::fast_map_new;
+use crate::utils::FastMap;
 /// A structured diagnostic error node shared by renderers and adapters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize))]
@@ -138,10 +138,7 @@ where
         self.stack_trace
     }
 
-    fn map_severity<NewState>(
-        self,
-        severity: NewState,
-    ) -> DiagnosticIrMetadata<'a, NewState>
+    fn map_severity<NewState>(self, severity: NewState) -> DiagnosticIrMetadata<'a, NewState>
     where
         NewState: SeverityState,
     {
@@ -155,10 +152,7 @@ where
     }
 
     /// Replaces the metadata typestate with a concrete severity.
-    pub fn with_severity(
-        self,
-        level: Severity,
-    ) -> DiagnosticIrMetadata<'a, HasSeverity> {
+    pub fn with_severity(self, level: Severity) -> DiagnosticIrMetadata<'a, HasSeverity> {
         self.map_severity(HasSeverity::new(level))
     }
 }
@@ -179,21 +173,21 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
+    pub context: Option<&'a ContextMap>,
+    pub system: Option<&'a SystemContext>,
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
     pub origin_source_errors: Option<SourceErrorChain>,
     pub diagnostic_source_errors: Option<SourceErrorChain>,
     pub context_count: usize,
+    pub system_count: usize,
     pub attachment_count: usize,
 }
 
 impl<'a> DiagnosticIr<'a, MissingSeverity> {
     /// Replaces the IR typestate with a concrete severity.
-    pub fn with_severity(
-        self,
-        level: Severity,
-    ) -> DiagnosticIr<'a, HasSeverity> {
+    pub fn with_severity(self, level: Severity) -> DiagnosticIr<'a, HasSeverity> {
         let Self {
             #[cfg(feature = "json")]
             schema_version,
@@ -201,12 +195,15 @@ impl<'a> DiagnosticIr<'a, MissingSeverity> {
             metadata,
             #[cfg(feature = "trace")]
             trace,
+            context,
+            system,
             attachments,
             display_causes,
             display_causes_state,
             origin_source_errors,
             diagnostic_source_errors,
             context_count,
+            system_count,
             attachment_count,
         } = self;
 
@@ -217,12 +214,15 @@ impl<'a> DiagnosticIr<'a, MissingSeverity> {
             metadata: metadata.with_severity(level),
             #[cfg(feature = "trace")]
             trace,
+            context,
+            system,
             attachments,
             display_causes,
             display_causes_state,
             origin_source_errors,
             diagnostic_source_errors,
             context_count,
+            system_count,
             attachment_count,
         }
     }
@@ -238,7 +238,7 @@ where
         E: Error + Display + 'static,
     {
         let metadata = self.metadata();
-        let (context_count, attachment_count) = count_attachments(self);
+        let (context_count, system_count, attachment_count) = count_attachments(self);
         let display_causes_state = self
             .visit_causes_ext(CauseCollectOptions::default(), |_| Ok(()))
             .unwrap_or_default();
@@ -258,52 +258,63 @@ where
             },
             #[cfg(feature = "trace")]
             trace: self.trace(),
+            context: self.context(),
+            system: self.system(),
             attachments: self.attachments(),
             display_causes: self.display_causes(),
             display_causes_state,
             origin_source_errors: self.origin_src_err_view(CauseCollectOptions::default()),
             diagnostic_source_errors: self.diag_src_err_view(CauseCollectOptions::default()),
             context_count,
+            system_count,
             attachment_count,
         }
     }
 }
 
-fn count_attachments<State>(report: &Report<impl Error + 'static, State>) -> (usize, usize)
+fn count_attachments<State>(report: &Report<impl Error + 'static, State>) -> (usize, usize, usize)
 where
     State: SeverityState,
 {
-    let mut context = 0usize;
-    let mut attachments = 0usize;
-    match report.visit_attachments(|item| {
-        match item {
-            AttachmentVisit::Context { .. } => context += 1,
-            AttachmentVisit::Note { .. } | AttachmentVisit::Payload { .. } => attachments += 1,
-        }
-        Ok(())
-    }) {
-        Ok(()) => (context, attachments),
-        Err(_) => (0, 0),
-    }
+    (
+        report.context().map_or(0, ContextMap::len),
+        report.system().map_or(0, SystemContext::len),
+        report.attachments().len(),
+    )
 }
 
 #[cfg(feature = "trace")]
 pub(crate) fn build_ctx_and_attachments(
+    context: Option<&ContextMap>,
+    system: Option<&SystemContext>,
     attachments: &[Attachment],
-) -> (Vec<AttachmentValue>, Vec<AttachmentValue>) {
-    let mut context_items = Vec::new();
+) -> (AttachmentValue, AttachmentValue, Vec<AttachmentValue>) {
+    let mut context_map = FastMap::new();
+    let mut system_map = FastMap::new();
     let mut attachment_items = Vec::new();
+
+    if let Some(context) = context {
+        for (key, value) in context {
+            context_map.insert(key.as_ref().to_string(), value.clone());
+        }
+    }
+    if let Some(system) = system {
+        for (section_name, section) in system.sections() {
+            let mut section_map = FastMap::new();
+            for (key, value) in section {
+                section_map.insert(key.as_ref().to_string(), value.clone());
+            }
+            system_map.insert(
+                section_name.to_string(),
+                AttachmentValue::Object(section_map),
+            );
+        }
+    }
 
     for attachment in attachments {
         match attachment {
-            Attachment::Context { key, value } => {
-                let mut map = fast_map_new();
-                map.insert("key".to_string(), AttachmentValue::String(key.clone()));
-                map.insert("value".to_string(), value.clone());
-                context_items.push(AttachmentValue::Object(map));
-            }
             Attachment::Note { message } => {
-                let mut map = fast_map_new();
+                let mut map = FastMap::new();
                 map.insert("kind".to_string(), AttachmentValue::String("note".into()));
                 map.insert(
                     "message".to_string(),
@@ -316,7 +327,7 @@ pub(crate) fn build_ctx_and_attachments(
                 value,
                 media_type,
             } => {
-                let mut map = fast_map_new();
+                let mut map = FastMap::new();
                 map.insert(
                     "kind".to_string(),
                     AttachmentValue::String("payload".into()),
@@ -335,12 +346,16 @@ pub(crate) fn build_ctx_and_attachments(
         }
     }
 
-    (context_items, attachment_items)
+    (
+        AttachmentValue::Object(context_map),
+        AttachmentValue::Object(system_map),
+        attachment_items,
+    )
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     map.insert(
         "message".to_string(),
         AttachmentValue::String(error.message.to_string_owned().into()),
@@ -357,7 +372,7 @@ pub(crate) fn build_trace_value(
     trace: &ReportTrace,
     error: &DiagnosticIrError<'_>,
 ) -> AttachmentValue {
-    let mut trace_obj = fast_map_new();
+    let mut trace_obj = FastMap::new();
     trace_obj.insert("error".to_string(), build_error_value(error));
     trace_obj.insert("context".to_string(), build_trace_ctx_value(&trace.context));
     trace_obj.insert(
@@ -369,7 +384,7 @@ pub(crate) fn build_trace_value(
 
 #[cfg(feature = "trace")]
 fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
-    let mut ctx = fast_map_new();
+    let mut ctx = FastMap::new();
     ctx.insert(
         "trace_id".to_string(),
         context
@@ -406,14 +421,14 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
         context
             .trace_state
             .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
+            .map(|v| AttachmentValue::String(v.as_static_ref().clone()))
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
         "flags".to_string(),
         context
             .flags
-            .map(|v| AttachmentValue::Unsigned(v as u64))
+            .map(|v| AttachmentValue::Unsigned(v.bits() as u64))
             .unwrap_or(AttachmentValue::Null),
     );
     AttachmentValue::Object(ctx)
@@ -421,7 +436,7 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
 
 #[cfg(feature = "trace")]
 fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     map.insert(
         "name".to_string(),
         AttachmentValue::String(event.name.clone()),
@@ -447,7 +462,7 @@ fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
                 .attributes
                 .iter()
                 .map(|attr| {
-                    let mut kv = fast_map_new();
+                    let mut kv = FastMap::new();
                     kv.insert("key".to_string(), AttachmentValue::String(attr.key.clone()));
                     kv.insert("value".to_string(), attr.value.clone());
                     AttachmentValue::Object(kv)
@@ -460,7 +475,7 @@ fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentValue {
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     let format = match stack_trace.format {
         crate::report::StackTraceFormat::Native => "native",
         crate::report::StackTraceFormat::Raw => "raw",
@@ -489,7 +504,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     map.insert(
         "symbol".to_string(),
         frame
@@ -536,7 +551,7 @@ pub(crate) fn build_display_causes(
     display_causes: &[Arc<dyn Display + Send + Sync + 'static>],
     state: CauseTraversalState,
 ) -> AttachmentValue {
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     map.insert(
         "items".to_string(),
         AttachmentValue::Array(
@@ -573,7 +588,7 @@ fn build_source_errors_value(
     hide_report_wrapper_types: bool,
 ) -> AttachmentValue {
     let exported = source_errors.export_with_options(hide_report_wrapper_types);
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     map.insert(
         "roots".to_string(),
         AttachmentValue::Array(
@@ -618,7 +633,7 @@ fn build_source_err_node(
     type_name: Option<&str>,
     source_roots: &[usize],
 ) -> AttachmentValue {
-    let mut map = fast_map_new();
+    let mut map = FastMap::new();
     map.insert(
         "message".to_string(),
         AttachmentValue::String(message.to_string().into()),

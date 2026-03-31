@@ -96,7 +96,7 @@ fn make_report(
         .with_retryable(false);
 
     for idx in 0..context_count {
-        report = report.with_context(format!("ctx_{idx}"), idx as u64);
+        report = report.with_ctx(format!("ctx_{idx}"), AttachmentValue::Unsigned(idx as u64));
     }
 
     for idx in 0..note_count {
@@ -129,7 +129,8 @@ fn bench_report_build(c: &mut Criterion) {
             b.iter(|| {
                 let mut report = Report::new(BenchError::Root);
                 for idx in 0..size {
-                    report = report.with_context(format!("ctx_{idx}"), idx as u64);
+                    report = report
+                        .with_ctx(format!("ctx_{idx}"), AttachmentValue::Unsigned(idx as u64));
                 }
                 black_box(report);
             })
@@ -169,7 +170,7 @@ fn bench_ir_and_render(c: &mut Criterion) {
 
         group.bench_function(BenchmarkId::new("render_compact", name), |b| {
             b.iter(|| {
-                black_box(report.render(Compact).to_string());
+                black_box(report.render(Compact::summary()).to_string());
             })
         });
 

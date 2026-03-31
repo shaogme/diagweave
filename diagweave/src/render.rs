@@ -8,7 +8,7 @@ mod pretty;
 
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{SeverityState, Report};
+use crate::report::{Report, SeverityState};
 
 #[cfg(feature = "trace")]
 pub(crate) use ir::build_ctx_and_attachments;
@@ -122,7 +122,18 @@ where
 
 /// A renderer that produces a compact display of the report.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Compact;
+pub struct Compact {
+    pub profile: CompactProfile,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
+pub enum CompactProfile {
+    #[default]
+    Summary,
+    Full,
+}
 
 /// A report that has been paired with a renderer, implementing `Display`.
 pub struct RenderedReport<'a, E, State, R>
@@ -139,7 +150,17 @@ where
 {
     /// Returns a renderer for compact output.
     pub fn compact(&self) -> RenderedReport<'_, E, State, Compact> {
-        self.render(Compact)
+        self.render(Compact::summary())
+    }
+
+    /// Returns a renderer for summary compact output.
+    pub fn compact_summary(&self) -> RenderedReport<'_, E, State, Compact> {
+        self.render(Compact::summary())
+    }
+
+    /// Returns a renderer for full compact key-value output.
+    pub fn compact_full(&self) -> RenderedReport<'_, E, State, Compact> {
+        self.render(Compact::full())
     }
 
     /// Returns a renderer for pretty-printed output.
@@ -168,7 +189,24 @@ where
     State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{report}")
+        match self.profile {
+            CompactProfile::Summary => write!(f, "{}", report.inner()),
+            CompactProfile::Full => write!(f, "{report}"),
+        }
+    }
+}
+
+impl Compact {
+    pub const fn summary() -> Self {
+        Self {
+            profile: CompactProfile::Summary,
+        }
+    }
+
+    pub const fn full() -> Self {
+        Self {
+            profile: CompactProfile::Full,
+        }
     }
 }
 

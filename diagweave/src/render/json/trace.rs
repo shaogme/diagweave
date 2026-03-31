@@ -55,7 +55,7 @@ fn build_trace_ctx_value(context: &TraceContext) -> TraceContextValue<'_> {
         parent_span_id: context.parent_span_id.as_ref().map(|v| v.as_ref().into()),
         sampled: context.sampled,
         trace_state: context.trace_state.as_ref().map(|v| v.as_str().into()),
-        flags: context.flags,
+        flags: context.flags.map(|flags| flags.bits()),
     }
 }
 

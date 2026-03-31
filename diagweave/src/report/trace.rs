@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
-use super::{SeverityState, Report, types::AttachmentValue};
+use super::{Report, SeverityState, types::AttachmentValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Severity level for a trace event.
@@ -70,8 +70,8 @@ pub struct TraceContext {
     pub span_id: Option<SpanId>,
     pub parent_span_id: Option<ParentSpanId>,
     pub sampled: Option<bool>,
-    pub trace_state: Option<StaticRefStr>,
-    pub flags: Option<u8>,
+    pub trace_state: Option<TraceState>,
+    pub flags: Option<TraceFlags>,
 }
 
 impl TraceContext {
@@ -159,6 +159,62 @@ pub type SpanId = HexId<16>;
 /// Parent span id encoded as 16 lowercase hex chars.
 pub type ParentSpanId = HexId<16>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub struct TraceState(StaticRefStr);
+
+impl TraceState {
+    pub fn new(value: impl Into<StaticRefStr>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_ref()
+    }
+
+    pub fn as_static_ref(&self) -> &StaticRefStr {
+        &self.0
+    }
+}
+
+impl From<StaticRefStr> for TraceState {
+    fn from(value: StaticRefStr) -> Self {
+        Self(value)
+    }
+}
+
+impl Display for TraceState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+pub struct TraceFlags(u8);
+
+impl TraceFlags {
+    pub fn new(value: u8) -> Self {
+        Self(value)
+    }
+
+    pub fn bits(self) -> u8 {
+        self.0
+    }
+}
+
+impl From<u8> for TraceFlags {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl Display for TraceFlags {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl<E, State> Report<E, State>
 where
     State: SeverityState,
@@ -198,14 +254,14 @@ where
 
     /// Sets the trace state.
     pub fn with_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
-        self.trace_mut().context.trace_state = Some(trace_state.into());
+        self.trace_mut().context.trace_state = Some(TraceState::from(trace_state.into()));
         self
     }
 
     /// Sets the trace flags.
-    pub fn with_trace_flags(mut self, flags: u8) -> Self {
+    pub fn with_trace_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
         let trace = self.trace_mut();
-        trace.context.flags = Some(flags);
+        trace.context.flags = Some(flags.into());
         sync_sampled_with_flags(&mut trace.context);
         self
     }
@@ -256,13 +312,13 @@ fn sync_flags_with_sampled(context: &mut TraceContext) {
     match context.flags.as_mut() {
         Some(flags) => {
             if sampled {
-                *flags |= 1;
+                *flags = TraceFlags::new(flags.bits() | 1);
             } else {
-                *flags &= !1;
+                *flags = TraceFlags::new(flags.bits() & !1);
             }
         }
         None => {
-            context.flags = Some(if sampled { 1 } else { 0 });
+            context.flags = Some(TraceFlags::new(if sampled { 1 } else { 0 }));
         }
     }
 }
@@ -272,5 +328,5 @@ fn sync_sampled_with_flags(context: &mut TraceContext) {
     let Some(flags) = context.flags else {
         return;
     };
-    context.sampled = Some((flags & 1) == 1);
+    context.sampled = Some((flags.bits() & 1) == 1);
 }

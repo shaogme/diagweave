@@ -1,10 +1,11 @@
+use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Debug, Display, Formatter};
 
 use crate::report::Attachment;
 use crate::report::SourceErrorChain;
 
-use super::{SeverityState, Report};
+use super::{Report, SeverityState};
 
 impl<E, State> Debug for Report<E, State>
 where
@@ -72,16 +73,20 @@ where
             || metadata.category().is_some()
             || metadata.retryable().is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
-            diag.stack_trace.is_some() || !diag.attachments.is_empty() || {
-                #[cfg(feature = "trace")]
-                {
-                    diag.trace.as_ref().is_some_and(|trace| !trace.is_empty())
+            diag.stack_trace.is_some()
+                || !diag.context.is_empty()
+                || !diag.system.is_empty()
+                || !diag.attachments.is_empty()
+                || {
+                    #[cfg(feature = "trace")]
+                    {
+                        diag.trace.as_ref().is_some_and(|trace| !trace.is_empty())
+                    }
+                    #[cfg(not(feature = "trace"))]
+                    {
+                        false
+                    }
                 }
-                #[cfg(not(feature = "trace"))]
-                {
-                    false
-                }
-            }
         });
         if !has_diagnostics && !has_metadata {
             return Ok(());
@@ -155,12 +160,32 @@ where
                 *idx += 1;
             }
 
+            let mut context_entries: Vec<_> = diag.context.iter().collect();
+            context_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            for (key, value) in context_entries {
+                if *idx > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{key}={value}")?;
+                *idx += 1;
+            }
+            for (section_name, section) in diag.system.sections() {
+                let mut system_entries: Vec<_> = section.iter().collect();
+                system_entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+                for (key, value) in system_entries {
+                    if *idx > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "system.{section_name}.{key}={value}")?;
+                    *idx += 1;
+                }
+            }
+
             for attachment in &diag.attachments {
                 if *idx > 0 {
                     write!(f, ", ")?;
                 }
                 match attachment {
-                    Attachment::Context { key, value } => write!(f, "{key}={value}")?,
                     Attachment::Note { message } => write!(f, "{message}")?,
                     Attachment::Payload {
                         name,

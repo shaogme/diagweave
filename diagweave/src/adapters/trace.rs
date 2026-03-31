@@ -120,12 +120,19 @@ where
     }
 
     fn tracing_ctx_attrs(&self, fields: &mut Vec<TracingField<'_>>) {
-        let (context_items, attachment_items) = build_ctx_and_attachments(self.attachments);
+        let (context_value, system_value, attachment_items) =
+            build_ctx_and_attachments(self.context, self.system, self.attachments);
 
-        if !context_items.is_empty() {
+        if self.context_count > 0 {
             fields.push(TracingField {
                 key: "context".into(),
-                value: AttachmentValue::Array(context_items),
+                value: context_value,
+            });
+        }
+        if self.system_count > 0 {
+            fields.push(TracingField {
+                key: "system".into(),
+                value: system_value,
             });
         }
         if !attachment_items.is_empty() {

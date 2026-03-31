@@ -38,8 +38,9 @@ pub mod adapters {
 
 pub mod render {
     pub use crate::render_impl::{
-        Compact, DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage, DiagnosticIrMetadata,
-        Pretty, PrettyIndent, RenderedReport, ReportRenderOptions, ReportRenderer,
+        Compact, CompactProfile, DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage,
+        DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport, ReportRenderOptions,
+        ReportRenderer,
     };
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
@@ -50,17 +51,19 @@ pub mod render {
 pub mod report {
     pub use crate::report_impl::{
         Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseKind,
-        CauseTraversalState, Diagnostic, DisplayCauseChain, ErrorCode, ErrorCodeIntError,
-        GlobalContext, HasSeverity, MissingSeverity, Severity,
-        SeverityParseError, SeverityState, Report, ReportMetadata, ReportResultExt,
-        ReportResultInspectExt, ReportSourceErrorIter, SourceErrorChain,
-        SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
+        CauseTraversalState, ContextMap, ContextValue, Diagnostic, DisplayCauseChain, ErrorCode,
+        ErrorCodeIntError, GlobalContext, GlobalErrorMeta, HasSeverity, MissingSeverity, Report,
+        ReportMetadata, ReportResultExt, ReportResultInspectExt, ReportSourceErrorIter, Severity,
+        SeverityParseError, SeverityState, SourceErrorChain, SourceErrorEntry, SourceErrorItem,
+        StackFrame, StackTrace, StackTraceFormat, SystemContext,
     };
     #[cfg(feature = "trace")]
     pub use crate::report_impl::{
-        ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
-        TraceEventLevel, TraceId,
+        GlobalTraceContext, ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent,
+        TraceEventAttribute, TraceEventLevel, TraceFlags, TraceId, TraceState,
     };
+    #[cfg(feature = "json")]
+    pub use crate::report_impl::{JsonContext, JsonContextEntry};
     #[cfg(feature = "std")]
     pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
 }
@@ -76,17 +79,17 @@ pub mod trace {
 }
 
 pub mod prelude {
-    pub use crate::render::{Compact, Pretty, ReportRenderOptions, ReportRenderer};
+    pub use crate::render::{Compact, CompactProfile, Pretty, ReportRenderOptions, ReportRenderer};
     pub use crate::report::{
-        AttachmentValue, Diagnostic, HasSeverity, MissingSeverity, Severity,
-        SeverityState, Report, ReportResultExt, ReportResultInspectExt,
-        SourceErrorItem,
+        AttachmentValue, ContextMap, Diagnostic, HasSeverity, MissingSeverity, Report,
+        ReportResultExt, ReportResultInspectExt, Severity, SeverityState, SourceErrorItem,
     };
     #[cfg(feature = "std")]
     pub use crate::report::{GlobalContext, register_global_injector};
     #[cfg(feature = "trace")]
     pub use crate::report::{
-        ParentSpanId, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
+        ParentSpanId, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceFlags,
+        TraceId, TraceState,
     };
     pub use crate::{Error, RefStr, StaticRefStr, set, union};
 }

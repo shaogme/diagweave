@@ -1,8 +1,9 @@
 use alloc::vec;
+use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{AttachmentVisit, SeverityState, Report};
+use crate::report::{ContextMap, Report, SeverityState};
 
 use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
 
@@ -287,9 +288,72 @@ fn render_attachments<State>(
 where
     State: SeverityState,
 {
+    render_system_section(f, report, options)?;
     render_context_section(f, report, options)?;
     render_attachment_section(f, report, options)?;
     Ok(())
+}
+
+fn render_system_section<State>(
+    f: &mut Formatter<'_>,
+    report: &Report<impl Error + 'static, State>,
+    options: ReportRenderOptions,
+) -> fmt::Result
+where
+    State: SeverityState,
+{
+    if !options.show_context_section {
+        return Ok(());
+    }
+
+    let mut wrote_header = false;
+    if let Some(system) = report.system() {
+        for (section_name, section) in system.sections() {
+            if render_system_subsection(
+                f,
+                section_name,
+                section,
+                options.pretty_indent,
+                wrote_header,
+            )? {
+                wrote_header = true;
+            }
+        }
+    }
+
+    if !wrote_header && options.show_empty_sections {
+        writeln!(f, "System:")?;
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- (none)")?;
+    }
+    Ok(())
+}
+
+fn render_system_subsection(
+    f: &mut Formatter<'_>,
+    section_name: &str,
+    section: &ContextMap,
+    indent: PrettyIndent,
+    wrote_header: bool,
+) -> Result<bool, fmt::Error> {
+    if section.is_empty() {
+        return Ok(false);
+    }
+
+    if !wrote_header {
+        writeln!(f, "System:")?;
+    }
+    write_indent(f, indent)?;
+    writeln!(f, "- {section_name}:")?;
+
+    let mut entries: Vec<_> = section.iter().collect();
+    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    for (key, value) in entries {
+        write_indent(f, indent)?;
+        write_indent(f, indent)?;
+        writeln!(f, "- {}: {}", key.as_ref(), value)?;
+    }
+    Ok(true)
 }
 
 fn render_context_section<State>(
@@ -305,17 +369,18 @@ where
     }
 
     let mut wrote_header = false;
-    report.visit_attachments(|item| {
-        let AttachmentVisit::Context { key, value } = item else {
-            return Ok(());
-        };
-        if !wrote_header {
-            wrote_header = true;
-            writeln!(f, "Context:")?;
+    if let Some(context) = report.context() {
+        let mut entries: Vec<_> = context.iter().collect();
+        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+        for (key, value) in entries {
+            if !wrote_header {
+                wrote_header = true;
+                writeln!(f, "Context:")?;
+            }
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- {}: {}", key.as_ref(), value)?;
         }
-        write_indent(f, options.pretty_indent)?;
-        writeln!(f, "- {}: {}", key.as_ref(), value)
-    })?;
+    }
 
     if !wrote_header && options.show_empty_sections {
         writeln!(f, "Context:")?;
@@ -340,8 +405,7 @@ where
     let mut wrote_header = false;
     report.visit_attachments(|item| {
         match item {
-            AttachmentVisit::Context { .. } => {}
-            AttachmentVisit::Note { message } => {
+            crate::report::AttachmentVisit::Note { message } => {
                 if !wrote_header {
                     wrote_header = true;
                     writeln!(f, "Attachments:")?;
@@ -349,7 +413,7 @@ where
                 write_indent(f, options.pretty_indent)?;
                 writeln!(f, "- note: {message}")?;
             }
-            AttachmentVisit::Payload {
+            crate::report::AttachmentVisit::Payload {
                 name,
                 value,
                 media_type,

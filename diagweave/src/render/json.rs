@@ -11,7 +11,7 @@ mod trace;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-use crate::report::{SeverityState, Report};
+use crate::report::{Report, SeverityState};
 
 use super::{REPORT_JSON_SCHEMA_VERSION, ReportRenderOptions};
 
@@ -64,7 +64,12 @@ where
     }
     if options.show_context_section && (options.show_empty_sections || section_flags.has_context) {
         write_object_field(f, pretty, 0, &mut first, "context", |f| {
-            attachment::write_context_array(f, pretty, 1, report)
+            attachment::write_context_object(f, pretty, 1, report)
+        })?;
+    }
+    if options.show_context_section && (options.show_empty_sections || section_flags.has_system) {
+        write_object_field(f, pretty, 0, &mut first, "system", |f| {
+            attachment::write_system_object(f, pretty, 1, report)
         })?;
     }
     if options.show_attachments_section
@@ -85,6 +90,7 @@ where
 struct JsonSectionFlags {
     has_metadata: bool,
     has_context: bool,
+    has_system: bool,
     has_attachments: bool,
     has_diag_bag: bool,
 }
@@ -99,14 +105,9 @@ where
         || metadata.severity().is_some()
         || metadata.category().is_some()
         || metadata.retryable().is_some();
-    let has_context = report
-        .attachments()
-        .iter()
-        .any(|attachment| matches!(attachment, crate::report::Attachment::Context { .. }));
-    let has_attachments = report
-        .attachments()
-        .iter()
-        .any(|attachment| !matches!(attachment, crate::report::Attachment::Context { .. }));
+    let has_context = report.context().is_some_and(|v| !v.is_empty());
+    let has_system = report.system().is_some_and(|v| !v.is_empty());
+    let has_attachments = !report.attachments().is_empty();
     let has_diag_bag = has_stack_trace(report)
         || has_display_causes(report)
         || has_origin_source_errors(report)
@@ -114,6 +115,7 @@ where
     JsonSectionFlags {
         has_metadata,
         has_context,
+        has_system,
         has_attachments,
         has_diag_bag,
     }

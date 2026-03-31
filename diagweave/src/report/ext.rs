@@ -4,8 +4,8 @@ use core::fmt::Display;
 use ref_str::StaticRefStr;
 
 use super::{
-    Attachment, AttachmentValue, ErrorCode, HasSeverity, MissingSeverity,
-    Severity, SeverityState, Report, ReportMetadata, StackTrace,
+    Attachment, AttachmentValue, ContextValue, ErrorCode, HasSeverity, MissingSeverity, Report,
+    ReportMetadata, Severity, SeverityState, StackTrace,
 };
 #[cfg(feature = "trace")]
 use super::{
@@ -20,17 +20,6 @@ pub trait Diagnostic {
     type Error;
 
     fn diag(self) -> Result<Self::Value, Report<Self::Error>>;
-
-    fn diag_context(
-        self,
-        key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-    ) -> Result<Self::Value, Report<Self::Error>>
-    where
-        Self: Sized,
-    {
-        self.diag().with_context(key, value)
-    }
 
     fn diag_note(
         self,
@@ -57,12 +46,6 @@ pub trait ReportResultExt<T, E, State = MissingSeverity>
 where
     State: SeverityState,
 {
-    fn attach(
-        self,
-        key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-    ) -> Result<T, Report<E, State>>;
-
     fn attach_printable(
         self,
         message: impl Display + Send + Sync + 'static,
@@ -75,10 +58,16 @@ where
         media_type: Option<impl Into<StaticRefStr>>,
     ) -> Result<T, Report<E, State>>;
 
-    fn with_context(
+    fn with_ctx(
         self,
         key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
+        value: impl Into<ContextValue>,
+    ) -> Result<T, Report<E, State>>;
+
+    fn with_system(
+        self,
+        key: impl Into<StaticRefStr>,
+        value: impl Into<ContextValue>,
     ) -> Result<T, Report<E, State>>;
 
     fn with_note(
@@ -135,10 +124,7 @@ where
 
     fn with_error_code(self, error_code: impl Into<ErrorCode>) -> Result<T, Report<E, State>>;
 
-    fn with_severity(
-        self,
-        severity: Severity,
-    ) -> Result<T, Report<E, HasSeverity>>;
+    fn with_severity(self, severity: Severity) -> Result<T, Report<E, HasSeverity>>;
 
     fn with_category(self, category: impl Into<StaticRefStr>) -> Result<T, Report<E, State>>;
 
@@ -169,7 +155,7 @@ where
     fn context_lazy(
         self,
         key: impl Into<StaticRefStr>,
-        make_value: impl FnOnce() -> AttachmentValue,
+        make_value: impl FnOnce() -> ContextValue,
     ) -> Result<T, Report<E, State>>;
 
     fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>>;
@@ -206,15 +192,6 @@ impl<T, E, State> ReportResultExt<T, E, State> for Result<T, Report<E, State>>
 where
     State: SeverityState,
 {
-    fn attach(
-        self,
-        key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-    ) -> Result<T, Report<E, State>> {
-        let key = key.into();
-        self.map_err(|report| report.attach(key, value))
-    }
-
     fn attach_printable(
         self,
         message: impl Display + Send + Sync + 'static,
@@ -231,12 +208,20 @@ where
         self.map_err(|report| report.attach_payload(name, value, media_type))
     }
 
-    fn with_context(
+    fn with_ctx(
         self,
         key: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
+        value: impl Into<ContextValue>,
     ) -> Result<T, Report<E, State>> {
-        self.attach(key, value)
+        self.map_err(|report| report.with_ctx(key, value))
+    }
+
+    fn with_system(
+        self,
+        key: impl Into<StaticRefStr>,
+        value: impl Into<ContextValue>,
+    ) -> Result<T, Report<E, State>> {
+        self.map_err(|report| report.with_system(key, value))
     }
 
     fn with_note(
@@ -322,10 +307,7 @@ where
         self.map_err(|report| report.with_error_code(error_code))
     }
 
-    fn with_severity(
-        self,
-        severity: Severity,
-    ) -> Result<T, Report<E, HasSeverity>> {
+    fn with_severity(self, severity: Severity) -> Result<T, Report<E, HasSeverity>> {
         self.map_err(|report| report.with_severity(severity))
     }
 
@@ -375,9 +357,9 @@ where
     fn context_lazy(
         self,
         key: impl Into<StaticRefStr>,
-        make_value: impl FnOnce() -> AttachmentValue,
+        make_value: impl FnOnce() -> ContextValue,
     ) -> Result<T, Report<E, State>> {
-        self.map_err(|report| report.attach(key, make_value()))
+        self.map_err(|report| report.with_ctx(key, make_value()))
     }
 
     fn note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>> {

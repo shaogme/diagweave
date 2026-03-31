@@ -224,10 +224,10 @@ pub struct Report<E> {
 
 | GlobalContext 字段 | 说明 |
 | :--- | :--- |
-| `context` | `Vec<(StaticRefStr, AttachmentValue)>` 全局关联的键值对 |
-| `trace_id` | `Option<TraceId>` 自动绑定的 Trace ID |
-| `span_id` | `Option<SpanId>` 自动绑定的 Span ID |
-| `parent_span_id` | `Option<ParentSpanId>` 自动绑定的父 Span ID |
+| `context` | `ContextMap` 全局注入的业务上下文 |
+| `system` | `ContextMap` 全局注入的系统/运行时上下文 |
+| `error` | `Option<GlobalErrorMeta>` 元数据覆盖（`error_code` / `category` / `retryable` / `severity`） |
+| `trace`（`trace` feature） | `Option<GlobalTraceContext>` 全局注入的 trace 上下文 |
 
 `TraceId` / `SpanId` / `ParentSpanId` 为十六进制校验后的标识符。构造方式：
 - `TraceId::new("32位hex")` / `SpanId::new("16位hex")` / `ParentSpanId::new("16位hex")`
@@ -236,7 +236,8 @@ pub struct Report<E> {
 ### 链式配置方法
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
-| `with_context` / `attach` | `(impl Into<StaticRefStr>, impl Into<AttachmentValue>)` | 添加上下文键值对 |
+| `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加业务上下文键值对 |
+| `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加系统上下文键值对 |
 | `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
@@ -282,7 +283,10 @@ impl std::error::Error for MyError {}
 
 let report = Report::new(MyError::Timeout)
     .with_severity(Severity::Fatal)
-    .with_context("request_id", "req-123")
+    .with_ctx(
+        "request_id",
+        "req-123",
+    )
     .with_note("please check the network connection")
     .with_retryable(true)
     .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
@@ -300,14 +304,14 @@ let report = report.capture_stack_trace();
 ### 核心特质
 #### 1. `Diagnostic` (作用于 `Result<T, E>`)
 - `diag()`: 提升 `Err(E)` 为 `Err(Report<E>)`。
-- `diag_context(k, v)`: 提升并注入上下文。
 - `diag_note(msg)`: 提升并注入备注。
 
 #### 2. `ReportResultExt` (作用于 `Result<T, Report<E>>`)
 所有 `Report` 的链式配置方法均有对应的代理版本：
 - **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **附件**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
-- **延迟加载**: `context_lazy(key, f)`, `note_lazy(f)` (仅在 Err 时执行闭包)
+- **上下文/附件**: `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`、`attach_printable`/`with_note`、`attach_payload`/`with_payload`
+- **system 结构**: `system` 现在是强类型对象，固定分区为 `system.service`、`system.deployment`、`system.runtime`、`system.request`
+- **延迟加载**: `context_lazy(key, f)`、`note_lazy(f)` (仅在 Err 时执行闭包)
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **错误源**: `with_diag_src_err(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
@@ -326,10 +330,13 @@ use std::{fs, io};
 use std::time::SystemTime;
 
 fn process() -> Result<(), Report<io::Error, HasSeverity>> {
+    let file_key = "file";
+    let timestamp_key = "timestamp";
     fs::read_to_string("config.toml")
-        .diag_context("file", "config.toml") // 转换并附加 context
+        .diag()
+        .with_ctx(file_key, "config.toml") // 转换并附加 context
         .with_severity(Severity::Warn)
-        .context_lazy("timestamp", || format!("{:?}", SystemTime::now()).into())
+        .context_lazy(timestamp_key, || format!("{:?}", SystemTime::now()).into())
         .attach_printable("failed to load system config")?;
         
     Ok(())
@@ -444,7 +451,10 @@ use diagweave::render::ReportRenderOptions;
 # }
 # impl std::error::Error for DemoError {}
 # let report = Report::new(DemoError)
-#     .attach("request_id", "req-42")
+#     .with_ctx(
+#         "request_id",
+#         "req-42",
+#     )
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
@@ -649,7 +659,11 @@ fn db_operation() -> Result<(), DatabaseError> {
 
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()
-        .diag_context("db", "primary")
+        .diag()
+        .with_ctx(
+            "db",
+            "primary",
+        )
         .wrap_with(AppError::Db)?; // 将 DatabaseError 包装为 AppError，同时保留 DB 层的 context
     Ok(())
 }
@@ -691,5 +705,8 @@ where
 - **`trace`**: 无额外外部依赖的 Trace 数据结构。
 - **`otel`**: 本身不引入额外依赖，但需要显式开启后才能导出 OTLP envelope。
 - **`tracing`**: 依赖 `tracing` crate。
+
+
+
 
 

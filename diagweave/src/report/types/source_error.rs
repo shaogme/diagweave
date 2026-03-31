@@ -3,7 +3,7 @@ mod traversal;
 #[path = "source_error/util.rs"]
 mod util;
 use super::*;
-use crate::utils::{FastSet, fast_set_with_capacity};
+use crate::utils::FastSet;
 pub use traversal::{ReportSourceErrorIter, SourceErrorChainEntries};
 use util::is_report_wrapper_type;
 pub(crate) use util::{append_source_chain, limit_depth_source_chain};
@@ -24,6 +24,8 @@ pub(crate) struct DiagnosticBag {
     #[cfg(feature = "trace")]
     pub(crate) trace: Option<ReportTrace>,
     pub(crate) stack_trace: Option<StackTrace>,
+    pub(crate) context: ContextMap,
+    pub(crate) system: SystemContext,
     pub(crate) attachments: Vec<Attachment>,
     pub(crate) display_causes: Option<DisplayCauseChain>,
     pub(crate) origin_source_errors: Option<SourceErrorChain>,
@@ -33,17 +35,11 @@ pub(crate) struct DiagnosticBag {
 /// Global context information that can be injected into reports.
 #[derive(Debug, Clone, Default)]
 pub struct GlobalContext {
-    /// Context key-value pairs.
-    pub context: Vec<(StaticRefStr, AttachmentValue)>,
-    /// Global trace ID if available.
     #[cfg(feature = "trace")]
-    pub trace_id: Option<TraceId>,
-    /// Global span ID if available.
-    #[cfg(feature = "trace")]
-    pub span_id: Option<SpanId>,
-    /// Global parent span ID if available.
-    #[cfg(feature = "trace")]
-    pub parent_span_id: Option<ParentSpanId>,
+    pub trace: Option<GlobalTraceContext>,
+    pub error: Option<GlobalErrorMeta>,
+    pub system: SystemContext,
+    pub context: ContextMap,
 }
 
 pub(crate) struct SeenErrorAddrs {
@@ -70,7 +66,7 @@ impl SeenErrorAddrs {
             self.inline.push(addr);
             return true;
         }
-        let mut spill = fast_set_with_capacity(self.inline.len() * 2 + 1);
+        let mut spill = FastSet::with_capacity(self.inline.len() * 2 + 1);
         spill.extend(self.inline.drain(..));
         spill.insert(addr);
         self.spill = Some(spill);

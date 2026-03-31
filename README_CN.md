@@ -79,7 +79,7 @@ diagweave = { version = "0.1", default-features = false }
 
 ## 快速开始
 
-```rust,no_run
+```rust
 use diagweave::prelude::{set, Diagnostic, Report, ReportResultExt};
 
 set! {
@@ -97,9 +97,10 @@ fn verify(user_id: u64) -> Result<(), AuthError> {
 }
 
 fn main() {
-    let report: Report<AuthError> = verify(7)
-        .diag_context("request_id", "req-001")
-        .with_context("retry", 0)
+        let report: Report<AuthError> = verify(7)
+        .diag()
+        .with_ctx("request_id", "req-001")
+        .with_ctx("retry", 0)
         .with_note("auth gate rejected")
         .expect_err("demo");
 
@@ -265,15 +266,15 @@ pub enum MyError {
 从 `Result<T, E>` 转换：
 
 - `diag()`
-- `diag_context(key, value)`
 - `diag_note(message)`
 
 常用链式增强（`Result<T, Report<E>>`）：
 
-- `with_context`、`with_note`、`with_payload`
+- `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`
+- `with_note`、`with_payload`
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
 - `with_display_cause`、`with_display_causes`、`with_diag_src_err`
-- `context_lazy`、`note_lazy`
+- `context_lazy(key, make_value)`、`note_lazy`
 - `wrap`、`wrap_with`
 
 `category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `StaticRefStr` 共享存储。
@@ -283,6 +284,7 @@ pub enum MyError {
 `Report<E>` 的读取接口：
 
 - `attachments()`、`metadata()`、`stack_trace()`
+- `context() -> Option<&ContextMap>`、`system() -> Option<&ContextMap>`
 - `error_code()`、`severity()`、`category()`、`retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
 - `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`
@@ -326,7 +328,7 @@ Note 附件读取：
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.push(("request_id".into(), "req-001".into()));
+        ctx.context.insert("request_id", "req-001".into());
         Some(ctx)
     });
 }
@@ -352,7 +354,7 @@ use diagweave::render::{Compact, Pretty, ReportRenderOptions};
 # }
 # let report = Report::new(AuthError::invalid_token());
 
-let _ = report.render(Compact).to_string();
+let _ = report.render(Compact::summary()).to_string();
 let _ = report.render(Pretty::new(ReportRenderOptions::default())).to_string();
 ```
 
@@ -397,7 +399,7 @@ use diagweave::render::ReportRenderOptions;
 # }
 # impl std::error::Error for DemoError {}
 # let report = Report::new(DemoError)
-#     .attach("request_id", "req-42")
+#     .with_ctx("request_id", "req-42")
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
@@ -536,5 +538,8 @@ powershell -File scripts/test-feature-matrix.ps1
 ## 许可证
 
 MIT 或 Apache-2.0 双许可证。
+
+
+
 
 

@@ -8,8 +8,6 @@ use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
 use crate::utils::FastMap;
-#[cfg(feature = "json")]
-use crate::utils::fast_map_with_capacity;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
@@ -230,7 +228,7 @@ impl From<serde_json::Value> for AttachmentValue {
                 Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
             }
             serde_json::Value::Object(obj) => {
-                let mut map = fast_map_with_capacity(obj.len());
+                let mut map = FastMap::with_capacity(obj.len());
                 for (k, v) in obj {
                     map.insert(k, AttachmentValue::from(v));
                 }
@@ -242,10 +240,6 @@ impl From<serde_json::Value> for AttachmentValue {
 
 /// Represents an attachment to a diagnostic report, such as context, notes, or payloads.
 pub enum Attachment {
-    Context {
-        key: StaticRefStr,
-        value: AttachmentValue,
-    },
     Note {
         message: Box<dyn Display + Send + Sync + 'static>,
     },
@@ -259,10 +253,6 @@ pub enum Attachment {
 impl Clone for Attachment {
     fn clone(&self) -> Self {
         match self {
-            Self::Context { key, value } => Self::Context {
-                key: key.clone(),
-                value: value.clone(),
-            },
             Self::Note { message } => Self::Note {
                 message: Box::new(message.to_string()),
             },
@@ -282,16 +272,6 @@ impl Clone for Attachment {
 impl PartialEq for Attachment {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (
-                Self::Context {
-                    key: l_key,
-                    value: l_value,
-                },
-                Self::Context {
-                    key: r_key,
-                    value: r_value,
-                },
-            ) => l_key == r_key && l_value == r_value,
             (Self::Note { message: l }, Self::Note { message: r }) => {
                 l.to_string() == r.to_string()
             }
@@ -315,11 +295,6 @@ impl PartialEq for Attachment {
 impl core::fmt::Debug for Attachment {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Context { key, value } => f
-                .debug_struct("Context")
-                .field("key", key)
-                .field("value", value)
-                .finish(),
             Self::Note { message } => f
                 .debug_struct("Note")
                 .field("message", &message.to_string())
@@ -342,10 +317,6 @@ impl core::fmt::Debug for Attachment {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum AttachmentSerde {
-    Context {
-        key: StaticRefStr,
-        value: AttachmentValue,
-    },
     Note {
         message: String,
     },
@@ -363,10 +334,6 @@ impl serde::Serialize for Attachment {
         S: serde::Serializer,
     {
         let helper = match self {
-            Self::Context { key, value } => AttachmentSerde::Context {
-                key: key.clone(),
-                value: value.clone(),
-            },
             Self::Note { message } => AttachmentSerde::Note {
                 message: message.to_string(),
             },
@@ -392,7 +359,6 @@ impl<'de> serde::Deserialize<'de> for Attachment {
     {
         let helper = AttachmentSerde::deserialize(deserializer)?;
         Ok(match helper {
-            AttachmentSerde::Context { key, value } => Self::Context { key, value },
             AttachmentSerde::Note { message } => Self::Note {
                 message: Box::new(message),
             },
@@ -410,14 +376,6 @@ impl<'de> serde::Deserialize<'de> for Attachment {
 }
 
 impl Attachment {
-    /// Creates a new context attachment with a key and value.
-    pub fn context(key: impl Into<StaticRefStr>, value: impl Into<AttachmentValue>) -> Self {
-        Self::Context {
-            key: key.into(),
-            value: value.into(),
-        }
-    }
-
     /// Creates a new note attachment with a message.
     pub fn note(message: impl Display + Send + Sync + 'static) -> Self {
         Self::Note {
@@ -438,19 +396,11 @@ impl Attachment {
         }
     }
 
-    /// Attempts to interpret the attachment as a context entry.
-    pub fn as_context(&self) -> Option<(&str, &AttachmentValue)> {
-        match self {
-            Self::Context { key, value } => Some((key.as_str(), value)),
-            Self::Note { .. } | Self::Payload { .. } => None,
-        }
-    }
-
     /// Attempts to interpret the attachment as a note message.
     pub fn as_note(&self) -> Option<String> {
         match self {
             Self::Note { message } => Some(message.to_string()),
-            Self::Context { .. } | Self::Payload { .. } => None,
+            Self::Payload { .. } => None,
         }
     }
 
@@ -458,7 +408,7 @@ impl Attachment {
     pub fn as_note_display(&self) -> Option<&(dyn Display + Send + Sync + 'static)> {
         match self {
             Self::Note { message } => Some(message.as_ref()),
-            Self::Context { .. } | Self::Payload { .. } => None,
+            Self::Payload { .. } => None,
         }
     }
 
@@ -474,7 +424,7 @@ impl Attachment {
                 value,
                 media_type.as_ref().map(|v| v.as_str()),
             )),
-            Self::Context { .. } | Self::Note { .. } => None,
+            Self::Note { .. } => None,
         }
     }
 }

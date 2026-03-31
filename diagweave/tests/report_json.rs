@@ -2,7 +2,11 @@ mod report_common;
 #[cfg(feature = "json")]
 use diagweave::prelude::*;
 #[cfg(feature = "json")]
+use diagweave::render::{Json, REPORT_JSON_SCHEMA_VERSION, report_json_schema};
+#[cfg(feature = "json")]
 use diagweave::report::ReportMetadata;
+#[cfg(feature = "json")]
+use diagweave::report::{DisplayCauseChain, SourceErrorChain};
 #[cfg(feature = "json")]
 use report_common::*;
 
@@ -12,7 +16,7 @@ fn render_format_supports_compact_pretty_and_json() {
     let report = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_retryable(true)
-        .attach("request_id", "tx-json")
+        .with_ctx("request_id", "tx-json")
         .attach_payload(
             "http.request",
             AttachmentValue::Array(vec![
@@ -25,7 +29,7 @@ fn render_format_supports_compact_pretty_and_json() {
 
     let _guard = init_test();
 
-    let compact = report.render(Compact).to_string();
+    let compact = report.render(Compact::summary()).to_string();
     assert_eq!(compact, "api unauthorized");
 
     let pretty = report
@@ -82,7 +86,7 @@ fn json_document_carries_metadata_and_structured_attachments() {
         .with_severity(Severity::Error)
         .with_category("auth")
         .with_retryable(false)
-        .attach("request_id", "req-json")
+        .with_ctx("request_id", "req-json")
         .attach_printable("token rejected")
         .attach_payload(
             "response",
@@ -98,10 +102,7 @@ fn json_document_carries_metadata_and_structured_attachments() {
         Some("API.UNAUTHORIZED")
     );
     assert_eq!(parsed["metadata"]["severity"].as_str(), Some("error"));
-    assert_eq!(
-        parsed["metadata"]["severity"].as_str(),
-        Some("error")
-    );
+    assert_eq!(parsed["metadata"]["severity"].as_str(), Some("error"));
     assert_eq!(parsed["metadata"]["category"].as_str(), Some("auth"));
     assert_eq!(parsed["metadata"]["retryable"].as_bool(), Some(false));
     assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
@@ -110,7 +111,7 @@ fn json_document_carries_metadata_and_structured_attachments() {
     assert!(parsed["diagnostic_bag"]["diagnostic_source_errors"].is_null());
     #[cfg(feature = "trace")]
     assert!(parsed["trace"].is_null());
-    assert_eq!(parsed["context"].as_array().map(|a| a.len()), Some(1));
+    assert_eq!(parsed["context"].as_object().map(|a| a.len()), Some(1));
     assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(2));
 }
 
@@ -133,10 +134,7 @@ fn report_metadata_requires_explicit_severity_typestate_for_deserialization() {
         Some("API.UNAUTHORIZED".to_owned())
     );
     assert_eq!(metadata.severity(), Some(Severity::Error));
-    assert_eq!(
-        metadata.severity(),
-        Some(Severity::Error)
-    );
+    assert_eq!(metadata.severity(), Some(Severity::Error));
     assert_eq!(metadata.category(), Some("auth"));
     assert_eq!(metadata.retryable(), Some(false));
 }
@@ -287,7 +285,7 @@ fn json_renderer_honors_section_visibility_options() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_error_code("API.UNAUTHORIZED")
-        .attach("request_id", "req-json")
+        .with_ctx("request_id", "req-json")
         .attach_printable("token rejected");
 
     let opts = ReportRenderOptions {

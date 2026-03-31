@@ -2,11 +2,15 @@ use super::{
     close_array, close_object, write_array_item_prefix, write_json_display, write_json_string,
     write_object_field, write_option_string,
 };
-use crate::report::{AttachmentValue, AttachmentVisit, SeverityState, Report};
+use crate::report::{
+    AttachmentValue, AttachmentVisit, JsonContext, JsonContextEntry, Report, SeverityState,
+    SystemContext,
+};
+use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-pub(super) fn write_context_array<E, State>(
+pub(super) fn write_context_object<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
@@ -17,15 +21,87 @@ where
     State: SeverityState,
 {
     let mut first = true;
-    f.write_char('[')?;
-    report.visit_attachments(|item| {
-        let AttachmentVisit::Context { key, value } = item else {
-            return Ok(());
-        };
-        write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_kv_obj(f, pretty, depth + 1, key.as_ref(), value)
-    })?;
-    close_array(f, pretty, depth, first)
+    f.write_char('{')?;
+    let context = build_json_context(report.context());
+    for entry in context.entries {
+        write_object_field(f, pretty, depth, &mut first, entry.key.as_ref(), |f| {
+            write_attachment_value(f, pretty, depth + 1, &entry.value)
+        })?;
+    }
+    close_object(f, pretty, depth, first)
+}
+
+pub(super) fn write_system_object<E, State>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E, State>,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+    State: SeverityState,
+{
+    let mut first = true;
+    f.write_char('{')?;
+    let system = build_json_system(report.system());
+    for section in &system.sections {
+        write_object_field(f, pretty, depth, &mut first, section.name, |f| {
+            let mut section_first = true;
+            f.write_char('{')?;
+            for entry in &section.entries {
+                write_object_field(
+                    f,
+                    pretty,
+                    depth + 1,
+                    &mut section_first,
+                    entry.key.as_ref(),
+                    |f| write_attachment_value(f, pretty, depth + 2, &entry.value),
+                )?;
+            }
+            close_object(f, pretty, depth + 1, section_first)
+        })?;
+    }
+    close_object(f, pretty, depth, first)
+}
+
+fn build_json_context(context: Option<&crate::report::ContextMap>) -> JsonContext
+where
+{
+    let mut entries: Vec<JsonContextEntry> = context
+        .map(|system| {
+            system
+                .iter()
+                .map(|(key, value)| JsonContextEntry {
+                    key: key.clone(),
+                    value: value.clone(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    entries.sort_by(|left, right| left.key.cmp(&right.key));
+    JsonContext { entries }
+}
+
+struct JsonSystemSection<'a> {
+    name: &'a str,
+    entries: Vec<JsonContextEntry>,
+}
+
+struct JsonSystem<'a> {
+    sections: Vec<JsonSystemSection<'a>>,
+}
+
+fn build_json_system(system: Option<&SystemContext>) -> JsonSystem<'_> {
+    let mut sections = Vec::new();
+    if let Some(system) = system {
+        for (name, section) in system.sections() {
+            sections.push(JsonSystemSection {
+                name,
+                entries: build_json_context(Some(section)).entries,
+            });
+        }
+    }
+    JsonSystem { sections }
 }
 
 pub(super) fn write_attachments_array<E, State>(
@@ -42,7 +118,6 @@ where
     f.write_char('[')?;
     report.visit_attachments(|item| {
         match item {
-            AttachmentVisit::Context { .. } => {}
             AttachmentVisit::Note { message } => {
                 write_array_item_prefix(f, pretty, depth, &mut first)?;
                 write_note_obj(f, pretty, depth + 1, message)?;
@@ -128,24 +203,6 @@ fn write_payload_obj(args: PayloadArgs<'_, '_>) -> fmt::Result {
     close_object(f, pretty, depth, first)
 }
 
-fn write_kv_obj(
-    f: &mut Formatter<'_>,
-    pretty: bool,
-    depth: usize,
-    key: &str,
-    value: &AttachmentValue,
-) -> fmt::Result {
-    let mut first = true;
-    f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "key", |f| {
-        write_json_string(f, key)
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "value", |f| {
-        write_attachment_value(f, pretty, depth + 1, value)
-    })?;
-    close_object(f, pretty, depth, first)
-}
-
 pub(super) fn write_attachment_value(
     f: &mut Formatter<'_>,
     pretty: bool,
@@ -175,7 +232,9 @@ pub(super) fn write_attachment_value(
         AttachmentValue::Object(values) => write_kind_and_value(f, pretty, depth, "object", |f| {
             let mut first = true;
             f.write_char('{')?;
-            for (key, item) in values {
+            let mut entries: Vec<_> = values.iter().collect();
+            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            for (key, item) in entries {
                 write_object_field(f, pretty, depth + 1, &mut first, key, |f| {
                     write_attachment_value(f, pretty, depth + 2, item)
                 })?;

@@ -2,10 +2,10 @@ use std::fmt::{Display, Formatter};
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, Diagnostic, Error, GlobalContext, HasSeverity,
-    Severity, ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ReportResultExt,
-    SeverityState, SpanId, TraceEvent, TraceEventAttribute,
-    TraceEventLevel, TraceId, register_global_injector, set, union,
+    AttachmentValue, Compact, Diagnostic, Error, GlobalContext, HasSeverity, ParentSpanId, Pretty,
+    Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, SeverityState, SpanId,
+    TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector, set,
+    union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
@@ -149,7 +149,8 @@ fn db_operation() -> Result<(), DatabaseError> {
 
 fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
     db_operation()
-        .diag_context("user_id", user_id)
+        .diag()
+        .with_ctx("user_id", user_id)
         .with_note("failing over to secondary database")
         .with_display_cause("db operation failed")
         .with_display_cause("query plan fallback selected")
@@ -169,27 +170,24 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
     let trace_id = match TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736") {
         Ok(v) => v,
         Err(()) => {
-            return Err(Report::new(ApiError::retry_later(1))
-                .with_severity(Severity::Error));
+            return Err(Report::new(ApiError::retry_later(1)).with_severity(Severity::Error));
         }
     };
     let span_id = match SpanId::new("00f067aa0ba902b7") {
         Ok(v) => v,
         Err(()) => {
-            return Err(Report::new(ApiError::retry_later(1))
-                .with_severity(Severity::Error));
+            return Err(Report::new(ApiError::retry_later(1)).with_severity(Severity::Error));
         }
     };
     let parent_span_id = match ParentSpanId::new("1111111111111111") {
         Ok(v) => v,
         Err(()) => {
-            return Err(Report::new(ApiError::retry_later(1))
-                .with_severity(Severity::Error));
+            return Err(Report::new(ApiError::retry_later(1)).with_severity(Severity::Error));
         }
     };
 
     service_layer(1001)
-        .with_context("request_id", request_id)
+        .with_ctx("request_id", request_id)
         .with_payload(
             "request_meta",
             serde_json::json!({ "version": "v1", "retry": 3 }),
@@ -230,7 +228,7 @@ where
     State: SeverityState,
 {
     println!("--- Compact Rendering ---");
-    println!("{}\n", report.render(Compact));
+    println!("{}\n", report.render(Compact::summary()));
 
     let pretty_opts = ReportRenderOptions {
         pretty_indent: PrettyIndent::Spaces(2),
@@ -362,10 +360,7 @@ where
     println!("--- Diagnostic IR (Metadata) ---");
     println!("Error Code: {:?}", ir.metadata.error_code());
     println!("Severity: {:?}", ir.metadata.severity());
-    println!(
-        "Severity: {:?}",
-        ir.metadata.severity()
-    );
+    println!("Severity: {:?}", ir.metadata.severity());
     println!(
         "StackTrace Present: {}",
         ir.metadata.stack_trace().is_some()
@@ -415,10 +410,10 @@ fn demo_type_conversion() {
 
 fn demo_attachments() {
     let report = Report::new(BaseError::Timeout(100))
-        .attach("tags", vec!["auth", "slow", "v2"])
-        .attach("score", 0.95)
-        .attach("raw_bytes", vec![0xDE, 0xAD, 0xBE, 0xEF])
-        .attach(
+        .with_ctx("tags", vec!["auth", "slow", "v2"])
+        .with_ctx("score", 0.95)
+        .with_ctx("raw_bytes", vec![0xDE, 0xAD, 0xBE, 0xEF])
+        .with_ctx(
             "secret",
             AttachmentValue::Redacted {
                 kind: Some("password".into()),
@@ -442,9 +437,12 @@ fn init_global_context() {
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context
-            .push(("global_request_id".into(), "req-global-001".into()));
-        ctx.trace_id = Some(TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok()?);
-        ctx.span_id = Some(SpanId::new("00f067aa0ba902b7").ok()?);
+            .insert("global_request_id", "req-global-001".into());
+        ctx.trace = Some(diagweave::report::GlobalTraceContext {
+            trace_id: TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok(),
+            span_id: SpanId::new("00f067aa0ba902b7").ok(),
+            ..diagweave::report::GlobalTraceContext::default()
+        });
         Some(ctx)
     });
 }
@@ -464,9 +462,11 @@ fn demo_new_capabilities() {
     println!(
         "global injector auto context: {}\n",
         auto_ctx
-            .attachments()
-            .iter()
-            .find_map(|a| a.as_context().map(|(k, v)| format!("{k}={v}")))
+            .context()
+            .into_iter()
+            .flat_map(|map| map.iter())
+            .map(|(k, v)| format!("{k}={v}"))
+            .next()
             .unwrap_or_else(|| "(none)".to_owned())
     );
 }

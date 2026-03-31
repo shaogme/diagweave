@@ -125,7 +125,6 @@ impl FromStr for Severity {
     }
 }
 
-
 /// An error code that can be either an integer or a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]

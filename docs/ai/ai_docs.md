@@ -224,10 +224,10 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 
 | GlobalContext Field | Description |
 | :--- | :--- |
-| `context` | `Vec<(StaticRefStr, AttachmentValue)>` globally associated key-value pairs |
-| `trace_id` | `Option<TraceId>` Automatically bound Trace ID |
-| `span_id` | `Option<SpanId>` Automatically bound Span ID |
-| `parent_span_id` | `Option<ParentSpanId>` Automatically bound parent Span ID |
+| `context` | `ContextMap` globally injected business context |
+| `system` | `SystemContext` globally injected structured system context (`service` / `deployment` / `runtime` / `request`) |
+| `error` | `Option<GlobalErrorMeta>` metadata override (`error_code` / `category` / `retryable` / `severity`) |
+| `trace` (`trace` feature) | `Option<GlobalTraceContext>` globally injected trace context |
 
 `TraceId` / `SpanId` / `ParentSpanId` are hex-validated identifiers. Construct them with:
 - `TraceId::new("32-hex")` / `SpanId::new("16-hex")` / `ParentSpanId::new("16-hex")`
@@ -236,7 +236,11 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 ### Chained Configuration Methods
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
-| `with_context` / `attach` | `(impl Into<StaticRefStr>, impl Into<AttachmentValue>)` | Add context key-value pairs |
+| `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add business context key-value pairs |
+| `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add a runtime-scoped system field |
+| `with_system_context` | `(SystemContext)` | Replace the structured system context object |
+
+`system` is no longer a flat free-form map in rendered JSON. It is emitted as a typed governance object with fixed top-level sections: `system.service`, `system.deployment`, `system.runtime`, and `system.request`.
 | `with_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
@@ -282,7 +286,10 @@ impl std::error::Error for MyError {}
 
 let report = Report::new(MyError::Timeout)
     .with_severity(Severity::Fatal)
-    .with_context("request_id", "req-123")
+    .with_ctx(
+        "request_id",
+        "req-123",
+    )
     .with_note("please check the network connection")
     .with_retryable(true)
     .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
@@ -300,13 +307,13 @@ Provides pipelines for seamless diagnostic info injection on error paths by impl
 ### Core Traits
 #### 1. `Diagnostic` (on `Result<T, E>`)
 - `diag()`: Lifts `Err(E)` to `Err(Report<E>)`.
-- `diag_context(k, v)`: Lifts and injects context.
 - `diag_note(msg)`: Lifts and injects note.
 
 #### 2. `ReportResultExt` (on `Result<T, Report<E>>`)
 Proxy versions of all `Report` chained configuration methods:
 - **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **Attachments**: `attach`/`with_context`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
+- **Context/Attachments**: `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`, `attach_printable`/`with_note`, `attach_payload`/`with_payload`
+- **System Shape**: rendered `system` is structured as `system.service`, `system.deployment`, `system.runtime`, `system.request`
 - **Lazy Loading**: `context_lazy(key, f)`, `note_lazy(f)` (closure runs only on Err)
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **Source Errors**: `with_diag_src_err(err)`
@@ -326,10 +333,13 @@ use std::{fs, io};
 use std::time::SystemTime;
 
 fn process() -> Result<(), Report<io::Error, HasSeverity>> {
+    let file_key = "file";
+    let timestamp_key = "timestamp";
     fs::read_to_string("config.toml")
-        .diag_context("file", "config.toml") // Converts and attaches context
+        .diag()
+        .with_ctx(file_key, "config.toml") // Converts and attaches context
         .with_severity(Severity::Warn)
-        .context_lazy("timestamp", || format!("{:?}", SystemTime::now()).into())
+        .context_lazy(timestamp_key, || format!("{:?}", SystemTime::now()).into())
         .attach_printable("failed to load system config")?;
         
     Ok(())
@@ -444,7 +454,10 @@ use diagweave::render::ReportRenderOptions;
 # }
 # impl std::error::Error for DemoError {}
 # let report = Report::new(DemoError)
-#     .attach("request_id", "req-42")
+#     .with_ctx(
+#         "request_id",
+#         "req-42",
+#     )
 #     .attach_printable("note")
 #     .attach_payload("body", AttachmentValue::from("ok"), Some("text/plain"))
 #     .with_display_cause("retry later")
@@ -649,7 +662,11 @@ fn db_operation() -> Result<(), DatabaseError> {
 
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()
-        .diag_context("db", "primary")
+        .diag()
+        .with_ctx(
+            "db",
+            "primary",
+        )
         .wrap_with(AppError::Db)?; // Wraps DatabaseError as AppError, preserving DB-layer context
     Ok(())
 }
@@ -691,6 +708,9 @@ where
 - **`trace`**: Zero-dependency trace data structures.
 - **`otel`**: Requires no extra dependency by itself; enabled explicitly for OTLP envelope export.
 - **`tracing`**: Requires `tracing` crate.
+
+
+
 
 
 

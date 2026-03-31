@@ -7,7 +7,7 @@ use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 
 use crate::render::DiagnosticIr;
-use crate::report::{HasSeverity, Severity, Report, TraceEvent, TraceEventLevel};
+use crate::report::{HasSeverity, Report, Severity, TraceEvent, TraceEventLevel};
 
 #[cfg(feature = "tracing")]
 pub use tracing::TracingExporter;

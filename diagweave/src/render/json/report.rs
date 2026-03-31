@@ -1,7 +1,7 @@
 use core::error::Error;
 use core::fmt::{self, Display, Formatter, Write};
 
-use crate::report::{CauseCollectOptions, SeverityState, Report, StackTrace};
+use crate::report::{CauseCollectOptions, Report, SeverityState, StackTrace};
 
 #[cfg(feature = "trace")]
 use super::attachment;

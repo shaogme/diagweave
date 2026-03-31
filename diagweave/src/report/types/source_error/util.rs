@@ -1,5 +1,5 @@
 use super::*;
-use crate::utils::fast_set_new;
+use crate::utils::FastSet;
 use alloc::borrow::ToOwned;
 
 pub(super) fn error_addr(error: &dyn Error) -> ErrorIdentity {
@@ -298,7 +298,7 @@ pub(crate) fn limit_depth_source_chain(
     let nodes = Arc::make_mut(&mut chain.nodes);
     let mut stack: Vec<(SourceNodeId, usize)> =
         roots.iter().copied().map(|id| (id, depth)).collect();
-    let mut visited = fast_set_new();
+    let mut visited = FastSet::new();
 
     while let Some((id, d)) = stack.pop() {
         if !visited.insert((id, d)) {
@@ -372,7 +372,7 @@ impl SourceErrorChain {
     ) -> ExportedSourceErrorChain {
         let mut ids = Vec::new();
         let mut remap = vec![None; self.nodes.len()];
-        let mut visited = fast_set_new();
+        let mut visited = FastSet::new();
         let mut stack: Vec<SourceNodeId> = self.roots.iter().copied().rev().collect();
 
         while let Some(id) = stack.pop() {

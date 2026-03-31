@@ -14,7 +14,8 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `metadata: { error_code: string|integer|null, severity: "trace"|"debug"|"info"|"warn"|"error"|"fatal"|null, category: string|null, retryable: boolean|null }`
 - `diagnostic_bag: { stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, origin_source_errors: SourceErrorChain|null, diagnostic_source_errors: SourceErrorChain|null }`
 - `trace: { context: TraceContext, events: TraceEvent[] }`
-- `context: Array<{ key: string, value: AttachmentValue }>`
+- `context: object` (business context map; object keys are non-empty strings)
+- `system: { service: object, deployment: object, runtime: object, request: object }` (strongly typed system context object)
 - `attachments: Array<Note|Payload>`
 
 ## StackTrace model
@@ -51,16 +52,53 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 
 ## Trace model
 
-- `trace.context.trace_id: string|null`
-- `trace.context.span_id: string|null`
-- `trace.context.parent_span_id: string|null`
+- `trace.context.trace_id: string|null` (`string` must match `^[0-9A-Fa-f]{32}$`)
+- `trace.context.span_id: string|null` (`string` must match `^[0-9A-Fa-f]{16}$`)
+- `trace.context.parent_span_id: string|null` (`string` must match `^[0-9A-Fa-f]{16}$`)
 - `trace.context.sampled: boolean|null`
 - `trace.context.trace_state: string|null`
-- `trace.context.flags: integer|null`
+- `trace.context.flags: integer|null` (range: `0..=255`)
 - `trace.events[*].name: string`
 - `trace.events[*].level: "trace"|"debug"|"info"|"warn"|"error"|null`
 - `trace.events[*].timestamp_unix_nano: integer|null`
 - `trace.events[*].attributes: Array<{ key: string, value: AttachmentValue }>`
+
+### Example `system` payload
+
+```json
+{
+  "system": {
+    "service": {
+      "name": { "kind": "string", "value": "cloud-native-stack" }
+    },
+    "deployment": {
+      "environment": { "kind": "string", "value": "staging" }
+    },
+    "runtime": {
+      "host.arch": { "kind": "string", "value": "x86_64" }
+    },
+    "request": {
+      "request_id": { "kind": "string", "value": "req-20260327-0001" }
+    }
+  }
+}
+```
+
+## Context model
+
+- `context` is an object map from business context key to `AttachmentValue`.
+- business context keys are non-empty strings
+
+## System model
+
+- `system` is a structured governance object with fixed sections:
+  - `system.service`
+  - `system.deployment`
+  - `system.runtime`
+  - `system.request`
+- each system section is an object map from non-empty string key to `AttachmentValue`
+- `system` does not allow additional top-level section names
+- emitters should place governance/runtime/platform metadata into one of these four sections instead of flattening them into a single free-form map
 
 ## AttachmentValue
 
@@ -77,25 +115,20 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `bytes`
 - `redacted`
 
-## Rust type definitions
+## Rust JSON-facing APIs
 
-When `feature = "json"` is enabled, `diagweave` exports:
+When `feature = "json"` is enabled, the public JSON-related APIs include:
 
-- `ReportJsonDocument`
-- `ReportJsonError`
-- `ReportJsonMetadata`
-- `ReportJsonStackTrace`
-- `ReportJsonStackFrame`
-- `ReportJsonStackTraceFormat`
-- `ReportJsonDisplayCauseChain`
-- `ReportJsonSourceError`
-- `ReportJsonSourceErrorChain`
-- `ReportJsonContext`
-- `ReportJsonAttachment`
-- `REPORT_JSON_SCHEMA_VERSION`
-- `REPORT_JSON_SCHEMA_DRAFT`
-- `report_json_schema()`
+- `diagweave::render::Json` (renderer)
+- `diagweave::render::REPORT_JSON_SCHEMA_VERSION`
+- `diagweave::render::REPORT_JSON_SCHEMA_DRAFT`
+- `diagweave::render::report_json_schema()`
 
-These can be used for strict cross-service validation and compatibility checks.
+For typed context modeling in report APIs:
+
+- `diagweave::report::JsonContext`
+- `diagweave::report::JsonContextEntry`
+
+Use `report_json_schema()` for strict cross-service validation and compatibility checks.
 
 See also the OpenTelemetry envelope schema in [`docs/report-otel-schema-v0.1.0.md`](docs/report-otel-schema-v0.1.0.md).

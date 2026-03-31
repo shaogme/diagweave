@@ -322,12 +322,49 @@
         "flags"
       ],
       "properties": {
-        "trace_id": { "type": ["string", "null"] },
-        "span_id": { "type": ["string", "null"] },
-        "parent_span_id": { "type": ["string", "null"] },
+        "trace_id": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9A-Fa-f]{32}$" },
+            { "type": "null" }
+          ]
+        },
+        "span_id": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
+            { "type": "null" }
+          ]
+        },
+        "parent_span_id": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
+            { "type": "null" }
+          ]
+        },
         "sampled": { "type": ["boolean", "null"] },
         "trace_state": { "type": ["string", "null"] },
         "flags": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 }
+      }
+    },
+    "context_map": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": { "$ref": "#/$defs/attachment_value" }
+    },
+    "system_section": {
+      "$ref": "#/$defs/context_map"
+    },
+    "system_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "deployment", "runtime", "request"],
+      "properties": {
+        "service": { "$ref": "#/$defs/system_section" },
+        "deployment": { "$ref": "#/$defs/system_section" },
+        "runtime": { "$ref": "#/$defs/system_section" },
+        "request": { "$ref": "#/$defs/system_section" }
       }
     },
     "trace_event": {
@@ -433,16 +470,10 @@
       }
     },
     "context": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["key", "value"],
-        "properties": {
-          "key": { "type": "string" },
-          "value": { "$ref": "#/$defs/attachment_value" }
-        }
-      }
+      "$ref": "#/$defs/context_map"
+    },
+    "system": {
+      "$ref": "#/$defs/system_context"
     },
     "attachments": {
       "type": "array",

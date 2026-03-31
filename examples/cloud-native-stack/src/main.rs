@@ -1,9 +1,9 @@
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, GlobalContext, HasSeverity, Severity, ParentSpanId,
-    Pretty, Report, ReportRenderOptions, ReportResultExt, SpanId, TraceEvent,
-    TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector, set, union,
+    AttachmentValue, Compact, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report,
+    ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute,
+    TraceEventLevel, TraceId, register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 
@@ -68,7 +68,7 @@ mod payment {
                     },
                 ],
             })
-            .with_context("payment_stage", "charge")
+            .with_ctx("payment_stage", "charge")
     }
 
     fn timeout_report(amount_cents: u64) -> Report<PaymentError, HasSeverity> {
@@ -107,7 +107,7 @@ mod payment {
                     },
                 ],
             })
-            .with_context("payment_stage", "charge")
+            .with_ctx("payment_stage", "charge")
     }
 
     fn network_report(
@@ -148,7 +148,7 @@ mod payment {
                     },
                 ],
             })
-            .with_context("payment_stage", "charge")
+            .with_ctx("payment_stage", "charge")
     }
 
     /// Charges the payment provider for the given amount in cents.
@@ -224,7 +224,7 @@ mod order {
                     value: AttachmentValue::from(order_id),
                 }],
             })
-            .with_context("order_id", order_id)
+            .with_ctx("order_id", order_id)
     }
 
     fn run_payment_stage(
@@ -232,8 +232,8 @@ mod order {
         amount_cents: u64,
     ) -> Result<(), Report<OrderError, HasSeverity>> {
         payment::charge(amount_cents)
-            .with_context("order_id", order_id)
-            .with_context("order_amount_cents", amount_cents)
+            .with_ctx("order_id", order_id)
+            .with_ctx("order_amount_cents", amount_cents)
             .with_note("order pipeline entered payment stage")
             .with_error_code("ORDER.PAYMENT_FAILED")
             .with_severity(Severity::Error)
@@ -289,13 +289,13 @@ mod gateway {
             Report::new(ApiError::bad_request("missing auth header".to_owned()))
                 .with_severity(Severity::Warn)
                 .with_note("gateway rejected request")
-                .with_context("route", "/v1/order"),
+                .with_ctx("route", "/v1/order"),
         )
     }
 
     fn payment_declined() -> Result<String, Report<ApiError, HasSeverity>> {
         payment::charge(0)
-            .with_context("route", "/v1/charge")
+            .with_ctx("route", "/v1/charge")
             .with_note("gateway forwarding to payment")
             .with_error_code("API.PAYMENT_DECLINED")
             .with_severity(Severity::Warn)
@@ -316,7 +316,7 @@ mod gateway {
 
     fn order_network_error() -> Result<String, Report<ApiError, HasSeverity>> {
         order::create_with_amount(9002, 2)
-            .with_context("route", "/v1/order")
+            .with_ctx("route", "/v1/order")
             .with_note("gateway forwarding to order service")
             .with_error_code("API.ORDER_UPSTREAM_FAILURE")
             .with_severity(Severity::Error)
@@ -338,7 +338,7 @@ mod gateway {
 
     fn success_path() -> Result<String, Report<ApiError, HasSeverity>> {
         order::create(9001)
-            .with_context("route", "/v1/order")
+            .with_ctx("route", "/v1/order")
             .with_note("gateway forwarding to order service")
             .with_trace_event(TraceEvent {
                 name: "gateway.forward.order".into(),
@@ -370,15 +370,20 @@ fn init_global_context() {
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.push(("request_id".into(), REQUEST_ID.into()));
-        ctx.context.push(("span_id".into(), SPAN_ID.into()));
-        ctx.context
-            .push(("service".into(), "cloud-native-stack".into()));
-        ctx.context
-            .push(("deployment_env".into(), "staging".into()));
-        ctx.trace_id = Some(TraceId::new(TRACE_ID).ok()?);
-        ctx.span_id = Some(SpanId::new(SPAN_ID).ok()?);
-        ctx.parent_span_id = Some(ParentSpanId::new(PARENT_SPAN_ID).ok()?);
+        ctx.context.insert("request_id", REQUEST_ID.into());
+        ctx.context.insert("span_id", SPAN_ID.into());
+        ctx.system
+            .service
+            .insert("name", "cloud-native-stack".into());
+        ctx.system
+            .deployment
+            .insert("environment", "staging".into());
+        ctx.trace = Some(diagweave::report::GlobalTraceContext {
+            trace_id: TraceId::new(TRACE_ID).ok(),
+            span_id: SpanId::new(SPAN_ID).ok(),
+            parent_span_id: ParentSpanId::new(PARENT_SPAN_ID).ok(),
+            ..diagweave::report::GlobalTraceContext::default()
+        });
         Some(ctx)
     });
 }
@@ -456,7 +461,7 @@ fn render_report(label: &str, report: Report<impl std::error::Error + 'static, H
     };
 
     println!("\n--- {label}: Compact (Human) ---");
-    println!("{}", report.render(Compact));
+    println!("{}", report.render(Compact::summary()));
 
     println!("--- {label}: Pretty (Human) ---");
     println!("{}", report.render(Pretty::new(pretty_opts)));

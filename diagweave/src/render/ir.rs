@@ -185,7 +185,10 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub attachment_count: usize,
 }
 
-impl<'a> DiagnosticIr<'a, MissingSeverity> {
+impl<'a, State> DiagnosticIr<'a, State>
+where
+    State: SeverityState,
+{
     /// Replaces the IR typestate with a concrete severity.
     pub fn with_severity(self, level: Severity) -> DiagnosticIr<'a, HasSeverity> {
         let Self {

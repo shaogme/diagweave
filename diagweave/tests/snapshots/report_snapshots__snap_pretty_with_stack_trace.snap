@@ -1,0 +1,28 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+Error:
+  - message: api unauthorized
+  - type: report_snapshots::report_common::ApiError
+Governance:
+  - error_code: API.ERR
+Trace:
+  - (none)
+Stack Trace:
+  - format: Raw
+  - frame-a
+  - frame-b
+  - frame-c
+System:
+  - (none)
+Context:
+  - (none)
+Attachments:
+  - (none)
+Display Causes:
+  - (none)
+Origin Source Errors:
+  - (none)
+Diagnostic Source Errors:
+  - (none)

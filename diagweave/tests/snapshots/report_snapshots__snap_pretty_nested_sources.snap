@@ -1,0 +1,29 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: pretty
+---
+Error:
+  - message: api wrapped code=501
+  - type: report_snapshots::report_common::ApiError
+Governance:
+  - (none)
+Trace:
+  - (none)
+Stack Trace:
+  - (none)
+System:
+  - (none)
+Context:
+  - (none)
+Attachments:
+  - (none)
+Display Causes:
+  - (none)
+Origin Source Errors:
+  - message: api wrapped code=500
+  - type: null
+    - source:
+    - message: api unauthorized
+    - type: null
+Diagnostic Source Errors:
+  - (none)

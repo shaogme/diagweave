@@ -59,7 +59,7 @@ where
     ) -> Result<T, Report<E, State>>;
 
     fn attach_note_lazy(self, make_message: impl FnOnce() -> String)
-        -> Result<T, Report<E, State>>;
+    -> Result<T, Report<E, State>>;
 
     fn attach_note(
         self,

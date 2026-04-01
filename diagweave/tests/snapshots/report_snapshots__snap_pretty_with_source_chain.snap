@@ -1,0 +1,28 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+Error:
+  - message: api unauthorized
+  - type: report_snapshots::report_common::ApiError
+Governance:
+  - (none)
+Trace:
+  - (none)
+Stack Trace:
+  - (none)
+System:
+  - (none)
+Context:
+  - (none)
+Attachments:
+  - (none)
+Display Causes:
+  - (none)
+Origin Source Errors:
+  - (none)
+Diagnostic Source Errors:
+  - message: auth invalid token
+  - type: report_snapshots::report_common::AuthError
+  - message: network down
+  - type: std::io::error::Error

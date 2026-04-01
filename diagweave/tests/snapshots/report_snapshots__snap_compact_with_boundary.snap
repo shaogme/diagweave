@@ -1,0 +1,5 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+api unauthorized

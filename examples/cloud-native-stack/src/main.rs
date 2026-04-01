@@ -1,9 +1,9 @@
 use std::io;
 
 use diagweave::prelude::{
-    register_global_injector, set, union, AttachmentValue, Compact, GlobalContext, HasSeverity,
-    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportResultExt, Severity, SpanId,
-    TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
+    AttachmentValue, Compact, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report,
+    ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute,
+    TraceEventLevel, TraceId, register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 

@@ -1,0 +1,5 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+{"schema_version":"v0.1.0","error":{"message":"api unauthorized","type":"report_snapshots::report_common::ApiError"},"metadata":{"error_code":null,"severity":null,"category":null,"retryable":null},"diagnostic_bag":{"stack_trace":null,"display_causes":null,"origin_source_errors":null,"diagnostic_source_errors":{"roots":[0,1],"nodes":[{"message":"auth invalid token","type":"report_snapshots::report_common::AuthError","source_roots":[]},{"message":"network down","type":"std::io::error::Error","source_roots":[]}],"truncated":false,"cycle_detected":false}},"trace":null,"context":{},"system":{"service":{},"deployment":{},"runtime":{},"request":{}},"attachments":[]}

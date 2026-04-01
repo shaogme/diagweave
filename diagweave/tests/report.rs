@@ -222,11 +222,13 @@ fn global_context_injector_can_be_disabled_by_user_logic() {
     INJECT_ENABLED.store(false, Ordering::Relaxed);
 
     let report = Report::new(AuthError::InvalidToken);
-    assert!(report
-        .context()
-        .into_iter()
-        .flat_map(|map| map.iter())
-        .all(|(key, _)| key.as_ref() != "request_id"));
+    assert!(
+        report
+            .context()
+            .into_iter()
+            .flat_map(|map| map.iter())
+            .all(|(key, _)| key.as_ref() != "request_id")
+    );
 }
 
 #[test]

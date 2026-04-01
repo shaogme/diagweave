@@ -1,0 +1,28 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+Error:
+  - message: api unauthorized
+  - type: report_snapshots::report_common::ApiError
+Governance:
+  - (none)
+Trace:
+  - (none)
+Stack Trace:
+  - (none)
+System:
+  - (none)
+Context:
+  - (none)
+Attachments:
+  - (none)
+Display Causes:
+  1. auth invalid token
+  2. request was retried
+  3. fallback cache missed
+  4. api wrapped code=502
+Origin Source Errors:
+  - (none)
+Diagnostic Source Errors:
+  - (none)

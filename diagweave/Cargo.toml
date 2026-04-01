@@ -21,6 +21,7 @@ tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.8.2"
+insta = "1"
 trybuild = "1.0"
 tracing-subscriber = { workspace = true, features = ["registry", "std"] }
 

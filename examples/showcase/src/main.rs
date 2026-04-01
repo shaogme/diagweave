@@ -2,10 +2,10 @@ use std::fmt::{Display, Formatter};
 use std::io;
 
 use diagweave::prelude::{
-    register_global_injector, set, union, AttachmentValue, Compact, ContextValue, Diagnostic,
-    Error, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report, ReportRenderOptions,
-    ReportRenderer, ReportResultExt, Severity, SeverityState, SpanId, TraceEvent,
-    TraceEventAttribute, TraceEventLevel, TraceId,
+    AttachmentValue, Compact, ContextValue, Diagnostic, Error, GlobalContext, HasSeverity,
+    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity,
+    SeverityState, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
+    register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};

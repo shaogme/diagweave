@@ -8,9 +8,10 @@ mod pretty;
 #[path = "render/stack_filter.rs"]
 mod stack_filter;
 
+use alloc::string::String;
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{Report, SeverityState};
+use crate::report::{HasSeverity, Report, SeverityState};
 
 #[cfg(feature = "trace")]
 pub(crate) use ir::build_ctx_and_attachments;
@@ -240,6 +241,45 @@ where
             report: self,
             renderer,
         }
+    }
+
+    /// Returns a snapshot-ready compact summary string.
+    pub fn snap_compact(&self) -> String
+    where
+        E: core::error::Error + Display + 'static,
+    {
+        self.render(Compact::summary()).to_string()
+    }
+
+    /// Returns a snapshot-ready pretty-printed string.
+    pub fn snap_pretty(&self) -> String
+    where
+        E: core::error::Error + Display + 'static,
+    {
+        self.render(Pretty::default()).to_string()
+    }
+
+    /// Returns a snapshot-ready JSON string.
+    #[cfg(feature = "json")]
+    pub fn snap_json(&self) -> String
+    where
+        E: core::error::Error + Display + 'static,
+    {
+        self.render(Json::default()).to_string()
+    }
+}
+
+impl<E> Report<E, HasSeverity> {
+    /// Returns a snapshot-ready OTel envelope JSON string.
+    /// Requires the report to carry an explicit severity.
+    #[cfg(all(feature = "json", feature = "otel"))]
+    pub fn snap_otel(&self) -> String
+    where
+        E: core::error::Error + Display + 'static,
+    {
+        let ir = self.to_diagnostic_ir();
+        let otel = ir.to_otel_envelope();
+        serde_json::to_string(&otel).unwrap_or_default()
     }
 }
 

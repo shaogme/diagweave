@@ -2,7 +2,7 @@ mod report_common;
 #[cfg(feature = "json")]
 use diagweave::prelude::*;
 #[cfg(feature = "json")]
-use diagweave::render::{report_json_schema, Json, REPORT_JSON_SCHEMA_VERSION};
+use diagweave::render::{Json, REPORT_JSON_SCHEMA_VERSION, report_json_schema};
 #[cfg(feature = "json")]
 use diagweave::report::ReportMetadata;
 #[cfg(feature = "json")]
@@ -459,8 +459,10 @@ fn json_trace_section_rejects_non_finite_floats() {
         }],
     });
 
-    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = report.render(Json::default()).to_string();
-    }))
-    .is_err());
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = report.render(Json::default()).to_string();
+        }))
+        .is_err()
+    );
 }

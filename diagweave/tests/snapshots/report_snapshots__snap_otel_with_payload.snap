@@ -1,0 +1,5 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+{"records":[{"name":"exception","body":{"KvList":[{"key":"message","value":{"String":"api unauthorized"}},{"key":"type","value":{"String":"report_snapshots::report_common::ApiError"}}]},"timestamp_unix_nano":null,"observed_timestamp_unix_nano":null,"severity_text":"error","severity_number":17,"trace_id":null,"span_id":null,"trace_flags":null,"attributes":[{"key":"exception.type","value":{"String":"report_snapshots::report_common::ApiError"}},{"key":"exception.message","value":{"String":"api unauthorized"}},{"key":"error.category","value":{"String":"payment"}},{"key":"order_id","value":{"String":"ord-9002"}},{"key":"attachment.payload.response_body","value":{"Bytes":[1,2,3,4]}},{"key":"attachment.payload.response_body.media_type","value":{"String":"application/json"}}]}]}

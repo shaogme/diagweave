@@ -7,11 +7,11 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use diagweave::prelude::*;
 #[cfg(feature = "std")]
-use diagweave::report::register_global_injector;
-#[cfg(feature = "std")]
 use diagweave::report::GlobalContext;
 #[cfg(all(feature = "std", feature = "trace"))]
 use diagweave::report::GlobalTraceContext;
+#[cfg(feature = "std")]
+use diagweave::report::register_global_injector;
 
 /// An error type for authentication failures.
 #[derive(Debug, Clone, PartialEq, Eq)]

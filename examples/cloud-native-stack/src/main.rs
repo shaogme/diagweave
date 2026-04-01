@@ -1,9 +1,9 @@
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report,
-    ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute,
-    TraceEventLevel, TraceId, register_global_injector, set, union,
+    register_global_injector, set, union, AttachmentValue, Compact, GlobalContext, HasSeverity,
+    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportResultExt, Severity, SpanId,
+    TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 
@@ -255,7 +255,7 @@ mod order {
                     },
                 ],
             })
-            .wrap_with(|_err| OrderError::payment_failed(order_id))?;
+            .map_inner(|_err| OrderError::payment_failed(order_id))?;
         Ok(())
     }
 }
@@ -310,7 +310,7 @@ mod gateway {
                     value: AttachmentValue::from("/v1/charge"),
                 }],
             })
-            .wrap_with(ApiError::Payment)?;
+            .map_inner(ApiError::Payment)?;
         Ok("OK".to_owned())
     }
 
@@ -332,7 +332,7 @@ mod gateway {
                     value: AttachmentValue::from("/v1/order"),
                 }],
             })
-            .wrap_with(ApiError::Order)?;
+            .map_inner(ApiError::Order)?;
         Ok("OK".to_owned())
     }
 
@@ -349,7 +349,7 @@ mod gateway {
                     value: AttachmentValue::from("/v1/order"),
                 }],
             })
-            .wrap_with(ApiError::Order)?;
+            .map_inner(ApiError::Order)?;
         Ok("OK".to_owned())
     }
 }

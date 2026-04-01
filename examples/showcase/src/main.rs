@@ -2,10 +2,10 @@ use std::fmt::{Display, Formatter};
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, ContextValue, Diagnostic, Error, GlobalContext, HasSeverity,
-    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity,
-    SeverityState, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
-    register_global_injector, set, union,
+    register_global_injector, set, union, AttachmentValue, Compact, ContextValue, Diagnostic,
+    Error, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report, ReportRenderOptions,
+    ReportRenderer, ReportResultExt, Severity, SeverityState, SpanId, TraceEvent,
+    TraceEventAttribute, TraceEventLevel, TraceId,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
@@ -156,7 +156,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
         .with_display_cause("query plan fallback selected")
         .with_diag_src_err(io::Error::other("replica lag detected"))
         .capture_stack_trace()
-        .wrap_with(|db_err| match db_err {
+        .map_inner(|db_err| match db_err {
             DatabaseError::ConnectionLost(io) => AppError::Io(io),
             DatabaseError::ConstraintViolation { .. } => AppError::Internal {
                 msg: "db constraint".into(),
@@ -217,7 +217,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
                 },
             ],
         })
-        .wrap_with(ApiError::App)?;
+        .map_inner(ApiError::App)?;
 
     Ok("Success".into())
 }

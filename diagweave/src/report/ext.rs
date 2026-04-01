@@ -59,7 +59,7 @@ where
     ) -> Result<T, Report<E, State>>;
 
     fn attach_note_lazy(self, make_message: impl FnOnce() -> String)
-    -> Result<T, Report<E, State>>;
+        -> Result<T, Report<E, State>>;
 
     fn attach_note(
         self,
@@ -154,12 +154,12 @@ where
         err: impl Error + Send + Sync + 'static,
     ) -> Result<T, Report<E, State>>;
 
-    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
+    fn boundary<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
     where
         Report<E, State>: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static;
 
-    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>>;
+    fn map_inner<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>>;
 }
 
 /// Read-only extension trait for `Result<T, Report<E, State>>`.
@@ -354,16 +354,16 @@ where
         self.map_err(|report| report.attach_printable(make_message()))
     }
 
-    fn wrap<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
+    fn boundary<Outer>(self, outer: Outer) -> Result<T, Report<Outer, MissingSeverity>>
     where
         Report<E, State>: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static,
     {
-        self.map_err(|report| report.wrap(outer))
+        self.map_err(|report| report.boundary(outer))
     }
 
-    fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>> {
-        self.map_err(|report| report.wrap_with(map))
+    fn map_inner<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>> {
+        self.map_err(|report| report.map_err(map))
     }
 }
 

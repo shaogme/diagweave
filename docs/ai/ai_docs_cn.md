@@ -196,8 +196,8 @@ pub struct Report<E> {
 | `report.iter_origin_src_ext(options)` | 使用自定义选项迭代原生传播链 |
 | `report.iter_diag_sources()` | 使用默认选项迭代诊断补充链 |
 | `report.iter_diag_srcs_ext(options)` | 使用自定义选项迭代诊断补充链 |
-| `report.wrap(outer: Outer)` | 将当前报告包装进另一个错误，并接入错误 `source` 链 |
-| `report.wrap_with(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
+| `report.boundary(outer: Outer)` | 创建诊断边界，将当前报告接入新错误 `source` 链 |
+| `report.map_err(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
 
 ### `ErrorCode` 设计与转换规则
 - 内部模型：
@@ -315,7 +315,7 @@ let report = report.capture_stack_trace();
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **错误源**: `with_diag_src_err(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
-- **包装**: `wrap(outer)`, `wrap_with(map)`
+- **包装**: `boundary(outer)`, `map_inner(map)`
 
 #### 3. `ReportResultInspectExt` (作用于 `Result<T, Report<E>>`)
 用于在错误路径做只读查询，避免手动 `match Err(report)`：
@@ -681,7 +681,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
             "db",
             "primary",
         )
-        .wrap_with(AppError::Db)?; // 将 DatabaseError 包装为 AppError，同时保留 DB 层的 context
+        .map_inner(AppError::Db)?; // 将 DatabaseError 映射为 AppError，同时保留 DB 层的 context
     Ok(())
 }
 ```

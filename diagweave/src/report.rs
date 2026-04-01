@@ -468,8 +468,8 @@ where
         self
     }
 
-    /// Wraps the report into another error type.
-    pub fn wrap<Outer>(self, outer: Outer) -> Report<Outer, MissingSeverity>
+    /// Wraps the report into another error type, creating a diagnostic boundary.
+    pub fn boundary<Outer>(self, outer: Outer) -> Report<Outer, MissingSeverity>
     where
         Self: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static,
@@ -517,8 +517,8 @@ where
         }
     }
 
-    /// Wraps the report using a mapping function for the inner error.
-    pub fn wrap_with<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, State> {
+    /// Maps the inner error type while preserving all diagnostic data.
+    pub fn map_err<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, State> {
         let Self {
             inner,
             metadata,

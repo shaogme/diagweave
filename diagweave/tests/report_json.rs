@@ -2,7 +2,7 @@ mod report_common;
 #[cfg(feature = "json")]
 use diagweave::prelude::*;
 #[cfg(feature = "json")]
-use diagweave::render::{Json, REPORT_JSON_SCHEMA_VERSION, report_json_schema};
+use diagweave::render::{report_json_schema, Json, REPORT_JSON_SCHEMA_VERSION};
 #[cfg(feature = "json")]
 use diagweave::report::ReportMetadata;
 #[cfg(feature = "json")]
@@ -25,7 +25,7 @@ fn render_format_supports_compact_pretty_and_json() {
             ]),
             Some("application/x.debug".to_owned()),
         )
-        .wrap(ApiError::Unauthorized);
+        .boundary(ApiError::Unauthorized);
 
     let _guard = init_test();
 
@@ -212,7 +212,7 @@ fn json_source_errors_without_concrete_type_emit_null() {
 fn json_source_errors_hide_internal_report_wrapper_types() {
     let _guard = init_test();
 
-    let report = Report::new(AuthError::InvalidToken).wrap(ApiError::Unauthorized);
+    let report = Report::new(AuthError::InvalidToken).boundary(ApiError::Unauthorized);
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
@@ -459,10 +459,8 @@ fn json_trace_section_rejects_non_finite_floats() {
         }],
     });
 
-    assert!(
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _ = report.render(Json::default()).to_string();
-        }))
-        .is_err()
-    );
+    assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = report.render(Json::default()).to_string();
+    }))
+    .is_err());
 }

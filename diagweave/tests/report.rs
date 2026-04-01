@@ -64,7 +64,7 @@ fn diagweave_wraps_previous_report_as_source() {
     let inner = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_ctx("request_id", "tx-2");
-    let outer = inner.wrap(ApiError::Unauthorized);
+    let outer = inner.boundary(ApiError::Unauthorized);
 
     assert_eq!(outer.to_string(), "api unauthorized");
     let source = outer.source().expect("diagweave should preserve source");
@@ -81,7 +81,7 @@ fn diagweave_with_changes_context_and_keeps_metadata() {
     let outer = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_ctx("request_id", "tx-9")
-        .wrap_with(|_| ApiError::Wrapped { code: 401 });
+        .map_err(|_| ApiError::Wrapped { code: 401 });
 
     assert_eq!(
         outer.to_string(),
@@ -138,7 +138,7 @@ fn result_ext_builds_report_chain() {
         .diag()
         .with_ctx("request_id", 77u64)
         .with_error_code("AUTH.INVALID_TOKEN")
-        .wrap(ApiError::Unauthorized)
+        .boundary(ApiError::Unauthorized)
         .expect_err("should fail");
 
     assert_eq!(err.to_string(), "api unauthorized");
@@ -222,13 +222,11 @@ fn global_context_injector_can_be_disabled_by_user_logic() {
     INJECT_ENABLED.store(false, Ordering::Relaxed);
 
     let report = Report::new(AuthError::InvalidToken);
-    assert!(
-        report
-            .context()
-            .into_iter()
-            .flat_map(|map| map.iter())
-            .all(|(key, _)| key.as_ref() != "request_id")
-    );
+    assert!(report
+        .context()
+        .into_iter()
+        .flat_map(|map| map.iter())
+        .all(|(key, _)| key.as_ref() != "request_id"));
 }
 
 #[test]
@@ -239,7 +237,7 @@ fn result_ext_diagweave_with_maps_error() {
         .diag()
         .attach_note("incoming token is stale")
         .with_category("auth")
-        .wrap_with(|_| ApiError::Wrapped { code: 403 })
+        .map_inner(|_| ApiError::Wrapped { code: 403 })
         .expect_err("should fail");
 
     assert_eq!(
@@ -287,7 +285,7 @@ fn pretty_output_is_structured() {
             AttachmentValue::Bytes(vec![1, 2, 3]),
             Some("application/octet-stream".to_owned()),
         )
-        .wrap(ApiError::Unauthorized)
+        .boundary(ApiError::Unauthorized)
         .pretty()
         .to_string();
 
@@ -305,8 +303,8 @@ fn pretty_indents_nested_source_errors() {
     let _guard = init_test();
 
     let pretty = Report::new(ApiError::Unauthorized)
-        .wrap(ApiError::Wrapped { code: 500 })
-        .wrap(ApiError::Wrapped { code: 501 })
+        .boundary(ApiError::Wrapped { code: 500 })
+        .boundary(ApiError::Wrapped { code: 501 })
         .pretty()
         .to_string();
 
@@ -318,8 +316,8 @@ fn pretty_respects_max_source_depth() {
     let _guard = init_test();
 
     let report = Report::new(AuthError::InvalidToken)
-        .wrap(ApiError::Unauthorized)
-        .wrap(ApiError::Wrapped { code: 500 });
+        .boundary(ApiError::Unauthorized)
+        .boundary(ApiError::Wrapped { code: 500 });
 
     let options = ReportRenderOptions {
         max_source_depth: 1,
@@ -558,7 +556,7 @@ fn wrap_keeps_explicit_source_chain_isolated_from_inner_source() {
 
     let report = Report::new(SourcefulError)
         .with_diag_src_err(ApiError::Unauthorized)
-        .wrap(ApiError::Wrapped { code: 500 });
+        .boundary(ApiError::Wrapped { code: 500 });
 
     let messages: Vec<String> = report
         .iter_origin_src_ext(CauseCollectOptions {
@@ -600,7 +598,7 @@ fn source_iteration_keeps_top_level_siblings_at_same_depth() {
 fn source_iteration_keeps_siblings_after_truncation() {
     let _guard = init_test();
 
-    let deep_branch = Report::new(AuthError::InvalidToken).wrap(ApiError::Unauthorized);
+    let deep_branch = Report::new(AuthError::InvalidToken).boundary(ApiError::Unauthorized);
     let report = Report::new(ApiError::Wrapped { code: 400 })
         .with_diag_src_err(deep_branch)
         .with_diag_src_err(std::io::Error::other("network down"));

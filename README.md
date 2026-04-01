@@ -275,7 +275,7 @@ Common enrichers on `Result<T, Report<E>>`:
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
 - `with_display_cause`, `with_display_causes`, `with_diag_src_err`
 - `with_ctx_lazy(key, make_value)`, `attach_note_lazy`
-- `wrap`, `wrap_with`
+- `boundary`, `map_inner`
 
 Hot-path string fields like `category`, `trace_state`, and trace event names are stored with `StaticRefStr` after capture.
 Attachment keys, payload names, payload media types, global context keys, and other stored string metadata also use `StaticRefStr`.
@@ -317,7 +317,7 @@ Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
 - `with_diag_src_err` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
-- Origin source propagation is maintained by `wrap` / `wrap_with` and `Error::source()`, while diagnostic source propagation is maintained by `with_diag_src_err`.
+- Origin source propagation is maintained by `boundary` / `map_err` and `Error::source()`, while diagnostic source propagation is maintained by `with_diag_src_err`.
 
 Global context injector (`std`):
 

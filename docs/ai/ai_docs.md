@@ -196,8 +196,8 @@ pub struct Report<E> {
 | `report.iter_origin_src_ext(options)` | Iterates origin source errors with custom options |
 | `report.iter_diag_sources()` | Iterates diagnostic source errors with default options |
 | `report.iter_diag_srcs_ext(options)` | Iterates diagnostic source errors with custom options |
-| `report.wrap(outer: Outer)` | Wraps current report into another error and links it into the error source chain |
-| `report.wrap_with(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
+| `report.boundary(outer: Outer)` | Creates a diagnostic boundary, linking the report into a new error source chain |
+| `report.map_err(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
 
 ### `ErrorCode` Design and Conversions
 - Internal model:
@@ -318,7 +318,7 @@ Proxy versions of all `Report` chained configuration methods:
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **Source Errors**: `with_diag_src_err(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
-- **Wrapping**: `wrap(outer)`, `wrap_with(map)`
+- **Wrapping**: `boundary(outer)`, `map_inner(map)`
 
 #### 3. `ReportResultInspectExt` (on `Result<T, Report<E>>`)
 Read-only helpers for error-path inspection without manually matching `Err`:
@@ -684,7 +684,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
             "db",
             "primary",
         )
-        .wrap_with(AppError::Db)?; // Wraps DatabaseError as AppError, preserving DB-layer context
+        .map_inner(AppError::Db)?; // Maps DatabaseError to AppError, preserving DB-layer context
     Ok(())
 }
 ```

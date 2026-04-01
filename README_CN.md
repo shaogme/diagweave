@@ -275,7 +275,7 @@ pub enum MyError {
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
 - `with_display_cause`、`with_display_causes`、`with_diag_src_err`
 - `with_ctx_lazy(key, make_value)`、`attach_note_lazy`
-- `wrap`、`wrap_with`
+- `boundary`、`map_inner`
 
 `category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `StaticRefStr` 共享存储。
 附件 key、payload 名称、payload media type、全局上下文 key 等持久化字符串也统一使用 `StaticRefStr`。
@@ -317,7 +317,7 @@ Note 附件读取：
 
 - `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
 - `with_diag_src_err` 用于显式追加错误对象到**诊断补充链**，参数要求 `impl Error + Send + Sync + 'static`。
-- 原生传播链由 `wrap` / `wrap_with` 与 `Error::source()` 维护；诊断补充链由 `with_diag_src_err` 维护。
+- 原生传播链由 `boundary` / `map_err` 与 `Error::source()` 维护；诊断补充链由 `with_diag_src_err` 维护。
 
 全局上下文注入（`std`）：
 

@@ -336,22 +336,18 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     }
 
     fn otel_attach_attrs(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
-        if let Some(context) = self.context {
-            for (key, value) in context {
+        for (key, value) in self.context {
+            attributes.push(OtelAttribute {
+                key: key.as_ref().into(),
+                value: OtelValue::from(value),
+            });
+        }
+        for (section_name, section) in self.system.sections() {
+            for (key, value) in section {
                 attributes.push(OtelAttribute {
-                    key: key.as_ref().into(),
+                    key: format!("system.{section_name}.{}", key.as_ref()).into(),
                     value: OtelValue::from(value),
                 });
-            }
-        }
-        if let Some(system) = self.system {
-            for (section_name, section) in system.sections() {
-                for (key, value) in section {
-                    attributes.push(OtelAttribute {
-                        key: format!("system.{section_name}.{}", key.as_ref()).into(),
-                        value: OtelValue::from(value),
-                    });
-                }
             }
         }
         for attachment in self.attachments {

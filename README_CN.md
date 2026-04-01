@@ -284,7 +284,7 @@ pub enum MyError {
 `Report<E>` 的读取接口：
 
 - `attachments()`、`metadata()`、`stack_trace()`
-- `context() -> Option<&ContextMap>`、`system() -> Option<&ContextMap>`
+- `context() -> &ContextMap`、`system() -> &ContextMap`
 - `error_code()`、`severity()`、`category()`、`retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
 - `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`

@@ -91,13 +91,23 @@ where
     }
 
     /// Returns context key-value pairs associated with the report.
-    pub fn context(&self) -> Option<&ContextMap> {
-        self.diagnostics().map(|diag| &diag.context)
+    ///
+    /// Returns a reference to an empty [`ContextMap`] if no context has been set.
+    pub fn context(&self) -> &ContextMap {
+        match self.diagnostics() {
+            Some(diag) => &diag.context,
+            None => ContextMap::default_ref(),
+        }
     }
 
     /// Returns structured system fields associated with the report.
-    pub fn system(&self) -> Option<&SystemContext> {
-        self.diagnostics().map(|diag| &diag.system)
+    ///
+    /// Returns a reference to an empty [`SystemContext`] if no system context has been set.
+    pub fn system(&self) -> &SystemContext {
+        match self.diagnostics() {
+            Some(diag) => &diag.system,
+            None => SystemContext::default_ref(),
+        }
     }
 
     /// Visits attachments in insertion order without building intermediate allocations.

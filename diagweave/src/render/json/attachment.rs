@@ -147,21 +147,15 @@ where
     })
 }
 
-fn build_json_context(context: Option<&crate::report::ContextMap>) -> JsonContext
-where
-{
+fn build_json_context(context: &crate::report::ContextMap) -> JsonContext {
     let entries: Vec<JsonContextEntry> = context
-        .map(|system| {
-            system
-                .sorted_entries()
-                .into_iter()
-                .map(|(key, value)| JsonContextEntry {
-                    key: key.clone(),
-                    value: value.clone(),
-                })
-                .collect()
+        .sorted_entries()
+        .into_iter()
+        .map(|(key, value)| JsonContextEntry {
+            key: key.clone(),
+            value: value.clone(),
         })
-        .unwrap_or_default();
+        .collect();
     JsonContext { entries }
 }
 
@@ -174,15 +168,13 @@ struct JsonSystem<'a> {
     sections: Vec<JsonSystemSection<'a>>,
 }
 
-fn build_json_system(system: Option<&SystemContext>) -> JsonSystem<'_> {
+fn build_json_system(system: &SystemContext) -> JsonSystem<'_> {
     let mut sections = Vec::new();
-    if let Some(system) = system {
-        for (name, section) in system.sections() {
-            sections.push(JsonSystemSection {
-                name,
-                entries: build_json_context(Some(section)).entries,
-            });
-        }
+    for (name, section) in system.sections() {
+        sections.push(JsonSystemSection {
+            name,
+            entries: build_json_context(section).entries,
+        });
     }
     JsonSystem { sections }
 }

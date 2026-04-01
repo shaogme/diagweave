@@ -30,12 +30,13 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
             Some("application/json"),
         );
 
-    assert_eq!(report.context().map_or(0, |ctx| ctx.len()), 1);
+    assert_eq!(report.context().len(), 1);
     assert_eq!(report.attachments().len(), 2);
     assert_eq!(
         report
             .context()
-            .and_then(|ctx| ctx.iter().next())
+            .iter()
+            .next()
             .map(|(key, value)| (key.as_ref().to_owned(), value.clone())),
         Some((
             "request_id".to_owned(),
@@ -189,11 +190,12 @@ fn global_context_injector_applies_to_new_reports() {
 
     let report = Report::new(AuthError::InvalidToken);
 
-    assert_eq!(report.context().map_or(0, |ctx| ctx.len()), 1);
+    assert_eq!(report.context().len(), 1);
     assert_eq!(
         report
             .context()
-            .and_then(|ctx| ctx.iter().next())
+            .iter()
+            .next()
             .map(|(key, value)| (key.as_ref().to_owned(), value.clone())),
         Some((
             "request_id".to_owned(),
@@ -225,8 +227,7 @@ fn global_context_injector_can_be_disabled_by_user_logic() {
     assert!(
         report
             .context()
-            .into_iter()
-            .flat_map(|map| map.iter())
+            .iter()
             .all(|(key, _)| key.as_ref() != "request_id")
     );
 }

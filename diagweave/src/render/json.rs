@@ -107,8 +107,8 @@ where
         || metadata.severity().is_some()
         || metadata.category().is_some()
         || metadata.retryable().is_some();
-    let has_context = report.context().is_some_and(|v| !v.is_empty());
-    let has_system = report.system().is_some_and(|v| !v.is_empty());
+    let has_context = !report.context().is_empty();
+    let has_system = !report.system().is_empty();
     let has_attachments = !report.attachments().is_empty();
     let has_diag_bag = has_stack_trace(report)
         || has_display_causes(report)

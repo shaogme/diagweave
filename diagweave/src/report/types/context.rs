@@ -291,6 +291,11 @@ impl From<&ContextValue> for AttachmentValue {
 pub struct ContextMap(FastMap<StaticRefStr, ContextValue>);
 
 impl ContextMap {
+    /// Creates an empty context map.
+    pub fn new() -> Self {
+        Self(FastMap::new())
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -309,6 +314,23 @@ impl ContextMap {
 
     pub fn sorted_entries(&self) -> Vec<(&StaticRefStr, &ContextValue)> {
         self.0.sorted_entries()
+    }
+}
+
+/// Default empty ContextMap singleton.
+impl ContextMap {
+    /// Returns a reference to the default empty ContextMap.
+    #[cfg(feature = "std")]
+    pub fn default_ref() -> &'static ContextMap {
+        static DEFAULT: std::sync::LazyLock<ContextMap> = std::sync::LazyLock::new(ContextMap::new);
+        &DEFAULT
+    }
+
+    /// Returns a reference to the default empty ContextMap.
+    #[cfg(not(feature = "std"))]
+    pub fn default_ref() -> &'static ContextMap {
+        static DEFAULT: ContextMap = ContextMap(FastMap::new());
+        &DEFAULT
     }
 }
 
@@ -331,11 +353,16 @@ pub struct SystemContext {
 }
 
 impl SystemContext {
+    /// Creates an empty system context.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.service.is_empty()
-            && self.deployment.is_empty()
-            && self.runtime.is_empty()
-            && self.request.is_empty()
+        && self.deployment.is_empty()
+        && self.runtime.is_empty()
+        && self.request.is_empty()
     }
 
     pub fn len(&self) -> usize {
@@ -353,6 +380,25 @@ impl SystemContext {
             ("runtime", &self.runtime),
             ("request", &self.request),
         ]
+    }
+
+    /// Returns a reference to the default empty SystemContext.
+    #[cfg(feature = "std")]
+    pub fn default_ref() -> &'static SystemContext {
+        static DEFAULT: std::sync::LazyLock<SystemContext> = std::sync::LazyLock::new(SystemContext::new);
+        &DEFAULT
+    }
+
+    /// Returns a reference to the default empty SystemContext.
+    #[cfg(not(feature = "std"))]
+    pub fn default_ref() -> &'static SystemContext {
+        static DEFAULT: SystemContext = SystemContext {
+            service: ContextMap(FastMap::new()),
+            deployment: ContextMap(FastMap::new()),
+            runtime: ContextMap(FastMap::new()),
+            request: ContextMap(FastMap::new()),
+        };
+        &DEFAULT
     }
 }
 

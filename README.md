@@ -284,7 +284,7 @@ The matching setters accept `impl Into<StaticRefStr>`, so callers can pass owned
 Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
-- `context() -> Option<&ContextMap>`, `system() -> Option<&ContextMap>`
+- `context() -> &ContextMap`, `system() -> &ContextMap`
 - `error_code()`, `severity()`, `category()`, `retryable()`
 - `visit_causes(visit)` / `visit_causes_ext(options, visit)`
 - `visit_origin_sources(visit)` / `visit_origin_src_ext(options, visit)`

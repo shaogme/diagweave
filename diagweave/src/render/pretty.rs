@@ -334,17 +334,16 @@ where
     }
 
     let mut wrote_header = false;
-    if let Some(system) = report.system() {
-        for (section_name, section) in system.sections() {
-            if render_system_subsection(
-                f,
-                section_name,
-                section,
-                options.pretty_indent,
-                wrote_header,
-            )? {
-                wrote_header = true;
-            }
+    let system = report.system();
+    for (section_name, section) in system.sections() {
+        if render_system_subsection(
+            f,
+            section_name,
+            section,
+            options.pretty_indent,
+            wrote_header,
+        )? {
+            wrote_header = true;
         }
     }
 
@@ -394,15 +393,14 @@ where
     }
 
     let mut wrote_header = false;
-    if let Some(context) = report.context() {
-        for (key, value) in context.sorted_entries() {
-            if !wrote_header {
-                wrote_header = true;
-                writeln!(f, "Context:")?;
-            }
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- {}: {}", key.as_ref(), value)?;
+    let context = report.context();
+    for (key, value) in context.sorted_entries() {
+        if !wrote_header {
+            wrote_header = true;
+            writeln!(f, "Context:")?;
         }
+        write_indent(f, options.pretty_indent)?;
+        writeln!(f, "- {}: {}", key.as_ref(), value)?;
     }
 
     if !wrote_header && options.show_empty_sections {

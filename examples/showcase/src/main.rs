@@ -463,8 +463,7 @@ fn demo_new_capabilities() {
         "global injector auto context: {}\n",
         auto_ctx
             .context()
-            .into_iter()
-            .flat_map(|map| map.iter())
+            .iter()
             .map(|(k, v)| format!("{k}={v}"))
             .next()
             .unwrap_or_else(|| "(none)".to_owned())

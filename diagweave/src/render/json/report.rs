@@ -13,7 +13,6 @@ use super::trace::{
 use super::{
     ReportRenderOptions, close_array, close_object, filtered_frames, write_array_item_prefix,
     write_error_code, write_json_display, write_json_string, write_object_field,
-    write_option_string,
 };
 
 pub(super) fn write_error_object<E>(
@@ -90,13 +89,11 @@ where
     {
         return Ok(());
     }
+    let Some(stack_trace) = report.stack_trace() else {
+        return Ok(());
+    };
     write_object_field(f, pretty, depth, first, "stack_trace", |f| {
-        match report.stack_trace() {
-            Some(stack_trace) => {
-                write_stack_trace_object(f, pretty, depth + 1, stack_trace, options)
-            }
-            None => f.write_str("null"),
-        }
+        write_stack_trace_object(f, pretty, depth + 1, stack_trace, options)
     })
 }
 
@@ -117,8 +114,11 @@ where
     {
         return Ok(());
     }
+    let Some(display_causes) = report.display_causes_chain() else {
+        return Ok(());
+    };
     write_object_field(f, pretty, depth, first, "display_causes", |f| {
-        write_display_causes(f, pretty, depth + 1, report, options)
+        write_display_causes(f, pretty, depth + 1, report, display_causes, options)
     })
 }
 
@@ -139,16 +139,15 @@ where
     {
         return Ok(());
     }
+    let traversal_options = CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let Some(source_errors) = report.origin_src_err_view(traversal_options) else {
+        return Ok(());
+    };
     write_object_field(f, pretty, depth, first, "origin_source_errors", |f| {
-        write_source_errors_field(
-            f,
-            pretty,
-            depth + 1,
-            report,
-            options,
-            true,
-            Report::origin_src_err_view,
-        )
+        write_source_errors_chain(f, pretty, depth + 1, &source_errors, true)
     })
 }
 
@@ -169,16 +168,15 @@ where
     {
         return Ok(());
     }
+    let traversal_options = CauseCollectOptions {
+        max_depth: options.max_source_depth,
+        detect_cycle: options.detect_source_cycle,
+    };
+    let Some(source_errors) = report.diag_src_err_view(traversal_options) else {
+        return Ok(());
+    };
     write_object_field(f, pretty, depth, first, "diagnostic_source_errors", |f| {
-        write_source_errors_field(
-            f,
-            pretty,
-            depth + 1,
-            report,
-            options,
-            false,
-            Report::diag_src_err_view,
-        )
+        write_source_errors_chain(f, pretty, depth + 1, &source_errors, false)
     })
 }
 
@@ -216,30 +214,26 @@ fn write_meta_gov_fields<State>(
 where
     State: SeverityState,
 {
-    write_object_field(f, pretty, depth, first, "error_code", |f| {
-        match metadata.error_code() {
-            Some(code) => write_error_code(f, code),
-            None => f.write_str("null"),
-        }
-    })?;
-    write_object_field(f, pretty, depth, first, "severity", |f| {
-        match metadata.severity() {
-            Some(severity) => write_json_display(f, &severity),
-            None => f.write_str("null"),
-        }
-    })?;
-    write_object_field(f, pretty, depth, first, "category", |f| {
-        match metadata.category() {
-            Some(category) => write_json_string(f, category),
-            None => f.write_str("null"),
-        }
-    })?;
-    write_object_field(f, pretty, depth, first, "retryable", |f| {
-        match metadata.retryable() {
-            Some(retryable) => write!(f, "{retryable}"),
-            None => f.write_str("null"),
-        }
-    })?;
+    if let Some(code) = metadata.error_code() {
+        write_object_field(f, pretty, depth, first, "error_code", |f| {
+            write_error_code(f, code)
+        })?;
+    }
+    if let Some(severity) = metadata.severity() {
+        write_object_field(f, pretty, depth, first, "severity", |f| {
+            write_json_display(f, &severity)
+        })?;
+    }
+    if let Some(category) = metadata.category() {
+        write_object_field(f, pretty, depth, first, "category", |f| {
+            write_json_string(f, category)
+        })?;
+    }
+    if let Some(retryable) = metadata.retryable() {
+        write_object_field(f, pretty, depth, first, "retryable", |f| {
+            write!(f, "{retryable}")
+        })?;
+    }
     Ok(())
 }
 
@@ -248,15 +242,12 @@ fn write_display_causes<State>(
     pretty: bool,
     depth: usize,
     report: &Report<impl Error + 'static, State>,
+    display_causes: &crate::report::DisplayCauseChain,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
     State: SeverityState,
 {
-    let Some(display_causes) = report.display_causes_chain() else {
-        return f.write_str("null");
-    };
-
     let traversal_options = CauseCollectOptions {
         max_depth: options.max_source_depth,
         detect_cycle: options.detect_source_cycle,
@@ -291,30 +282,6 @@ where
     close_object(f, pretty, depth, first)
 }
 
-fn write_source_errors_field<E, State, F>(
-    f: &mut Formatter<'_>,
-    pretty: bool,
-    depth: usize,
-    report: &Report<E, State>,
-    options: ReportRenderOptions,
-    hide_report_wrapper_types: bool,
-    source_chain: F,
-) -> fmt::Result
-where
-    E: Error + 'static,
-    State: SeverityState,
-    F: FnOnce(&Report<E, State>, CauseCollectOptions) -> Option<crate::report::SourceErrorChain>,
-{
-    let traversal_options = CauseCollectOptions {
-        max_depth: options.max_source_depth,
-        detect_cycle: options.detect_source_cycle,
-    };
-    let Some(source_errors) = source_chain(report, traversal_options) else {
-        return f.write_str("null");
-    };
-    write_source_errors_chain(f, pretty, depth, &source_errors, hide_report_wrapper_types)
-}
-
 fn write_source_error_object(
     f: &mut Formatter<'_>,
     pretty: bool,
@@ -328,10 +295,11 @@ fn write_source_error_object(
     write_object_field(f, pretty, depth, &mut first, "message", |f| {
         write_json_string(f, message)
     })?;
-    write_object_field(f, pretty, depth, &mut first, "type", |f| match type_name {
-        Some(type_name) => write_json_string(f, type_name),
-        None => f.write_str("null"),
-    })?;
+    if let Some(type_name) = type_name {
+        write_object_field(f, pretty, depth, &mut first, "type", |f| {
+            write_json_string(f, type_name)
+        })?;
+    }
     write_object_field(f, pretty, depth, &mut first, "source_roots", |f| {
         let mut array_first = true;
         f.write_char('[')?;
@@ -398,30 +366,34 @@ fn write_trace_context_value(
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "trace_id", |f| {
-        write_option_string(f, context.trace_id.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "span_id", |f| {
-        write_option_string(f, context.span_id.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "parent_span_id", |f| {
-        write_option_string(f, context.parent_span_id.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "sampled", |f| {
-        match context.sampled {
-            Some(v) => write!(f, "{v}"),
-            None => f.write_str("null"),
-        }
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "trace_state", |f| {
-        write_option_string(f, context.trace_state.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "flags", |f| {
-        match context.flags {
-            Some(v) => write!(f, "{v}"),
-            None => f.write_str("null"),
-        }
-    })?;
+    if let Some(trace_id) = context.trace_id.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "trace_id", |f| {
+            write_json_string(f, trace_id)
+        })?;
+    }
+    if let Some(span_id) = context.span_id.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "span_id", |f| {
+            write_json_string(f, span_id)
+        })?;
+    }
+    if let Some(parent_span_id) = context.parent_span_id.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "parent_span_id", |f| {
+            write_json_string(f, parent_span_id)
+        })?;
+    }
+    if let Some(v) = context.sampled {
+        write_object_field(f, pretty, depth, &mut first, "sampled", |f| {
+            write!(f, "{v}")
+        })?;
+    }
+    if let Some(trace_state) = context.trace_state.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "trace_state", |f| {
+            write_json_string(f, trace_state)
+        })?;
+    }
+    if let Some(v) = context.flags {
+        write_object_field(f, pretty, depth, &mut first, "flags", |f| write!(f, "{v}"))?;
+    }
     close_object(f, pretty, depth, first)
 }
 
@@ -438,7 +410,9 @@ where
     State: SeverityState,
 {
     let Some(trace) = report.trace() else {
-        return f.write_str("null");
+        // When trace is absent, write empty object to ensure valid JSON
+        f.write_str("{}")?;
+        return Ok(());
     };
     write_trace_section_value(f, pretty, depth, &build_trace_section_value(trace), options)
 }
@@ -493,23 +467,21 @@ fn write_trace_event_value(
         write_json_string(f, event.name.as_ref())
     })?;
     if options.show_trace_event_details {
-        write_object_field(f, pretty, depth, &mut first, "level", |f| {
-            write_option_string(f, event.level.as_deref())
-        })?;
-        write_object_field(
-            f,
-            pretty,
-            depth,
-            &mut first,
-            "timestamp_unix_nano",
-            |f| match event.timestamp_unix_nano {
-                Some(v) => write!(f, "{v}"),
-                None => f.write_str("null"),
-            },
-        )?;
-        write_object_field(f, pretty, depth, &mut first, "attributes", |f| {
-            write_trace_attr_array(f, pretty, depth + 1, &event.attributes)
-        })?;
+        if let Some(level) = event.level.as_deref() {
+            write_object_field(f, pretty, depth, &mut first, "level", |f| {
+                write_json_string(f, level)
+            })?;
+        }
+        if let Some(v) = event.timestamp_unix_nano {
+            write_object_field(f, pretty, depth, &mut first, "timestamp_unix_nano", |f| {
+                write!(f, "{v}")
+            })?;
+        }
+        if !event.attributes.is_empty() {
+            write_object_field(f, pretty, depth, &mut first, "attributes", |f| {
+                write_trace_attr_array(f, pretty, depth + 1, &event.attributes)
+            })?;
+        }
     }
     close_object(f, pretty, depth, first)
 }
@@ -575,12 +547,11 @@ fn write_stack_trace_object(
         }
         close_array(f, pretty, depth + 1, array_first)
     })?;
-    write_object_field(f, pretty, depth, &mut first, "raw", |f| {
-        match stack_trace.raw.as_ref() {
-            Some(raw) => write_json_string(f, raw),
-            None => f.write_str("null"),
-        }
-    })?;
+    if let Some(raw) = stack_trace.raw.as_ref() {
+        write_object_field(f, pretty, depth, &mut first, "raw", |f| {
+            write_json_string(f, raw)
+        })?;
+    }
     close_object(f, pretty, depth, first)
 }
 
@@ -592,24 +563,26 @@ fn write_stack_frame_object(
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "symbol", |f| {
-        write_option_string(f, frame.symbol.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "module_path", |f| {
-        write_option_string(f, frame.module_path.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "file", |f| {
-        write_option_string(f, frame.file.as_deref())
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "line", |f| match frame.line {
-        Some(v) => write!(f, "{v}"),
-        None => f.write_str("null"),
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "column", |f| {
-        match frame.column {
-            Some(v) => write!(f, "{v}"),
-            None => f.write_str("null"),
-        }
-    })?;
+    if let Some(symbol) = frame.symbol.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "symbol", |f| {
+            write_json_string(f, symbol)
+        })?;
+    }
+    if let Some(module_path) = frame.module_path.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "module_path", |f| {
+            write_json_string(f, module_path)
+        })?;
+    }
+    if let Some(file) = frame.file.as_deref() {
+        write_object_field(f, pretty, depth, &mut first, "file", |f| {
+            write_json_string(f, file)
+        })?;
+    }
+    if let Some(v) = frame.line {
+        write_object_field(f, pretty, depth, &mut first, "line", |f| write!(f, "{v}"))?;
+    }
+    if let Some(v) = frame.column {
+        write_object_field(f, pretty, depth, &mut first, "column", |f| write!(f, "{v}"))?;
+    }
     close_object(f, pretty, depth, first)
 }

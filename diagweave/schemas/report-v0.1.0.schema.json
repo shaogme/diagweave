@@ -18,26 +18,25 @@
     "stack_frame": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["symbol", "module_path", "file", "line", "column"],
       "properties": {
-        "symbol": { "type": ["string", "null"] },
-        "module_path": { "type": ["string", "null"] },
-        "file": { "type": ["string", "null"] },
-        "line": { "type": ["integer", "null"], "minimum": 0 },
-        "column": { "type": ["integer", "null"], "minimum": 0 }
+        "symbol": { "type": "string" },
+        "module_path": { "type": "string" },
+        "file": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 }
       }
     },
     "stack_trace": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["format", "frames", "raw"],
+      "required": ["format", "frames"],
       "properties": {
         "format": { "$ref": "#/$defs/stack_trace_format" },
         "frames": {
           "type": "array",
           "items": { "$ref": "#/$defs/stack_frame" }
         },
-        "raw": { "type": ["string", "null"] }
+        "raw": { "type": "string" }
       }
     },
     "display_cause_chain": {
@@ -56,10 +55,10 @@
     "source_error_node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["message", "type", "source_roots"],
+      "required": ["message", "source_roots"],
       "properties": {
         "message": { "type": "string" },
-        "type": { "type": ["string", "null"] },
+        "type": { "type": "string" },
         "source_roots": {
           "type": "array",
           "items": { "type": "integer", "minimum": 0 }
@@ -313,36 +312,13 @@
     "trace_context": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "trace_id",
-        "span_id",
-        "parent_span_id",
-        "sampled",
-        "trace_state",
-        "flags"
-      ],
       "properties": {
-        "trace_id": {
-          "oneOf": [
-            { "type": "string", "pattern": "^[0-9A-Fa-f]{32}$" },
-            { "type": "null" }
-          ]
-        },
-        "span_id": {
-          "oneOf": [
-            { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
-            { "type": "null" }
-          ]
-        },
-        "parent_span_id": {
-          "oneOf": [
-            { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
-            { "type": "null" }
-          ]
-        },
-        "sampled": { "type": ["boolean", "null"] },
-        "trace_state": { "type": ["string", "null"] },
-        "flags": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 }
+        "trace_id": { "type": "string", "pattern": "^[0-9A-Fa-f]{32}$" },
+        "span_id": { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
+        "parent_span_id": { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
+        "sampled": { "type": "boolean" },
+        "trace_state": { "type": "string" },
+        "flags": { "type": "integer", "minimum": 0, "maximum": 255 }
       }
     },
     "context_value": {
@@ -492,7 +468,6 @@
     "system_context": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["service", "deployment", "runtime", "request"],
       "properties": {
         "service": { "$ref": "#/$defs/system_section" },
         "deployment": { "$ref": "#/$defs/system_section" },
@@ -503,16 +478,11 @@
     "trace_event": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "level", "timestamp_unix_nano", "attributes"],
+      "required": ["name"],
       "properties": {
         "name": { "type": "string" },
-        "level": {
-          "oneOf": [
-            { "$ref": "#/$defs/trace_event_level" },
-            { "type": "null" }
-          ]
-        },
-        "timestamp_unix_nano": { "type": ["integer", "null"], "minimum": 0 },
+        "level": { "$ref": "#/$defs/trace_event_level" },
+        "timestamp_unix_nano": { "type": "integer", "minimum": 0 },
         "attributes": {
           "type": "array",
           "items": { "$ref": "#/$defs/trace_attribute" }
@@ -540,54 +510,26 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["error_code", "severity", "category", "retryable"],
       "properties": {
         "error_code": {
           "oneOf": [
             { "type": "string" },
-            { "type": "integer" },
-            { "type": "null" }
+            { "type": "integer" }
           ]
         },
-        "severity": {
-          "oneOf": [
-            { "$ref": "#/$defs/severity" },
-            { "type": "null" }
-          ]
-        },
-        "category": { "type": ["string", "null"] },
-        "retryable": { "type": ["boolean", "null"] }
+        "severity": { "$ref": "#/$defs/severity" },
+        "category": { "type": "string" },
+        "retryable": { "type": "boolean" }
       }
     },
     "diagnostic_bag": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stack_trace", "display_causes", "origin_source_errors", "diagnostic_source_errors"],
       "properties": {
-        "stack_trace": {
-          "oneOf": [
-            { "$ref": "#/$defs/stack_trace" },
-            { "type": "null" }
-          ]
-        },
-        "display_causes": {
-          "oneOf": [
-            { "$ref": "#/$defs/display_cause_chain" },
-            { "type": "null" }
-          ]
-        },
-        "origin_source_errors": {
-          "oneOf": [
-            { "$ref": "#/$defs/source_error_chain" },
-            { "type": "null" }
-          ]
-        },
-        "diagnostic_source_errors": {
-          "oneOf": [
-            { "$ref": "#/$defs/source_error_chain" },
-            { "type": "null" }
-          ]
-        }
+        "stack_trace": { "$ref": "#/$defs/stack_trace" },
+        "display_causes": { "$ref": "#/$defs/display_cause_chain" },
+        "origin_source_errors": { "$ref": "#/$defs/source_error_chain" },
+        "diagnostic_source_errors": { "$ref": "#/$defs/source_error_chain" }
       }
     },
     "trace": {

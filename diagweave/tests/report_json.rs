@@ -25,7 +25,7 @@ fn render_format_supports_compact_pretty_and_json() {
             ]),
             Some("application/x.debug".to_owned()),
         )
-        .boundary(ApiError::Unauthorized);
+        .map_err(|_| ApiError::Unauthorized);
 
     let _guard = init_test();
 
@@ -48,22 +48,25 @@ fn render_format_supports_compact_pretty_and_json() {
         assert!(json.contains("\"diagnostic_bag\""));
         assert!(json.contains("\"context\""));
         assert!(json.contains("\"attachments\""));
-        assert!(json.contains("\"stack_trace\""));
-        assert!(json.contains("\"display_causes\""));
-        assert!(json.contains("\"origin_source_errors\""));
-        assert!(json.contains("\"diagnostic_source_errors\""));
+        // stack_trace and display_causes are omitted when absent (no null output)
+        assert!(!json.contains("\"stack_trace\""));
+        assert!(!json.contains("\"display_causes\""));
+        assert!(!json.contains("\"diagnostic_source_errors\""));
+        assert!(!json.contains("\"origin_source_errors\""));
 
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
         assert_eq!(parsed["schema_version"], REPORT_JSON_SCHEMA_VERSION);
         assert_eq!(parsed["error"]["message"], "api unauthorized");
-        assert!(parsed["metadata"]["error_code"].is_null());
-        assert!(parsed["metadata"]["retryable"].is_null());
-        assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
-        assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
-        assert!(parsed["diagnostic_bag"]["origin_source_errors"].is_object());
+        // map_err preserves all metadata fields
+        assert_eq!(parsed["metadata"]["error_code"].as_str(), Some("AUTH.INVALID_TOKEN"));
+        assert_eq!(parsed["metadata"]["retryable"].as_bool(), Some(true));
+        // stack_trace and display_causes are omitted when absent
+        assert_eq!(parsed["diagnostic_bag"]["stack_trace"].as_object(), None);
+        assert_eq!(parsed["diagnostic_bag"]["display_causes"].as_object(), None);
+        assert_eq!(parsed["diagnostic_bag"]["origin_source_errors"].as_object(), None);
         #[cfg(feature = "trace")]
-        assert!(parsed["trace"].is_null());
-        assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(0));
+        assert!(parsed["trace"].is_object());
+        assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(1));
     }
 }
 
@@ -105,12 +108,13 @@ fn json_document_carries_metadata_and_structured_attachments() {
     assert_eq!(parsed["metadata"]["severity"].as_str(), Some("error"));
     assert_eq!(parsed["metadata"]["category"].as_str(), Some("auth"));
     assert_eq!(parsed["metadata"]["retryable"].as_bool(), Some(false));
-    assert!(parsed["diagnostic_bag"]["stack_trace"].is_null());
-    assert!(parsed["diagnostic_bag"]["display_causes"].is_null());
-    assert!(parsed["diagnostic_bag"]["origin_source_errors"].is_null());
-    assert!(parsed["diagnostic_bag"]["diagnostic_source_errors"].is_null());
+    // Fields are omitted when absent, not null
+    assert_eq!(parsed["diagnostic_bag"]["stack_trace"].as_object(), None);
+    assert_eq!(parsed["diagnostic_bag"]["display_causes"].as_object(), None);
+    assert_eq!(parsed["diagnostic_bag"]["origin_source_errors"].as_object(), None);
+    assert_eq!(parsed["diagnostic_bag"]["diagnostic_source_errors"].as_object(), None);
     #[cfg(feature = "trace")]
-    assert!(parsed["trace"].is_null());
+    assert!(parsed["trace"].is_object());
     assert_eq!(parsed["context"].as_object().map(|a| a.len()), Some(1));
     assert_eq!(parsed["attachments"].as_array().map(|a| a.len()), Some(2));
 }
@@ -195,7 +199,7 @@ fn json_source_errors_include_error_type() {
 
 #[cfg(feature = "json")]
 #[test]
-fn json_source_errors_without_concrete_type_emit_null() {
+fn json_source_errors_without_concrete_type_omit_type_field() {
     let _guard = init_test();
 
     let report = Report::new(LoopError);
@@ -204,7 +208,11 @@ fn json_source_errors_without_concrete_type_emit_null() {
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
     let source = &parsed["diagnostic_bag"]["origin_source_errors"];
     let nodes = source["nodes"].as_array().expect("nodes should be array");
-    assert_eq!(nodes[0]["type"], serde_json::Value::Null);
+    // type field is omitted when absent, not null
+    assert_eq!(
+        nodes[0].get("type"),
+        None
+    );
 }
 
 #[cfg(feature = "json")]
@@ -212,13 +220,12 @@ fn json_source_errors_without_concrete_type_emit_null() {
 fn json_source_errors_hide_internal_report_wrapper_types() {
     let _guard = init_test();
 
-    let report = Report::new(AuthError::InvalidToken).boundary(ApiError::Unauthorized);
+    let report = Report::new(AuthError::InvalidToken).map_err(|_| ApiError::Unauthorized);
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
-    let source = &parsed["diagnostic_bag"]["origin_source_errors"];
-    let nodes = source["nodes"].as_array().expect("nodes should be array");
-    assert_eq!(nodes[0]["type"], serde_json::Value::Null);
+    // map_err does not create origin_source_errors, field is omitted
+    assert_eq!(parsed["diagnostic_bag"]["origin_source_errors"].as_object(), None);
 }
 
 #[cfg(feature = "json")]

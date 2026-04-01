@@ -188,7 +188,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
 
     service_layer(1001)
         .with_ctx("request_id", request_id)
-        .with_payload(
+        .attach_payload(
             "request_meta",
             serde_json::json!({ "version": "v1", "retry": 3 }),
             Some("application/json"),
@@ -408,7 +408,7 @@ fn demo_type_conversion() {
     println!("Automatic conversion sequence: Auth -> App -> Api works!");
 }
 
-fn demo_attachments() {
+fn demo_context_and_payloads() {
     let report = Report::new(BaseError::Timeout(100))
         .with_ctx("tags", vec!["auth", "slow", "v2"])
         .with_ctx("score", 0.95)
@@ -499,5 +499,5 @@ fn main() {
     demo_specialized_stores();
     demo_type_conversion();
     demo_manual_stack_trace();
-    demo_attachments();
+    demo_context_and_payloads();
 }

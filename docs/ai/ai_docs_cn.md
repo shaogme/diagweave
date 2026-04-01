@@ -239,7 +239,7 @@ pub struct Report<E> {
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加业务上下文键值对 |
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加系统上下文键值对 |
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
-| `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
+| `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
 | `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
 | `with_category` | `impl Into<StaticRefStr>` | 设置错误分类 (用于监控指标) |
@@ -289,7 +289,7 @@ let report = Report::new(MyError::Timeout)
     )
     .attach_note("please check the network connection")
     .with_retryable(true)
-    .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
+    .attach_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
 #[cfg(feature = "std")]
 let report = report.capture_stack_trace();
 ```
@@ -309,7 +309,7 @@ let report = report.capture_stack_trace();
 #### 2. `ReportResultExt` (作用于 `Result<T, Report<E>>`)
 所有 `Report` 的链式配置方法均有对应的代理版本：
 - **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **上下文/附件**: `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`、`attach_printable`/`attach_note`、`attach_payload`/`with_payload`
+- **上下文/附件**: `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`、`attach_printable`/`attach_note`、`attach_payload`/`attach_payload`
 - **system 结构**: `system` 现在是强类型对象，固定分区为 `system.service`、`system.deployment`、`system.runtime`、`system.request`
 - **延迟加载**: `with_ctx_lazy(key, f)`、`attach_note_lazy(f)` (仅在 Err 时执行闭包)
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
@@ -614,7 +614,7 @@ impl fmt::Display for MyError {
 impl std::error::Error for MyError {}
 
 #[cfg(feature = "json")]
-let _report = Report::new(MyError).with_payload(
+let _report = Report::new(MyError).attach_payload(
     "request_meta",
     json!({ "version": "v1", "retry": 3 }),
     Some("application/json")

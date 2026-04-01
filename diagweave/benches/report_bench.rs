@@ -104,7 +104,7 @@ fn make_report(
     }
 
     for idx in 0..payload_count {
-        report = report.with_payload(
+        report = report.attach_payload(
             format!("payload_{idx}"),
             AttachmentValue::Array(vec![
                 AttachmentValue::Unsigned(idx as u64),

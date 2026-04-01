@@ -242,7 +242,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 
 `system` is no longer a flat free-form map in rendered JSON. It is emitted as a typed governance object with fixed top-level sections: `system.service`, `system.deployment`, `system.runtime`, and `system.request`.
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
-| `with_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
+| `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
 | `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
 | `with_category` | `impl Into<StaticRefStr>` | Set error category (for monitoring metrics) |
@@ -292,7 +292,7 @@ let report = Report::new(MyError::Timeout)
     )
     .attach_note("please check the network connection")
     .with_retryable(true)
-    .with_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
+    .attach_payload("data", vec![1, 2, 3], Some("application/octet-stream"));
 #[cfg(feature = "std")]
 let report = report.capture_stack_trace();
 ```
@@ -312,7 +312,7 @@ Provides pipelines for seamless diagnostic info injection on error paths by impl
 #### 2. `ReportResultExt` (on `Result<T, Report<E>>`)
 Proxy versions of all `Report` chained configuration methods:
 - **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **Context/Attachments**: `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`, `attach_printable`/`attach_note`, `attach_payload`/`with_payload`
+- **Context/Attachments**: `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`, `attach_printable`/`attach_note`, `attach_payload`/`attach_payload`
 - **System Shape**: rendered `system` is structured as `system.service`, `system.deployment`, `system.runtime`, `system.request`
 - **Lazy Loading**: `with_ctx_lazy(key, f)`, `attach_note_lazy(f)` (closure runs only on Err)
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
@@ -617,7 +617,7 @@ impl fmt::Display for MyError {
 impl std::error::Error for MyError {}
 
 #[cfg(feature = "json")]
-let _report = Report::new(MyError).with_payload(
+let _report = Report::new(MyError).attach_payload(
     "request_meta",
     json!({ "version": "v1", "retry": 3 }),
     Some("application/json")

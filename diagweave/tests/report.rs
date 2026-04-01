@@ -150,13 +150,13 @@ fn result_ext_builds_report_chain() {
 }
 
 #[test]
-fn result_ext_with_payload_accepts_dynamic_media_type() {
+fn result_ext_attach_payload_accepts_dynamic_media_type() {
     let _guard = init_test();
 
     let media_type = "application/json".to_owned();
     let err = fail_auth()
         .diag()
-        .with_payload("body", AttachmentValue::from("ok"), Some(media_type))
+        .attach_payload("body", AttachmentValue::from("ok"), Some(media_type))
         .expect_err("should fail");
 
     assert!(matches!(

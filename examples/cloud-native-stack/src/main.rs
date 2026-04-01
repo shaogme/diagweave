@@ -44,7 +44,7 @@ mod payment {
             .attach_note("payment provider declined")
             .with_display_cause("risk policy rejected the transaction")
             .with_diag_src_err(io::Error::other("issuer hard decline"))
-            .with_payload(
+            .attach_payload(
                 "provider_reply",
                 serde_json::json!({
                     "provider": "mockpay",
@@ -83,7 +83,7 @@ mod payment {
                 io::ErrorKind::TimedOut,
                 "provider response timeout",
             ))
-            .with_payload(
+            .attach_payload(
                 "provider_reply",
                 serde_json::json!({
                     "provider": "mockpay",
@@ -124,7 +124,7 @@ mod payment {
             .attach_note("payment provider network error")
             .with_display_cause("tcp dial to provider failed")
             .with_diag_src_err(io::Error::new(io_kind, io_message))
-            .with_payload(
+            .attach_payload(
                 "provider_reply",
                 serde_json::json!({
                     "provider": "mockpay",
@@ -207,7 +207,7 @@ mod order {
             .with_retryable(false)
             .attach_note("order validation failed")
             .with_display_cause("required fields missing")
-            .with_payload(
+            .attach_payload(
                 "order_validation",
                 serde_json::json!({
                     "order_id": order_id,

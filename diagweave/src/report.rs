@@ -345,16 +345,6 @@ where
         self.attach_printable(message)
     }
 
-    /// Adds a payload to the report (alias for `attach_payload`).
-    pub fn with_payload(
-        self,
-        name: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-        media_type: Option<impl Into<StaticRefStr>>,
-    ) -> Self {
-        self.attach_payload(name, value, media_type)
-    }
-
     /// Sets the metadata for the report.
     pub fn with_metadata<NewState>(self, metadata: ReportMetadata<NewState>) -> Report<E, NewState>
     where

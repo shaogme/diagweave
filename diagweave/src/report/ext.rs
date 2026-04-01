@@ -84,13 +84,6 @@ where
         value: impl Into<ContextValue>,
     ) -> Result<T, Report<E, State>>;
 
-    fn with_payload(
-        self,
-        name: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-        media_type: Option<impl Into<StaticRefStr>>,
-    ) -> Result<T, Report<E, State>>;
-
     fn with_metadata<NewState>(
         self,
         metadata: ReportMetadata<NewState>,
@@ -200,6 +193,14 @@ where
         self.map_err(|report| report.attach_printable(message))
     }
 
+
+    fn attach_note(
+        self,
+        message: impl Display + Send + Sync + 'static,
+    ) -> Result<T, Report<E, State>> {
+        self.attach_printable(message)
+    }
+
     fn attach_payload(
         self,
         name: impl Into<StaticRefStr>,
@@ -223,22 +224,6 @@ where
         value: impl Into<ContextValue>,
     ) -> Result<T, Report<E, State>> {
         self.map_err(|report| report.with_system(key, value))
-    }
-
-    fn attach_note(
-        self,
-        message: impl Display + Send + Sync + 'static,
-    ) -> Result<T, Report<E, State>> {
-        self.attach_printable(message)
-    }
-
-    fn with_payload(
-        self,
-        name: impl Into<StaticRefStr>,
-        value: impl Into<AttachmentValue>,
-        media_type: Option<impl Into<StaticRefStr>>,
-    ) -> Result<T, Report<E, State>> {
-        self.attach_payload(name, value, media_type)
     }
 
     fn with_metadata<NewState>(

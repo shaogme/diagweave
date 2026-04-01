@@ -271,7 +271,7 @@ From `Result<T, E>`:
 Common enrichers on `Result<T, Report<E>>`:
 
 - `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`
-- `attach_note`, `with_payload`
+- `attach_note`, `attach_payload`
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
 - `with_display_cause`, `with_display_causes`, `with_diag_src_err`
 - `with_ctx_lazy(key, make_value)`, `attach_note_lazy`

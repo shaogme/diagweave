@@ -1,6 +1,6 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use diagweave::prelude::{Compact, Pretty, Report};
-use diagweave::report::{AttachmentValue, CauseCollectOptions};
+use diagweave::report::{AttachmentValue, CauseCollectOptions, ContextValue};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::hint::black_box;
@@ -96,7 +96,7 @@ fn make_report(
         .with_retryable(false);
 
     for idx in 0..context_count {
-        report = report.with_ctx(format!("ctx_{idx}"), AttachmentValue::Unsigned(idx as u64));
+        report = report.with_ctx(format!("ctx_{idx}"), ContextValue::Unsigned(idx as u64));
     }
 
     for idx in 0..note_count {
@@ -130,7 +130,7 @@ fn bench_report_build(c: &mut Criterion) {
                 let mut report = Report::new(BenchError::Root);
                 for idx in 0..size {
                     report = report
-                        .with_ctx(format!("ctx_{idx}"), AttachmentValue::Unsigned(idx as u64));
+                        .with_ctx(format!("ctx_{idx}"), ContextValue::Unsigned(idx as u64));
                 }
                 black_box(report);
             })

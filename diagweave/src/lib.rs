@@ -81,8 +81,8 @@ pub mod trace {
 pub mod prelude {
     pub use crate::render::{Compact, CompactProfile, Pretty, ReportRenderOptions, ReportRenderer};
     pub use crate::report::{
-        AttachmentValue, ContextMap, Diagnostic, HasSeverity, MissingSeverity, Report,
-        ReportResultExt, ReportResultInspectExt, Severity, SeverityState, SourceErrorItem,
+        AttachmentValue, ContextMap, ContextValue, Diagnostic, HasSeverity, MissingSeverity,
+        Report, ReportResultExt, ReportResultInspectExt, Severity, SeverityState, SourceErrorItem,
     };
     #[cfg(feature = "std")]
     pub use crate::report::{GlobalContext, register_global_injector};

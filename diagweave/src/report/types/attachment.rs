@@ -1,5 +1,4 @@
 use alloc::boxed::Box;
-#[cfg(feature = "std")]
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::string::ToString;
@@ -15,7 +14,7 @@ use crate::utils::FastMap;
     feature = "json",
     serde(tag = "kind", content = "value", rename_all = "snake_case")
 )]
-/// Represents a value that can be attached to a diagnostic report.
+/// Represents a value that can be attached to a diagnostic report payload.
 pub enum AttachmentValue {
     #[default]
     Null,
@@ -196,7 +195,6 @@ where
     }
 }
 
-#[cfg(feature = "std")]
 impl<V> From<BTreeMap<String, V>> for AttachmentValue
 where
     V: Into<AttachmentValue>,

@@ -1,5 +1,6 @@
-#[cfg(feature = "json")]
+use alloc::string::String;
 use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
 use super::{AttachmentValue, ErrorCode};
@@ -7,7 +8,283 @@ use super::{AttachmentValue, ErrorCode};
 use crate::report::{ParentSpanId, SpanId, TraceFlags, TraceId, TraceState};
 use crate::utils::FastMap;
 
-pub type ContextValue = AttachmentValue;
+#[derive(Debug, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    feature = "json",
+    serde(tag = "kind", content = "value", rename_all = "snake_case")
+)]
+pub enum ContextValue {
+    #[default]
+    Null,
+    String(StaticRefStr),
+    Integer(i64),
+    Unsigned(u64),
+    Float(f64),
+    Bool(bool),
+    StringArray(Vec<StaticRefStr>),
+    IntegerArray(Vec<i64>),
+    UnsignedArray(Vec<u64>),
+    FloatArray(Vec<f64>),
+    BoolArray(Vec<bool>),
+    Redacted {
+        kind: Option<StaticRefStr>,
+        reason: Option<StaticRefStr>,
+    },
+}
+
+impl Display for ContextValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Null => write!(f, "null"),
+            Self::String(value) => write!(f, "{value}"),
+            Self::Integer(value) => write!(f, "{value}"),
+            Self::Unsigned(value) => write!(f, "{value}"),
+            Self::Float(value) => write!(f, "{value}"),
+            Self::Bool(value) => write!(f, "{value}"),
+            Self::StringArray(values) => fmt_array(f, values.iter()),
+            Self::IntegerArray(values) => fmt_array(f, values.iter()),
+            Self::UnsignedArray(values) => fmt_array(f, values.iter()),
+            Self::FloatArray(values) => fmt_array(f, values.iter()),
+            Self::BoolArray(values) => fmt_array(f, values.iter()),
+            Self::Redacted { kind, reason } => match (kind, reason) {
+                (Some(kind), Some(reason)) => write!(f, "<redacted:{kind}:{reason}>"),
+                (Some(kind), None) => write!(f, "<redacted:{kind}>"),
+                (None, Some(reason)) => write!(f, "<redacted:{reason}>"),
+                (None, None) => write!(f, "<redacted>"),
+            },
+        }
+    }
+}
+
+fn fmt_array<'a, T>(f: &mut Formatter<'_>, values: impl IntoIterator<Item = &'a T>) -> fmt::Result
+where
+    T: Display + 'a,
+{
+    write!(f, "[")?;
+    for (idx, value) in values.into_iter().enumerate() {
+        if idx > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{value}")?;
+    }
+    write!(f, "]")
+}
+
+impl From<String> for ContextValue {
+    fn from(value: String) -> Self {
+        Self::String(value.into())
+    }
+}
+
+impl From<&'static str> for ContextValue {
+    fn from(value: &'static str) -> Self {
+        Self::String(value.into())
+    }
+}
+
+impl From<StaticRefStr> for ContextValue {
+    fn from(value: StaticRefStr) -> Self {
+        Self::String(value)
+    }
+}
+
+impl From<bool> for ContextValue {
+    fn from(value: bool) -> Self {
+        Self::Bool(value)
+    }
+}
+
+impl From<i8> for ContextValue {
+    fn from(value: i8) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<i16> for ContextValue {
+    fn from(value: i16) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<i32> for ContextValue {
+    fn from(value: i32) -> Self {
+        Self::Integer(value as i64)
+    }
+}
+
+impl From<i64> for ContextValue {
+    fn from(value: i64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+impl From<u8> for ContextValue {
+    fn from(value: u8) -> Self {
+        Self::Unsigned(value as u64)
+    }
+}
+
+impl From<u16> for ContextValue {
+    fn from(value: u16) -> Self {
+        Self::Unsigned(value as u64)
+    }
+}
+
+impl From<u32> for ContextValue {
+    fn from(value: u32) -> Self {
+        Self::Unsigned(value as u64)
+    }
+}
+
+impl From<u64> for ContextValue {
+    fn from(value: u64) -> Self {
+        Self::Unsigned(value)
+    }
+}
+
+impl From<f32> for ContextValue {
+    fn from(value: f32) -> Self {
+        Self::Float(value as f64)
+    }
+}
+
+impl From<f64> for ContextValue {
+    fn from(value: f64) -> Self {
+        Self::Float(value)
+    }
+}
+
+impl From<Vec<String>> for ContextValue {
+    fn from(value: Vec<String>) -> Self {
+        Self::StringArray(value.into_iter().map(Into::into).collect())
+    }
+}
+
+impl From<Vec<&'static str>> for ContextValue {
+    fn from(value: Vec<&'static str>) -> Self {
+        Self::StringArray(value.into_iter().map(Into::into).collect())
+    }
+}
+
+impl From<Vec<StaticRefStr>> for ContextValue {
+    fn from(value: Vec<StaticRefStr>) -> Self {
+        Self::StringArray(value)
+    }
+}
+
+impl From<Vec<bool>> for ContextValue {
+    fn from(value: Vec<bool>) -> Self {
+        Self::BoolArray(value)
+    }
+}
+
+impl From<Vec<i8>> for ContextValue {
+    fn from(value: Vec<i8>) -> Self {
+        Self::IntegerArray(value.into_iter().map(i64::from).collect())
+    }
+}
+
+impl From<Vec<i16>> for ContextValue {
+    fn from(value: Vec<i16>) -> Self {
+        Self::IntegerArray(value.into_iter().map(i64::from).collect())
+    }
+}
+
+impl From<Vec<i32>> for ContextValue {
+    fn from(value: Vec<i32>) -> Self {
+        Self::IntegerArray(value.into_iter().map(i64::from).collect())
+    }
+}
+
+impl From<Vec<i64>> for ContextValue {
+    fn from(value: Vec<i64>) -> Self {
+        Self::IntegerArray(value)
+    }
+}
+
+impl From<Vec<u8>> for ContextValue {
+    fn from(value: Vec<u8>) -> Self {
+        Self::UnsignedArray(value.into_iter().map(u64::from).collect())
+    }
+}
+
+impl From<Vec<u16>> for ContextValue {
+    fn from(value: Vec<u16>) -> Self {
+        Self::UnsignedArray(value.into_iter().map(u64::from).collect())
+    }
+}
+
+impl From<Vec<u32>> for ContextValue {
+    fn from(value: Vec<u32>) -> Self {
+        Self::UnsignedArray(value.into_iter().map(u64::from).collect())
+    }
+}
+
+impl From<Vec<u64>> for ContextValue {
+    fn from(value: Vec<u64>) -> Self {
+        Self::UnsignedArray(value)
+    }
+}
+
+impl From<Vec<f32>> for ContextValue {
+    fn from(value: Vec<f32>) -> Self {
+        Self::FloatArray(value.into_iter().map(f64::from).collect())
+    }
+}
+
+impl From<Vec<f64>> for ContextValue {
+    fn from(value: Vec<f64>) -> Self {
+        Self::FloatArray(value)
+    }
+}
+
+impl<T> From<Option<T>> for ContextValue
+where
+    T: Into<ContextValue>,
+{
+    fn from(value: Option<T>) -> Self {
+        match value {
+            Some(value) => value.into(),
+            None => Self::Null,
+        }
+    }
+}
+
+impl From<ContextValue> for AttachmentValue {
+    fn from(value: ContextValue) -> Self {
+        match value {
+            ContextValue::Null => Self::Null,
+            ContextValue::String(value) => Self::String(value),
+            ContextValue::Integer(value) => Self::Integer(value),
+            ContextValue::Unsigned(value) => Self::Unsigned(value),
+            ContextValue::Float(value) => Self::Float(value),
+            ContextValue::Bool(value) => Self::Bool(value),
+            ContextValue::StringArray(values) => {
+                Self::Array(values.into_iter().map(AttachmentValue::String).collect())
+            }
+            ContextValue::IntegerArray(values) => {
+                Self::Array(values.into_iter().map(AttachmentValue::Integer).collect())
+            }
+            ContextValue::UnsignedArray(values) => {
+                Self::Array(values.into_iter().map(AttachmentValue::Unsigned).collect())
+            }
+            ContextValue::FloatArray(values) => {
+                Self::Array(values.into_iter().map(AttachmentValue::Float).collect())
+            }
+            ContextValue::BoolArray(values) => {
+                Self::Array(values.into_iter().map(AttachmentValue::Bool).collect())
+            }
+            ContextValue::Redacted { kind, reason } => Self::Redacted { kind, reason },
+        }
+    }
+}
+
+impl From<&ContextValue> for AttachmentValue {
+    fn from(value: &ContextValue) -> Self {
+        Self::from(value.clone())
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]

@@ -57,14 +57,14 @@ where
         value: impl Into<AttachmentValue>,
         media_type: Option<impl Into<StaticRefStr>>,
     ) -> Result<T, Report<E, State>>;
-    
-    fn attach_note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>>;
+
+    fn attach_note_lazy(self, make_message: impl FnOnce() -> String)
+    -> Result<T, Report<E, State>>;
 
     fn attach_note(
         self,
         message: impl Display + Send + Sync + 'static,
     ) -> Result<T, Report<E, State>>;
-
 
     fn with_ctx(
         self,
@@ -192,7 +192,6 @@ where
     ) -> Result<T, Report<E, State>> {
         self.map_err(|report| report.attach_printable(message))
     }
-
 
     fn attach_note(
         self,
@@ -348,7 +347,10 @@ where
         self.map_err(|report| report.with_ctx(key, make_value()))
     }
 
-    fn attach_note_lazy(self, make_message: impl FnOnce() -> String) -> Result<T, Report<E, State>> {
+    fn attach_note_lazy(
+        self,
+        make_message: impl FnOnce() -> String,
+    ) -> Result<T, Report<E, State>> {
         self.map_err(|report| report.attach_printable(make_message()))
     }
 

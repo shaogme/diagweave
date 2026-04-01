@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use diagweave::prelude::*;
-use diagweave::report::AttachmentValue;
 #[cfg(feature = "std")]
 use diagweave::report::GlobalContext;
 #[cfg(all(feature = "std", feature = "trace"))]
@@ -112,7 +111,7 @@ pub fn ensure_global_injector_installed() {
             let mut context = GlobalContext::default();
             context
                 .context
-                .insert("request_id", AttachmentValue::from("req-42"));
+                .insert("request_id", ContextValue::from("req-42"));
             #[cfg(feature = "trace")]
             {
                 let trace_id = TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok();
@@ -147,4 +146,13 @@ pub fn init_test() -> Option<MutexGuard<'static, ()>> {
 #[cfg(not(feature = "std"))]
 pub fn init_test() -> Option<()> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ensure_init_test_used() {
+        let _ = init_test();
+    }
 }

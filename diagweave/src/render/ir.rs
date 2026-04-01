@@ -12,7 +12,7 @@ use ref_str::StaticRefStr;
 
 #[cfg(feature = "json")]
 use crate::render_impl::REPORT_JSON_SCHEMA_VERSION;
-#[cfg(feature = "trace")]
+#[cfg(any(feature = "trace", feature = "otel"))]
 use crate::report::AttachmentValue;
 use crate::report::SourceErrorChain;
 #[cfg(any(feature = "trace", feature = "otel"))]
@@ -295,14 +295,14 @@ pub(crate) fn build_ctx_and_attachments(
 
     if let Some(context) = context {
         for (key, value) in context {
-            context_map.insert(key.as_ref().to_string(), value.clone());
+            context_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
         }
     }
     if let Some(system) = system {
         for (section_name, section) in system.sections() {
             let mut section_map = FastMap::new();
             for (key, value) in section {
-                section_map.insert(key.as_ref().to_string(), value.clone());
+                section_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
             }
             system_map.insert(
                 section_name.to_string(),

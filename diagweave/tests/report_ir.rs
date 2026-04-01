@@ -3,10 +3,12 @@ mod report_common;
 use diagweave::adapters::OtelValue;
 use diagweave::prelude::*;
 use diagweave::report::ReportMetadata;
+#[cfg(all(feature = "tracing", feature = "std"))]
+use diagweave::trace::PreparedTracingLevel;
 #[cfg(feature = "tracing")]
 use diagweave::trace::TracingExporterTrait;
 #[cfg(feature = "tracing")]
-use diagweave::trace::{EmitStats, PreparedTracingEmission, PreparedTracingLevel};
+use diagweave::trace::{EmitStats, PreparedTracingEmission};
 use report_common::*;
 #[cfg(feature = "tracing")]
 use std::cell::Cell;
@@ -156,10 +158,10 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
     ]));
 
     let report = Report::new(ApiError::Unauthorized)
-        .with_ctx("overflow", AttachmentValue::Unsigned(u64::MAX))
+        .with_ctx("overflow", ContextValue::Unsigned(u64::MAX))
         .with_ctx(
             "secret",
-            AttachmentValue::Redacted {
+            ContextValue::Redacted {
                 kind: Some("token".into()),
                 reason: Some("sensitive".into()),
             },

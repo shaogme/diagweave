@@ -2,10 +2,10 @@ use std::fmt::{Display, Formatter};
 use std::io;
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, Diagnostic, Error, GlobalContext, HasSeverity, ParentSpanId, Pretty,
-    Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity, SeverityState, SpanId,
-    TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector, set,
-    union,
+    AttachmentValue, Compact, ContextValue, Diagnostic, Error, GlobalContext, HasSeverity,
+    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity,
+    SeverityState, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
+    register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
@@ -412,16 +412,16 @@ fn demo_context_and_payloads() {
     let report = Report::new(BaseError::Timeout(100))
         .with_ctx("tags", vec!["auth", "slow", "v2"])
         .with_ctx("score", 0.95)
-        .with_ctx("raw_bytes", vec![0xDE, 0xAD, 0xBE, 0xEF])
+        .with_ctx("byte_values", vec![0xDEu64, 0xAD, 0xBE, 0xEF])
         .with_ctx(
             "secret",
-            AttachmentValue::Redacted {
+            ContextValue::Redacted {
                 kind: Some("password".into()),
                 reason: Some("masked".into()),
             },
         );
 
-    println!("--- Diverse Attachments ---");
+    println!("--- Context Values ---");
     println!("{}\n", report.pretty());
 }
 

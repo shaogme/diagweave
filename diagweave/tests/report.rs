@@ -2,7 +2,7 @@ mod report_common;
 use diagweave::prelude::*;
 use diagweave::render::PrettyIndent;
 use diagweave::report::CauseCollectOptions;
-use diagweave::report::{Attachment, StackTrace, StackTraceFormat};
+use diagweave::report::{Attachment, ContextValue, StackTrace, StackTraceFormat};
 use report_common::*;
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -39,7 +39,7 @@ fn metadata_and_attachments_are_recorded_and_formatted() {
             .map(|(key, value)| (key.as_ref().to_owned(), value.clone())),
         Some((
             "request_id".to_owned(),
-            AttachmentValue::String("tx-100".into())
+            ContextValue::String("tx-100".into())
         ))
     );
     assert_eq!(
@@ -197,7 +197,7 @@ fn global_context_injector_applies_to_new_reports() {
             .map(|(key, value)| (key.as_ref().to_owned(), value.clone())),
         Some((
             "request_id".to_owned(),
-            AttachmentValue::String("req-42".into())
+            ContextValue::String("req-42".into())
         ))
     );
     #[cfg(feature = "trace")]
@@ -258,7 +258,7 @@ fn lazy_context_and_note_evaluate_only_on_error() {
     let _ = ok
         .with_ctx_lazy("hot_path", || {
             counter.set(counter.get() + 1);
-            AttachmentValue::Bool(true)
+            ContextValue::Bool(true)
         })
         .attach_note_lazy(|| {
             counter.set(counter.get() + 1);
@@ -268,7 +268,7 @@ fn lazy_context_and_note_evaluate_only_on_error() {
 
     let err = fail_auth()
         .diag()
-        .with_ctx_lazy("retry", || AttachmentValue::Unsigned(3))
+        .with_ctx_lazy("retry", || ContextValue::Unsigned(3))
         .attach_note_lazy(|| "token stale".to_owned())
         .expect_err("must fail");
     assert_eq!(err.to_string(), "auth invalid token [retry=3, token stale]");

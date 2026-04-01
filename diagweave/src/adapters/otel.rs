@@ -6,10 +6,10 @@ use alloc::vec::Vec;
 use ref_str::RefStr;
 
 use crate::render_impl::{
-    build_diag_src_errs_val, build_display_causes, build_error_value, build_origin_src_errs_val,
-    build_stack_trace_value, DiagnosticIr,
+    DiagnosticIr, build_diag_src_errs_val, build_display_causes, build_error_value,
+    build_origin_src_errs_val, build_stack_trace_value,
 };
-use crate::report::{Attachment, AttachmentValue, ErrorCode, HasSeverity};
+use crate::report::{Attachment, AttachmentValue, ContextValue, ErrorCode, HasSeverity};
 
 fn error_code_otel_value(value: &ErrorCode) -> OtelValue<'_> {
     match value {
@@ -108,6 +108,53 @@ impl<'a> From<&'a AttachmentValue> for OtelValue<'a> {
             }
             AttachmentValue::Bytes(v) => Self::Bytes(v.clone()),
             AttachmentValue::Redacted { kind, reason } => Self::KvList(vec![
+                OtelAttribute {
+                    key: "kind".into(),
+                    value: kind
+                        .as_ref()
+                        .map(|v| OtelValue::String(v.clone().into()))
+                        .unwrap_or(OtelValue::Null),
+                },
+                OtelAttribute {
+                    key: "reason".into(),
+                    value: reason
+                        .as_ref()
+                        .map(|v| OtelValue::String(v.clone().into()))
+                        .unwrap_or(OtelValue::Null),
+                },
+            ]),
+        }
+    }
+}
+
+impl<'a> From<&'a ContextValue> for OtelValue<'a> {
+    fn from(value: &'a ContextValue) -> Self {
+        match value {
+            ContextValue::Null => Self::Null,
+            ContextValue::String(v) => Self::String(v.clone().into()),
+            ContextValue::Integer(v) => Self::Int(*v),
+            ContextValue::Unsigned(v) => Self::U64(*v),
+            ContextValue::Float(v) => Self::Double(*v),
+            ContextValue::Bool(v) => Self::Bool(*v),
+            ContextValue::StringArray(values) => Self::Array(
+                values
+                    .iter()
+                    .map(|value| OtelValue::String(value.clone().into()))
+                    .collect(),
+            ),
+            ContextValue::IntegerArray(values) => {
+                Self::Array(values.iter().copied().map(OtelValue::Int).collect())
+            }
+            ContextValue::UnsignedArray(values) => {
+                Self::Array(values.iter().copied().map(OtelValue::U64).collect())
+            }
+            ContextValue::FloatArray(values) => {
+                Self::Array(values.iter().copied().map(OtelValue::Double).collect())
+            }
+            ContextValue::BoolArray(values) => {
+                Self::Array(values.iter().copied().map(OtelValue::Bool).collect())
+            }
+            ContextValue::Redacted { kind, reason } => Self::KvList(vec![
                 OtelAttribute {
                     key: "kind".into(),
                     value: kind

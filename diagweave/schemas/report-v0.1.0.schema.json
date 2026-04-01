@@ -345,13 +345,146 @@
         "flags": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 }
       }
     },
+    "context_value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "string" },
+            "value": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "integer" },
+            "value": { "type": "integer" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "unsigned" },
+            "value": { "type": "integer", "minimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "float" },
+            "value": { "type": "number" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bool" },
+            "value": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "string_array" },
+            "value": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "integer_array" },
+            "value": {
+              "type": "array",
+              "items": { "type": "integer" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "unsigned_array" },
+            "value": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "float_array" },
+            "value": {
+              "type": "array",
+              "items": { "type": "number" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "const": "bool_array" },
+            "value": {
+              "type": "array",
+              "items": { "type": "boolean" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "redacted" },
+            "value": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": { "type": ["string", "null"] },
+                "reason": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      ]
+    },
     "context_map": {
       "type": "object",
       "propertyNames": {
         "type": "string",
         "minLength": 1
       },
-      "additionalProperties": { "$ref": "#/$defs/attachment_value" }
+      "additionalProperties": { "$ref": "#/$defs/context_value" }
     },
     "system_section": {
       "$ref": "#/$defs/context_map"

@@ -3,8 +3,8 @@ use super::{
     write_object_field, write_option_string,
 };
 use crate::report::{
-    AttachmentValue, AttachmentVisit, JsonContext, JsonContextEntry, Report, SeverityState,
-    SystemContext,
+    AttachmentValue, AttachmentVisit, ContextValue, JsonContext, JsonContextEntry, Report,
+    SeverityState, SystemContext,
 };
 use alloc::vec::Vec;
 use core::error::Error;
@@ -25,7 +25,7 @@ where
     let context = build_json_context(report.context());
     for entry in context.entries {
         write_object_field(f, pretty, depth, &mut first, entry.key.as_ref(), |f| {
-            write_attachment_value(f, pretty, depth + 1, &entry.value)
+            write_context_value(f, pretty, depth + 1, &entry.value)
         })?;
     }
     close_object(f, pretty, depth, first)
@@ -55,13 +55,96 @@ where
                     depth + 1,
                     &mut section_first,
                     entry.key.as_ref(),
-                    |f| write_attachment_value(f, pretty, depth + 2, &entry.value),
+                    |f| write_context_value(f, pretty, depth + 2, &entry.value),
                 )?;
             }
             close_object(f, pretty, depth + 1, section_first)
         })?;
     }
     close_object(f, pretty, depth, first)
+}
+
+pub(super) fn write_context_value(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    value: &ContextValue,
+) -> fmt::Result {
+    match value {
+        ContextValue::Null => write_kind_only(f, pretty, depth, "null"),
+        ContextValue::String(v) => write_kind_and_value(f, pretty, depth, "string", |f| {
+            write_json_string(f, v.as_ref())
+        }),
+        ContextValue::Integer(v) => {
+            write_kind_and_value(f, pretty, depth, "integer", |f| write!(f, "{v}"))
+        }
+        ContextValue::Unsigned(v) => {
+            write_kind_and_value(f, pretty, depth, "unsigned", |f| write!(f, "{v}"))
+        }
+        ContextValue::Float(v) => {
+            if !v.is_finite() {
+                Err(fmt::Error)
+            } else {
+                write_kind_and_value(f, pretty, depth, "float", |f| write!(f, "{v}"))
+            }
+        }
+        ContextValue::Bool(v) => {
+            write_kind_and_value(f, pretty, depth, "bool", |f| write!(f, "{v}"))
+        }
+        ContextValue::StringArray(values) => {
+            write_context_array(f, pretty, depth, "string_array", values, |f, value| {
+                write_json_string(f, value.as_ref())
+            })
+        }
+        ContextValue::IntegerArray(values) => {
+            write_context_array(f, pretty, depth, "integer_array", values, |f, value| {
+                write!(f, "{value}")
+            })
+        }
+        ContextValue::UnsignedArray(values) => {
+            write_context_array(f, pretty, depth, "unsigned_array", values, |f, value| {
+                write!(f, "{value}")
+            })
+        }
+        ContextValue::FloatArray(values) => {
+            if values.iter().any(|value| !value.is_finite()) {
+                return Err(fmt::Error);
+            }
+            write_context_array(f, pretty, depth, "float_array", values, |f, value| {
+                write!(f, "{value}")
+            })
+        }
+        ContextValue::BoolArray(values) => {
+            write_context_array(f, pretty, depth, "bool_array", values, |f, value| {
+                write!(f, "{value}")
+            })
+        }
+        ContextValue::Redacted { kind, reason } => {
+            write_redacted_obj(f, pretty, depth, kind.as_deref(), reason.as_deref())
+        }
+    }
+}
+
+fn write_context_array<T, F>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    kind: &str,
+    values: &[T],
+    mut write_value: F,
+) -> fmt::Result
+where
+    F: FnMut(&mut Formatter<'_>, &T) -> fmt::Result,
+{
+    write_kind_and_value(f, pretty, depth, kind, |f| {
+        let mut first = true;
+        f.write_char('[')?;
+        for value in values {
+            write_array_item_prefix(f, pretty, depth + 1, &mut first)?;
+            write_value(f, value)?;
+        }
+        close_array(f, pretty, depth + 1, first)
+    })
 }
 
 fn build_json_context(context: Option<&crate::report::ContextMap>) -> JsonContext

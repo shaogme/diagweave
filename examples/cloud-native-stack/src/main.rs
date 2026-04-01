@@ -2,8 +2,8 @@ use std::io;
 
 use diagweave::prelude::{
     AttachmentValue, Compact, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report,
-    ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEvent, TraceEventAttribute,
-    TraceEventLevel, TraceId, register_global_injector, set, union,
+    ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel,
+    TraceId, register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 
@@ -53,11 +53,11 @@ mod payment {
                 }),
                 Some("application/json"),
             )
-            .with_trace_event(TraceEvent {
-                name: "payment.provider.decline".into(),
-                level: Some(TraceEventLevel::Warn),
-                timestamp_unix_nano: Some(1_713_337_001_000_000_000),
-                attributes: vec![
+            .push_trace_event_with(
+                "payment.provider.decline",
+                Some(TraceEventLevel::Warn),
+                Some(1_713_337_001_000_000_000),
+                vec![
                     TraceEventAttribute {
                         key: "payment.amount_cents".into(),
                         value: AttachmentValue::from(amount_cents),
@@ -67,7 +67,7 @@ mod payment {
                         value: AttachmentValue::from("mockpay"),
                     },
                 ],
-            })
+            )
             .with_ctx("payment_stage", "charge")
     }
 
@@ -92,11 +92,11 @@ mod payment {
                 }),
                 Some("application/json"),
             )
-            .with_trace_event(TraceEvent {
-                name: "payment.provider.timeout".into(),
-                level: Some(TraceEventLevel::Error),
-                timestamp_unix_nano: Some(1_713_337_002_000_000_000),
-                attributes: vec![
+            .push_trace_event_with(
+                "payment.provider.timeout",
+                Some(TraceEventLevel::Error),
+                Some(1_713_337_002_000_000_000),
+                vec![
                     TraceEventAttribute {
                         key: "payment.amount_cents".into(),
                         value: AttachmentValue::from(amount_cents),
@@ -106,7 +106,7 @@ mod payment {
                         value: AttachmentValue::from(true),
                     },
                 ],
-            })
+            )
             .with_ctx("payment_stage", "charge")
     }
 
@@ -133,11 +133,11 @@ mod payment {
                 }),
                 Some("application/json"),
             )
-            .with_trace_event(TraceEvent {
-                name: "payment.provider.io_error".into(),
-                level: Some(TraceEventLevel::Error),
-                timestamp_unix_nano: Some(1_713_337_003_000_000_000),
-                attributes: vec![
+            .push_trace_event_with(
+                "payment.provider.io_error",
+                Some(TraceEventLevel::Error),
+                Some(1_713_337_003_000_000_000),
+                vec![
                     TraceEventAttribute {
                         key: "payment.amount_cents".into(),
                         value: AttachmentValue::from(amount_cents),
@@ -147,7 +147,7 @@ mod payment {
                         value: AttachmentValue::from(io_kind.to_string()),
                     },
                 ],
-            })
+            )
             .with_ctx("payment_stage", "charge")
     }
 
@@ -215,15 +215,15 @@ mod order {
                 }),
                 Some("application/json"),
             )
-            .with_trace_event(TraceEvent {
-                name: "order.validate".into(),
-                level: Some(TraceEventLevel::Warn),
-                timestamp_unix_nano: Some(1_713_337_004_000_000_000),
-                attributes: vec![TraceEventAttribute {
+            .push_trace_event_with(
+                "order.validate",
+                Some(TraceEventLevel::Warn),
+                Some(1_713_337_004_000_000_000),
+                vec![TraceEventAttribute {
                     key: "order.id".into(),
                     value: AttachmentValue::from(order_id),
                 }],
-            })
+            )
             .with_ctx("order_id", order_id)
     }
 
@@ -240,11 +240,11 @@ mod order {
             .with_category("order")
             .with_retryable(true)
             .with_display_cause("order payment stage failed")
-            .with_trace_event(TraceEvent {
-                name: "order.payment".into(),
-                level: Some(TraceEventLevel::Error),
-                timestamp_unix_nano: Some(1_713_337_005_000_000_000),
-                attributes: vec![
+            .push_trace_event_with(
+                "order.payment",
+                Some(TraceEventLevel::Error),
+                Some(1_713_337_005_000_000_000),
+                vec![
                     TraceEventAttribute {
                         key: "order.id".into(),
                         value: AttachmentValue::from(order_id),
@@ -254,7 +254,7 @@ mod order {
                         value: AttachmentValue::from(amount_cents),
                     },
                 ],
-            })
+            )
             .map_inner(|_err| OrderError::payment_failed(order_id))?;
         Ok(())
     }
@@ -301,15 +301,15 @@ mod gateway {
             .with_severity(Severity::Warn)
             .with_category("api")
             .with_retryable(false)
-            .with_trace_event(TraceEvent {
-                name: "gateway.forward.payment".into(),
-                level: Some(TraceEventLevel::Warn),
-                timestamp_unix_nano: Some(1_713_337_006_000_000_000),
-                attributes: vec![TraceEventAttribute {
+            .push_trace_event_with(
+                "gateway.forward.payment",
+                Some(TraceEventLevel::Warn),
+                Some(1_713_337_006_000_000_000),
+                vec![TraceEventAttribute {
                     key: "http.route".into(),
                     value: AttachmentValue::from("/v1/charge"),
                 }],
-            })
+            )
             .map_inner(ApiError::Payment)?;
         Ok("OK".to_owned())
     }
@@ -323,15 +323,15 @@ mod gateway {
             .with_category("api")
             .with_retryable(true)
             .with_display_cause("order service call failed")
-            .with_trace_event(TraceEvent {
-                name: "gateway.forward.order".into(),
-                level: Some(TraceEventLevel::Error),
-                timestamp_unix_nano: Some(1_713_337_007_000_000_000),
-                attributes: vec![TraceEventAttribute {
+            .push_trace_event_with(
+                "gateway.forward.order",
+                Some(TraceEventLevel::Error),
+                Some(1_713_337_007_000_000_000),
+                vec![TraceEventAttribute {
                     key: "http.route".into(),
                     value: AttachmentValue::from("/v1/order"),
                 }],
-            })
+            )
             .map_inner(ApiError::Order)?;
         Ok("OK".to_owned())
     }
@@ -340,15 +340,15 @@ mod gateway {
         order::create(9001)
             .with_ctx("route", "/v1/order")
             .attach_note("gateway forwarding to order service")
-            .with_trace_event(TraceEvent {
-                name: "gateway.forward.order".into(),
-                level: Some(TraceEventLevel::Info),
-                timestamp_unix_nano: Some(1_713_337_008_000_000_000),
-                attributes: vec![TraceEventAttribute {
+            .push_trace_event_with(
+                "gateway.forward.order",
+                Some(TraceEventLevel::Info),
+                Some(1_713_337_008_000_000_000),
+                vec![TraceEventAttribute {
                     key: "http.route".into(),
                     value: AttachmentValue::from("/v1/order"),
                 }],
-            })
+            )
             .map_inner(ApiError::Order)?;
         Ok("OK".to_owned())
     }

@@ -282,7 +282,7 @@ where
     }
 
     /// Pushes a trace event with detailed information.
-    pub fn push_trace_event_ext(
+    pub fn push_trace_event_with(
         mut self,
         name: impl Into<StaticRefStr>,
         level: Option<TraceEventLevel>,

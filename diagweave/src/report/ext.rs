@@ -284,7 +284,7 @@ where
         attributes: impl IntoIterator<Item = TraceEventAttribute>,
     ) -> Result<T, Report<E, State>> {
         self.map_err(|report| {
-            report.push_trace_event_ext(name, level, timestamp_unix_nano, attributes)
+            report.push_trace_event_with(name, level, timestamp_unix_nano, attributes)
         })
     }
 

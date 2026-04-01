@@ -4,8 +4,8 @@ use std::io;
 use diagweave::prelude::{
     AttachmentValue, Compact, ContextValue, Diagnostic, Error, GlobalContext, HasSeverity,
     ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity,
-    SeverityState, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
-    register_global_injector, set, union,
+    SeverityState, SpanId, TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector,
+    set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::{StackTrace, StackTraceFormat};
@@ -202,11 +202,11 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
         .with_trace_sampled(true)
         .with_trace_state("service=api")
         .with_trace_flags(1)
-        .with_trace_event(TraceEvent {
-            name: "api.handler".into(),
-            level: Some(TraceEventLevel::Error),
-            timestamp_unix_nano: Some(1_713_337_000_000_000_000),
-            attributes: vec![
+        .push_trace_event_with(
+            "api.handler",
+            Some(TraceEventLevel::Error),
+            Some(1_713_337_000_000_000_000),
+            vec![
                 TraceEventAttribute {
                     key: "http.route".into(),
                     value: AttachmentValue::from("/v1/session"),
@@ -216,7 +216,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
                     value: AttachmentValue::from("gateway"),
                 },
             ],
-        })
+        )
         .map_inner(ApiError::App)?;
 
     Ok("Success".into())

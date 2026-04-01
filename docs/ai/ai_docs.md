@@ -398,9 +398,26 @@ Converts `Report` with rich metadata into displayable strings or structured data
 | `show_attachments_section`| `true`| Whether to show Attachments (Payload/Note) section |
 | `show_stack_trace_section`| `true`| Whether to show Stack Trace section |
 | `show_trace_section` | `true`| Whether to show Distributed Tracing (TraceID/Event) section |
+| `show_trace_event_details` | `true`| Whether to show trace event level, timestamp, and attributes in Pretty/JSON output |
 | `stack_trace_max_lines` | `24` | Maximum lines for raw stack trace rendering |
 | `stack_trace_include_raw` | `true` | Whether to include raw stack trace output when rendering stack traces |
 | `stack_trace_include_frames` | `true` | Whether to include parsed stack frames when rendering stack traces |
+| `stack_trace_filter` | `All` | Stack frame filtering strategy: `All` (all frames), `AppOnly` (filter std/runtime frames), `AppFocused` (also filter diagnostic-internal frames) |
+
+Preset configurations:
+| Preset | Description |
+| :--- | :--- |
+| `ReportRenderOptions::developer()` | Developer mode: full trace event details, unfiltered stack traces, up to 50 lines |
+| `ReportRenderOptions::production()` | Production incident mode: trace event details, app-only frames, up to 15 lines |
+| `ReportRenderOptions::minimal()` | Minimal mode: hides trace event details, focused frames, up to 5 lines, hides empty sections and type name |
+| `stack_trace_filter` | `All` | Stack frame filtering strategy: `All` (all frames), `AppOnly` (filter std/runtime frames), `AppFocused` (also filter diagnostic-internal frames) |
+
+Preset configurations:
+| Preset | Description |
+| :--- | :--- |
+| `ReportRenderOptions::developer()` | Developer mode: full trace event details, unfiltered stack traces, up to 50 lines |
+| `ReportRenderOptions::production()` | Production incident mode: trace event details, app-only frames, up to 15 lines |
+| `ReportRenderOptions::minimal()` | Minimal mode: hides trace event details, focused frames, up to 5 lines, hides empty sections and type name |
 
 
 ### Diagnostic Intermediate Representation (`DiagnosticIr`)

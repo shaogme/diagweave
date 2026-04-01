@@ -5,6 +5,8 @@ mod ir;
 mod json;
 #[path = "render/pretty.rs"]
 mod pretty;
+#[path = "render/stack_filter.rs"]
+mod stack_filter;
 
 use core::fmt::{self, Display, Formatter};
 
@@ -23,6 +25,7 @@ pub(crate) use ir::{
     build_stack_trace_value,
 };
 pub use pretty::Pretty;
+pub(crate) use stack_filter::filtered_frames;
 
 #[cfg(feature = "json")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -71,6 +74,7 @@ pub struct ReportRenderOptions {
     pub show_empty_sections: bool,
     pub show_governance_section: bool,
     pub show_trace_section: bool,
+    pub show_trace_event_details: bool,
     pub show_stack_trace_section: bool,
     pub show_context_section: bool,
     pub show_attachments_section: bool,
@@ -78,6 +82,7 @@ pub struct ReportRenderOptions {
     pub stack_trace_max_lines: usize,
     pub stack_trace_include_raw: bool,
     pub stack_trace_include_frames: bool,
+    pub stack_trace_filter: StackTraceFilter,
     pub json_pretty: bool,
 }
 
@@ -90,6 +95,25 @@ pub enum PrettyIndent {
     Tab,
 }
 
+/// Filter strategy for stack trace frames.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
+pub enum StackTraceFilter {
+    /// Show all frames without filtering.
+    All,
+    /// Filter out standard library and runtime frames.
+    AppOnly,
+    /// Filter out standard library, runtime, and internal frames.
+    AppFocused,
+}
+
+impl Default for StackTraceFilter {
+    fn default() -> Self {
+        Self::All
+    }
+}
+
 impl Default for ReportRenderOptions {
     fn default() -> Self {
         Self {
@@ -100,6 +124,7 @@ impl Default for ReportRenderOptions {
             show_empty_sections: true,
             show_governance_section: true,
             show_trace_section: true,
+            show_trace_event_details: true,
             show_stack_trace_section: true,
             show_context_section: true,
             show_attachments_section: true,
@@ -107,7 +132,42 @@ impl Default for ReportRenderOptions {
             stack_trace_max_lines: 24,
             stack_trace_include_raw: true,
             stack_trace_include_frames: true,
+            stack_trace_filter: StackTraceFilter::default(),
             json_pretty: false,
+        }
+    }
+}
+
+impl ReportRenderOptions {
+    /// Developer mode: show all detailed information including trace events and unfiltered stack traces.
+    pub fn developer() -> Self {
+        Self {
+            show_trace_event_details: true,
+            stack_trace_filter: StackTraceFilter::All,
+            stack_trace_max_lines: 50,
+            ..Self::default()
+        }
+    }
+
+    /// Production incident mode: filter noise while keeping essential debugging info.
+    pub fn production() -> Self {
+        Self {
+            show_trace_event_details: true,
+            stack_trace_filter: StackTraceFilter::AppOnly,
+            stack_trace_max_lines: 15,
+            ..Self::default()
+        }
+    }
+
+    /// Minimal mode: show only core information for quick scanning.
+    pub fn minimal() -> Self {
+        Self {
+            show_trace_event_details: false,
+            stack_trace_filter: StackTraceFilter::AppFocused,
+            stack_trace_max_lines: 5,
+            show_empty_sections: false,
+            show_type_name: false,
+            ..Self::default()
         }
     }
 }

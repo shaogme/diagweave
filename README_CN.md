@@ -343,7 +343,7 @@ Trace 上下文使用已校验的 ID：
 内置渲染器：
 
 ```rust
-use diagweave::render::{Compact, Pretty, ReportRenderOptions};
+use diagweave::render::{Compact, Pretty, ReportRenderOptions, StackTraceFilter};
 # use diagweave::prelude::set;
 # use diagweave::report::Report;
 # set! {
@@ -357,6 +357,38 @@ use diagweave::render::{Compact, Pretty, ReportRenderOptions};
 let _ = report.render(Compact::summary()).to_string();
 let _ = report.render(Pretty::new(ReportRenderOptions::default())).to_string();
 ```
+
+渲染预设：
+
+```rust
+use diagweave::render::ReportRenderOptions;
+
+let dev = ReportRenderOptions::developer();     // 完整详情，不过滤堆栈
+let prod = ReportRenderOptions::production();   // 显示 trace 事件详情，仅应用层帧
+let minimal = ReportRenderOptions::minimal();   // 仅核心信息，聚焦关键帧
+```
+
+堆栈过滤（`StackTraceFilter`）：
+
+- `All` — 显示所有帧（默认）
+- `AppOnly` — 过滤 `std::` / `core::` / `alloc::` / `backtrace::` 帧
+- `AppFocused` — 额外过滤 `diagweave::` 和诊断内部帧
+
+渲染预设：
+
+```rust
+use diagweave::render::ReportRenderOptions;
+
+let dev = ReportRenderOptions::developer();     // 完整详情，不过滤堆栈
+let prod = ReportRenderOptions::production();   // 显示 trace 事件详情，仅应用层帧
+let minimal = ReportRenderOptions::minimal();   // 仅核心信息，聚焦关键帧
+```
+
+堆栈过滤（`StackTraceFilter`）：
+
+- `All` — 显示所有帧（默认）
+- `AppOnly` — 过滤 `std::` / `core::` / `alloc::` / `backtrace::` 帧
+- `AppFocused` — 额外过滤 `diagweave::` 和诊断内部帧
 
 IR 与适配器：
 

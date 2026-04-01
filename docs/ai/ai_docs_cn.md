@@ -395,9 +395,26 @@ Note 附件读取：
 | `show_attachments_section`| `true` | 是否显示附件 (Payload/Note) 部分 |
 | `show_stack_trace_section`| `true` | 是否显示堆栈轨迹部分 |
 | `show_trace_section` | `true` | 是否显示分布式追踪 (TraceID/Event) 部分 |
+| `show_trace_event_details` | `true` | 是否在 Pretty/JSON 中显示 trace 事件的 level、timestamp、attributes |
 | `stack_trace_max_lines` | `24` | 原始堆栈渲染的最大行数截断 |
 | `stack_trace_include_raw` | `true` | 渲染堆栈时是否包含原始堆栈输出 |
 | `stack_trace_include_frames` | `true` | 渲染堆栈时是否包含解析后的帧信息 |
+| `stack_trace_filter` | `All` | 堆栈帧过滤策略：`All`（全部）、`AppOnly`（过滤标准库帧）、`AppFocused`（额外过滤诊断内部帧） |
+
+预设配置：
+| 预设 | 说明 |
+| :--- | :--- |
+| `ReportRenderOptions::developer()` | 开发模式：完整 trace 事件详情，不过滤堆栈，最多 50 行 |
+| `ReportRenderOptions::production()` | 生产排障模式：trace 事件详情，仅应用层帧，最多 15 行 |
+| `ReportRenderOptions::minimal()` | 最小模式：隐藏 trace 事件详情，聚焦关键帧，最多 5 行，隐藏空段和类型名 |
+| `stack_trace_filter` | `All` | 堆栈帧过滤策略：`All`（全部）、`AppOnly`（过滤标准库帧）、`AppFocused`（额外过滤诊断内部帧） |
+
+预设配置：
+| 预设 | 说明 |
+| :--- | :--- |
+| `ReportRenderOptions::developer()` | 开发模式：完整 trace 事件详情，不过滤堆栈，最多 50 行 |
+| `ReportRenderOptions::production()` | 生产排障模式：trace 事件详情，仅应用层帧，最多 15 行 |
+| `ReportRenderOptions::minimal()` | 最小模式：隐藏 trace 事件详情，聚焦关键帧，最多 5 行，隐藏空段和类型名 |
 
 
 ### 诊断中间表示 (`DiagnosticIr`)

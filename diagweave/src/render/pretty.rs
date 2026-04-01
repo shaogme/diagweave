@@ -4,7 +4,7 @@ use core::fmt::{self, Display, Formatter};
 
 use crate::report::{ContextMap, Report, SeverityState};
 
-use super::{PrettyIndent, ReportRenderOptions, ReportRenderer};
+use super::{PrettyIndent, ReportRenderOptions, ReportRenderer, filtered_frames};
 
 const INDENT_SPACES: &str = {
     const LEN: usize = 64;
@@ -205,7 +205,25 @@ where
             }
             for (idx, event) in trace.events.iter().enumerate() {
                 write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- event[{idx}]: {}", event.name)?;
+                if let Some(level) = &event.level {
+                    writeln!(f, "- event[{idx}]: {} (level: {})", event.name, level)?;
+                } else {
+                    writeln!(f, "- event[{idx}]: {}", event.name)?;
+                }
+                if options.show_trace_event_details {
+                    if let Some(timestamp) = event.timestamp_unix_nano {
+                        write_indent(f, options.pretty_indent)?;
+                        writeln!(f, "  - timestamp: {timestamp}")?;
+                    }
+                    if !event.attributes.is_empty() {
+                        write_indent(f, options.pretty_indent)?;
+                        writeln!(f, "  - attributes:")?;
+                        for attr in &event.attributes {
+                            write_indent(f, options.pretty_indent)?;
+                            writeln!(f, "    - {}: {}", attr.key, attr.value)?;
+                        }
+                    }
+                }
             }
         }
     }
@@ -235,13 +253,23 @@ where
     write_indent(f, options.pretty_indent)?;
     writeln!(f, "- format: {:?}", stack_trace.format)?;
     if options.stack_trace_include_frames && !stack_trace.frames.is_empty() {
-        for (idx, frame) in stack_trace.frames.iter().enumerate() {
+        let mut displayed_count = 0;
+        for (idx, frame) in filtered_frames(&stack_trace.frames, &options.stack_trace_filter) {
             write_indent(f, options.pretty_indent)?;
             writeln!(
                 f,
                 "- frame[{idx}]: symbol={:?}, module={:?}, file={:?}, line={:?}, column={:?}",
                 frame.symbol, frame.module_path, frame.file, frame.line, frame.column
             )?;
+            displayed_count += 1;
+            if displayed_count >= options.stack_trace_max_lines {
+                let remaining = stack_trace.frames.len() - idx - 1;
+                if remaining > 0 {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- ... {remaining} more frames filtered")?;
+                }
+                break;
+            }
         }
     } else if options.stack_trace_include_raw {
         render_raw_stack_trace(

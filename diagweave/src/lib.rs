@@ -40,7 +40,7 @@ pub mod render {
     pub use crate::render_impl::{
         Compact, CompactProfile, DiagnosticIr, DiagnosticIrError, DiagnosticIrMessage,
         DiagnosticIrMetadata, Pretty, PrettyIndent, RenderedReport, ReportRenderOptions,
-        ReportRenderer,
+        ReportRenderer, StackTraceFilter,
     };
     #[cfg(feature = "json")]
     pub use crate::render_impl::{
@@ -79,7 +79,9 @@ pub mod trace {
 }
 
 pub mod prelude {
-    pub use crate::render::{Compact, CompactProfile, Pretty, ReportRenderOptions, ReportRenderer};
+    pub use crate::render::{
+        Compact, CompactProfile, Pretty, ReportRenderOptions, ReportRenderer, StackTraceFilter,
+    };
     pub use crate::report::{
         AttachmentValue, ContextMap, ContextValue, Diagnostic, HasSeverity, MissingSeverity,
         Report, ReportResultExt, ReportResultInspectExt, Severity, SeverityState, SourceErrorItem,

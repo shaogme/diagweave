@@ -343,7 +343,7 @@ Trace context uses validated IDs:
 Built-in renderers:
 
 ```rust
-use diagweave::render::{Compact, Pretty, ReportRenderOptions};
+use diagweave::render::{Compact, Pretty, ReportRenderOptions, StackTraceFilter};
 # use diagweave::prelude::set;
 # use diagweave::report::Report;
 # set! {
@@ -357,6 +357,22 @@ use diagweave::render::{Compact, Pretty, ReportRenderOptions};
 let _ = report.render(Compact::summary()).to_string();
 let _ = report.render(Pretty::new(ReportRenderOptions::default())).to_string();
 ```
+
+Rendering presets:
+
+```rust
+use diagweave::render::ReportRenderOptions;
+
+let dev = ReportRenderOptions::developer();     // full details, unfiltered stack traces
+let prod = ReportRenderOptions::production();   // trace event details, app-only frames
+let minimal = ReportRenderOptions::minimal();   // core info only, focused stack traces
+```
+
+Stack trace filtering (`StackTraceFilter`):
+
+- `All` — show every frame (default)
+- `AppOnly` — filter out `std::` / `core::` / `alloc::` / `backtrace::` frames
+- `AppFocused` — additionally filter out `diagweave::` and diagnostic-internal frames
 
 IR and adapters:
 

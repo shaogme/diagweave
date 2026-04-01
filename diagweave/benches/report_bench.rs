@@ -129,8 +129,8 @@ fn bench_report_build(c: &mut Criterion) {
             b.iter(|| {
                 let mut report = Report::new(BenchError::Root);
                 for idx in 0..size {
-                    report = report
-                        .with_ctx(format!("ctx_{idx}"), ContextValue::Unsigned(idx as u64));
+                    report =
+                        report.with_ctx(format!("ctx_{idx}"), ContextValue::Unsigned(idx as u64));
                 }
                 black_box(report);
             })

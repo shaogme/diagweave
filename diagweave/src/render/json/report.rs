@@ -11,8 +11,9 @@ use super::trace::{
     build_trace_section_value,
 };
 use super::{
-    ReportRenderOptions, close_array, close_object, write_array_item_prefix, write_error_code,
-    write_json_display, write_json_string, write_object_field, write_option_string,
+    ReportRenderOptions, close_array, close_object, filtered_frames, write_array_item_prefix,
+    write_error_code, write_json_display, write_json_string, write_object_field,
+    write_option_string,
 };
 
 pub(super) fn write_error_object<E>(
@@ -91,7 +92,9 @@ where
     }
     write_object_field(f, pretty, depth, first, "stack_trace", |f| {
         match report.stack_trace() {
-            Some(stack_trace) => write_stack_trace_object(f, pretty, depth + 1, stack_trace),
+            Some(stack_trace) => {
+                write_stack_trace_object(f, pretty, depth + 1, stack_trace, options)
+            }
             None => f.write_str("null"),
         }
     })
@@ -387,41 +390,6 @@ fn write_source_errors_chain(
 }
 
 #[cfg(feature = "trace")]
-pub(super) fn write_trace_object<E, State>(
-    f: &mut Formatter<'_>,
-    pretty: bool,
-    depth: usize,
-    report: &Report<E, State>,
-) -> fmt::Result
-where
-    E: Error + Display + 'static,
-    State: SeverityState,
-{
-    let Some(trace) = report.trace() else {
-        return f.write_str("null");
-    };
-    write_trace_section_value(f, pretty, depth, &build_trace_section_value(trace))
-}
-
-#[cfg(feature = "trace")]
-fn write_trace_section_value(
-    f: &mut Formatter<'_>,
-    pretty: bool,
-    depth: usize,
-    value: &TraceSectionValue,
-) -> fmt::Result {
-    let mut first = true;
-    f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "context", |f| {
-        write_trace_context_value(f, pretty, depth + 1, &value.context)
-    })?;
-    write_object_field(f, pretty, depth, &mut first, "events", |f| {
-        write_trace_events_array(f, pretty, depth + 1, &value.events)
-    })?;
-    close_object(f, pretty, depth, first)
-}
-
-#[cfg(feature = "trace")]
 fn write_trace_context_value(
     f: &mut Formatter<'_>,
     pretty: bool,
@@ -458,17 +426,55 @@ fn write_trace_context_value(
 }
 
 #[cfg(feature = "trace")]
+pub(super) fn write_trace_object<E, State>(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    report: &Report<E, State>,
+    options: ReportRenderOptions,
+) -> fmt::Result
+where
+    E: Error + Display + 'static,
+    State: SeverityState,
+{
+    let Some(trace) = report.trace() else {
+        return f.write_str("null");
+    };
+    write_trace_section_value(f, pretty, depth, &build_trace_section_value(trace), options)
+}
+
+#[cfg(feature = "trace")]
+fn write_trace_section_value(
+    f: &mut Formatter<'_>,
+    pretty: bool,
+    depth: usize,
+    value: &TraceSectionValue,
+    options: ReportRenderOptions,
+) -> fmt::Result {
+    let mut first = true;
+    f.write_char('{')?;
+    write_object_field(f, pretty, depth, &mut first, "context", |f| {
+        write_trace_context_value(f, pretty, depth + 1, &value.context)
+    })?;
+    write_object_field(f, pretty, depth, &mut first, "events", |f| {
+        write_trace_events_array(f, pretty, depth + 1, &value.events, options)
+    })?;
+    close_object(f, pretty, depth, first)
+}
+
+#[cfg(feature = "trace")]
 fn write_trace_events_array(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
     events: &[TraceEventValue],
+    options: ReportRenderOptions,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('[')?;
     for event in events {
         write_array_item_prefix(f, pretty, depth, &mut first)?;
-        write_trace_event_value(f, pretty, depth + 1, event)?;
+        write_trace_event_value(f, pretty, depth + 1, event, options)?;
     }
     close_array(f, pretty, depth, first)
 }
@@ -479,42 +485,45 @@ fn write_trace_event_value(
     pretty: bool,
     depth: usize,
     event: &TraceEventValue,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
     write_object_field(f, pretty, depth, &mut first, "name", |f| {
         write_json_string(f, event.name.as_ref())
     })?;
-    write_object_field(f, pretty, depth, &mut first, "level", |f| {
-        write_option_string(f, event.level.as_deref())
-    })?;
-    write_object_field(
-        f,
-        pretty,
-        depth,
-        &mut first,
-        "timestamp_unix_nano",
-        |f| match event.timestamp_unix_nano {
-            Some(v) => write!(f, "{v}"),
-            None => f.write_str("null"),
-        },
-    )?;
-    write_object_field(f, pretty, depth, &mut first, "attributes", |f| {
-        write_trace_attributes(f, pretty, depth + 1, &event.attributes)
-    })?;
+    if options.show_trace_event_details {
+        write_object_field(f, pretty, depth, &mut first, "level", |f| {
+            write_option_string(f, event.level.as_deref())
+        })?;
+        write_object_field(
+            f,
+            pretty,
+            depth,
+            &mut first,
+            "timestamp_unix_nano",
+            |f| match event.timestamp_unix_nano {
+                Some(v) => write!(f, "{v}"),
+                None => f.write_str("null"),
+            },
+        )?;
+        write_object_field(f, pretty, depth, &mut first, "attributes", |f| {
+            write_trace_attr_array(f, pretty, depth + 1, &event.attributes)
+        })?;
+    }
     close_object(f, pretty, depth, first)
 }
 
 #[cfg(feature = "trace")]
-fn write_trace_attributes(
+fn write_trace_attr_array(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    attributes: &[TraceAttributeValue],
+    attrs: &[TraceAttributeValue],
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('[')?;
-    for attr in attributes {
+    for attr in attrs {
         write_array_item_prefix(f, pretty, depth, &mut first)?;
         write_trace_attr_value(f, pretty, depth + 1, attr)?;
     }
@@ -544,6 +553,7 @@ fn write_stack_trace_object(
     pretty: bool,
     depth: usize,
     stack_trace: &StackTrace,
+    options: ReportRenderOptions,
 ) -> fmt::Result {
     let mut first = true;
     f.write_char('{')?;
@@ -557,7 +567,9 @@ fn write_stack_trace_object(
     write_object_field(f, pretty, depth, &mut first, "frames", |f| {
         let mut array_first = true;
         f.write_char('[')?;
-        for frame in stack_trace.frames.iter() {
+        for (_, frame) in filtered_frames(&stack_trace.frames, &options.stack_trace_filter)
+            .take(options.stack_trace_max_lines)
+        {
             write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
             write_stack_frame_object(f, pretty, depth + 2, frame)?;
         }

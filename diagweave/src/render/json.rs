@@ -13,8 +13,10 @@ use core::fmt::{self, Display, Formatter, Write};
 
 use crate::report::{Report, SeverityState};
 
-use super::{REPORT_JSON_SCHEMA_VERSION, ReportRenderOptions};
+use super::REPORT_JSON_SCHEMA_VERSION;
+use super::ReportRenderOptions;
 
+pub(super) use super::filtered_frames;
 pub(super) use helpers::{
     close_array, close_object, write_array_item_prefix, write_error_code, write_indent,
     write_json_display, write_json_string, write_object_field, write_option_string,
@@ -59,7 +61,7 @@ where
         && (options.show_empty_sections || report.trace().is_some_and(|trace| !trace.is_empty()))
     {
         write_object_field(f, pretty, 0, &mut first, "trace", |f| {
-            report::write_trace_object(f, pretty, 1, report)
+            report::write_trace_object(f, pretty, 1, report, options)
         })?;
     }
     if options.show_context_section && (options.show_empty_sections || section_flags.has_context) {

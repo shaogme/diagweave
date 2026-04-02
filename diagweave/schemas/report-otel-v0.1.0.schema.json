@@ -110,20 +110,9 @@
       ]
     },
     "otel_event": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "name",
-        "body",
-        "timestamp_unix_nano",
-        "observed_timestamp_unix_nano",
-        "severity_text",
-        "severity_number",
-        "trace_id",
-        "span_id",
-        "trace_flags",
-        "attributes"
-      ],
+    	"type": "object",
+    	"additionalProperties": false,
+    	"required": ["name", "attributes"],
       "properties": {
         "name": { "type": "string" },
         "body": {

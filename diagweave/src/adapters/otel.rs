@@ -33,13 +33,21 @@ pub struct OtelAttribute<'a> {
 #[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
 pub struct OtelEvent<'a> {
     pub name: RefStr<'a>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub body: Option<OtelValue<'a>>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub timestamp_unix_nano: Option<u64>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub observed_timestamp_unix_nano: Option<u64>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub severity_text: Option<ref_str::StaticRefStr>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub severity_number: Option<u8>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub trace_id: Option<RefStr<'a>>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub span_id: Option<RefStr<'a>>,
+    #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub trace_flags: Option<u8>,
     pub attributes: Vec<OtelAttribute<'a>>,
 }

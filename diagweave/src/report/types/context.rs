@@ -344,9 +344,9 @@ impl SystemContext {
 
     pub fn is_empty(&self) -> bool {
         self.service.is_empty()
-        && self.deployment.is_empty()
-        && self.runtime.is_empty()
-        && self.request.is_empty()
+            && self.deployment.is_empty()
+            && self.runtime.is_empty()
+            && self.request.is_empty()
     }
 
     pub fn len(&self) -> usize {
@@ -369,7 +369,8 @@ impl SystemContext {
     /// Returns a reference to the default empty SystemContext.
     #[cfg(feature = "std")]
     pub fn default_ref() -> &'static SystemContext {
-        static DEFAULT: std::sync::LazyLock<SystemContext> = std::sync::LazyLock::new(SystemContext::new);
+        static DEFAULT: std::sync::LazyLock<SystemContext> =
+            std::sync::LazyLock::new(SystemContext::new);
         &DEFAULT
     }
 

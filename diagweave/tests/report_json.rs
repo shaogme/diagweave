@@ -453,6 +453,46 @@ fn json_trace_section_keeps_tagged_trace_values() {
 
 #[cfg(all(feature = "json", feature = "trace"))]
 #[test]
+fn json_redacted_values_omit_missing_fields() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_ctx(
+            "secret",
+            ContextValue::Redacted {
+                kind: None,
+                reason: Some("pii".into()),
+            },
+        )
+        .with_trace_event(TraceEvent {
+            name: "db.query".into(),
+            level: Some(TraceEventLevel::Warn),
+            timestamp_unix_nano: Some(1_713_337_100_000_000_000),
+            attributes: vec![TraceEventAttribute {
+                key: "db.statement".into(),
+                value: AttachmentValue::Redacted {
+                    kind: None,
+                    reason: Some("sensitive".into()),
+                },
+            }],
+        });
+
+    let json = report.render(Json::default()).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
+
+    let ctx_redacted = &parsed["context"]["secret"];
+    assert_eq!(ctx_redacted["kind"].as_str(), Some("redacted"));
+    assert!(ctx_redacted["value"].get("kind").is_none());
+    assert_eq!(ctx_redacted["value"]["reason"].as_str(), Some("pii"));
+
+    let trace_redacted = &parsed["trace"]["events"][0]["attributes"][0]["value"];
+    assert_eq!(trace_redacted["kind"].as_str(), Some("redacted"));
+    assert!(trace_redacted["value"].get("kind").is_none());
+    assert_eq!(trace_redacted["value"]["reason"].as_str(), Some("sensitive"));
+}
+
+#[cfg(all(feature = "json", feature = "trace"))]
+#[test]
 fn json_trace_section_rejects_non_finite_floats() {
     let _guard = init_test();
 

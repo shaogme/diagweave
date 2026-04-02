@@ -19,7 +19,7 @@ use super::ReportRenderOptions;
 pub(super) use super::filtered_frames;
 pub(super) use helpers::{
     close_array, close_object, write_array_item_prefix, write_error_code, write_indent,
-    write_json_display, write_json_string, write_object_field, write_option_string,
+    write_json_display, write_json_string, write_object_field,
 };
 
 pub(super) fn write_json_report<E, State>(

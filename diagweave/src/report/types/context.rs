@@ -8,15 +8,13 @@ use super::{AttachmentValue, ErrorCode};
 use crate::report::{ParentSpanId, SpanId, TraceFlags, TraceId, TraceState};
 use crate::utils::FastMap;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(
     feature = "json",
     serde(tag = "kind", content = "value", rename_all = "snake_case")
 )]
 pub enum ContextValue {
-    #[default]
-    Null,
     String(StaticRefStr),
     Integer(i64),
     Unsigned(u64),
@@ -36,7 +34,6 @@ pub enum ContextValue {
 impl Display for ContextValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Null => write!(f, "null"),
             Self::String(value) => write!(f, "{value}"),
             Self::Integer(value) => write!(f, "{value}"),
             Self::Unsigned(value) => write!(f, "{value}"),
@@ -239,22 +236,9 @@ impl From<Vec<f64>> for ContextValue {
     }
 }
 
-impl<T> From<Option<T>> for ContextValue
-where
-    T: Into<ContextValue>,
-{
-    fn from(value: Option<T>) -> Self {
-        match value {
-            Some(value) => value.into(),
-            None => Self::Null,
-        }
-    }
-}
-
 impl From<ContextValue> for AttachmentValue {
     fn from(value: ContextValue) -> Self {
         match value {
-            ContextValue::Null => Self::Null,
             ContextValue::String(value) => Self::String(value),
             ContextValue::Integer(value) => Self::Integer(value),
             ContextValue::Unsigned(value) => Self::Unsigned(value),

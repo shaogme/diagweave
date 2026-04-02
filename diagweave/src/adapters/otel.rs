@@ -130,7 +130,6 @@ impl<'a> From<&'a AttachmentValue> for OtelValue<'a> {
 impl<'a> From<&'a ContextValue> for OtelValue<'a> {
     fn from(value: &'a ContextValue) -> Self {
         match value {
-            ContextValue::Null => Self::Null,
             ContextValue::String(v) => Self::String(v.clone().into()),
             ContextValue::Integer(v) => Self::Int(*v),
             ContextValue::Unsigned(v) => Self::U64(*v),

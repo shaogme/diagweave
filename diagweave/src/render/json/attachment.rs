@@ -1,6 +1,6 @@
 use super::{
     close_array, close_object, write_array_item_prefix, write_json_display, write_json_string,
-    write_object_field, write_option_string,
+    write_object_field,
 };
 use crate::report::{
     AttachmentValue, AttachmentVisit, ContextValue, JsonContext, JsonContextEntry, Report,
@@ -71,7 +71,6 @@ pub(super) fn write_context_value(
     value: &ContextValue,
 ) -> fmt::Result {
     match value {
-        ContextValue::Null => write_kind_only(f, pretty, depth, "null"),
         ContextValue::String(v) => write_kind_and_value(f, pretty, depth, "string", |f| {
             write_json_string(f, v.as_ref())
         }),
@@ -344,12 +343,16 @@ fn write_redacted_obj(
     write_object_field(f, pretty, depth, &mut first, "value", |f| {
         let mut inner_first = true;
         f.write_char('{')?;
-        write_object_field(f, pretty, depth + 1, &mut inner_first, "kind", |f| {
-            write_option_string(f, kind)
-        })?;
-        write_object_field(f, pretty, depth + 1, &mut inner_first, "reason", |f| {
-            write_option_string(f, reason)
-        })?;
+        if let Some(kind) = kind {
+            write_object_field(f, pretty, depth + 1, &mut inner_first, "kind", |f| {
+                write_json_string(f, kind)
+            })?;
+        }
+        if let Some(reason) = reason {
+            write_object_field(f, pretty, depth + 1, &mut inner_first, "reason", |f| {
+                write_json_string(f, reason)
+            })?;
+        }
         close_object(f, pretty, depth + 1, inner_first)
     })?;
     close_object(f, pretty, depth, first)

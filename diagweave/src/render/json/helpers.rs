@@ -20,13 +20,6 @@ pub(crate) fn write_error_code(f: &mut Formatter<'_>, code: &ErrorCode) -> fmt::
     }
 }
 
-pub(crate) fn write_option_string(f: &mut Formatter<'_>, value: Option<&str>) -> fmt::Result {
-    match value {
-        Some(v) => write_json_string(f, v),
-        None => f.write_str("null"),
-    }
-}
-
 pub(crate) fn write_json_display(
     f: &mut Formatter<'_>,
     value: &(impl Display + ?Sized),

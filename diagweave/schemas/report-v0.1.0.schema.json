@@ -87,14 +87,6 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind"],
-          "properties": {
-            "kind": { "const": "null" }
-          }
-        },
-        {
-          "type": "object",
-          "additionalProperties": false,
           "required": ["kind", "value"],
           "properties": {
             "kind": { "const": "string" },
@@ -193,14 +185,6 @@
     },
     "trace_value": {
       "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind"],
-          "properties": {
-            "kind": { "const": "null" }
-          }
-        },
         {
           "type": "object",
           "additionalProperties": false,
@@ -323,14 +307,6 @@
     },
     "context_value": {
       "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["kind"],
-          "properties": {
-            "kind": { "const": "null" }
-          }
-        },
         {
           "type": "object",
           "additionalProperties": false,

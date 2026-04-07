@@ -156,7 +156,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
         .with_display_cause("query plan fallback selected")
         .with_diag_src_err(io::Error::other("replica lag detected"))
         .capture_stack_trace()
-        .map_inner(|db_err| match db_err {
+        .map_err(|db_err| match db_err {
             DatabaseError::ConnectionLost(io) => AppError::Io(io),
             DatabaseError::ConstraintViolation { .. } => AppError::Internal {
                 msg: "db constraint".into(),
@@ -217,7 +217,7 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
                 },
             ],
         )
-        .map_inner(ApiError::App)?;
+        .map_err(ApiError::App)?;
 
     Ok("Success".into())
 }

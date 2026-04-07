@@ -255,7 +255,7 @@ mod order {
                     },
                 ],
             )
-            .map_inner(|_err| OrderError::payment_failed(order_id))?;
+            .map_err(|_err| OrderError::payment_failed(order_id))?;
         Ok(())
     }
 }
@@ -310,7 +310,7 @@ mod gateway {
                     value: AttachmentValue::from("/v1/charge"),
                 }],
             )
-            .map_inner(ApiError::Payment)?;
+            .map_err(ApiError::Payment)?;
         Ok("OK".to_owned())
     }
 
@@ -332,7 +332,7 @@ mod gateway {
                     value: AttachmentValue::from("/v1/order"),
                 }],
             )
-            .map_inner(ApiError::Order)?;
+            .map_err(ApiError::Order)?;
         Ok("OK".to_owned())
     }
 
@@ -349,7 +349,7 @@ mod gateway {
                     value: AttachmentValue::from("/v1/order"),
                 }],
             )
-            .map_inner(ApiError::Order)?;
+            .map_err(ApiError::Order)?;
         Ok("OK".to_owned())
     }
 }

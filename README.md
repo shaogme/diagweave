@@ -275,7 +275,7 @@ Common enrichers on `Result<T, Report<E>>`:
 - `with_error_code`, `with_severity`, `with_category`, `with_retryable`
 - `with_display_cause`, `with_display_causes`, `with_diag_src_err`
 - `with_ctx_lazy(key, make_value)`, `attach_note_lazy`
-- `boundary`, `map_inner`
+- `boundary`, `map_err`
 
 Hot-path string fields like `category`, `trace_state`, and trace event names are stored with `StaticRefStr` after capture.
 Attachment keys, payload names, payload media types, global context keys, and other stored string metadata also use `StaticRefStr`.

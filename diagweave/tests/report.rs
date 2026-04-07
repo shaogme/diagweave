@@ -240,7 +240,7 @@ fn result_ext_diagweave_with_maps_error() {
         .diag()
         .attach_note("incoming token is stale")
         .with_category("auth")
-        .map_inner(|_| ApiError::Wrapped { code: 403 })
+        .map_err(|_| ApiError::Wrapped { code: 403 })
         .expect_err("should fail");
 
     assert_eq!(

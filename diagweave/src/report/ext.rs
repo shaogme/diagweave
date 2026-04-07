@@ -159,7 +159,7 @@ where
         Report<E, State>: Error + Send + Sync + 'static,
         E: Error + Send + Sync + 'static;
 
-    fn map_inner<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>>;
+    fn map_err<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>>;
 }
 
 /// Read-only extension trait for `Result<T, Report<E, State>>`.
@@ -362,7 +362,7 @@ where
         self.map_err(|report| report.boundary(outer))
     }
 
-    fn map_inner<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>> {
+    fn map_err<Outer>(self, map: impl FnOnce(E) -> Outer) -> Result<T, Report<Outer, State>> {
         self.map_err(|report| report.map_err(map))
     }
 }

@@ -315,7 +315,7 @@ let report = report.capture_stack_trace();
 - **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **错误源**: `with_diag_src_err(err)`
 - **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
-- **包装**: `boundary(outer)`, `map_inner(map)`
+- **包装**: `boundary(outer)`, `map_err(map)`
 
 #### 3. `ReportResultInspectExt` (作用于 `Result<T, Report<E>>`)
 用于在错误路径做只读查询，避免手动 `match Err(report)`：
@@ -681,7 +681,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
             "db",
             "primary",
         )
-        .map_inner(AppError::Db)?; // 将 DatabaseError 映射为 AppError，同时保留 DB 层的 context
+        .map_err(AppError::Db)?; // 将 DatabaseError 映射为 AppError，同时保留 DB 层的 context
     Ok(())
 }
 ```

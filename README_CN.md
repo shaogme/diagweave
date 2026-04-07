@@ -275,7 +275,7 @@ pub enum MyError {
 - `with_error_code`、`with_severity`、`with_category`、`with_retryable`
 - `with_display_cause`、`with_display_causes`、`with_diag_src_err`
 - `with_ctx_lazy(key, make_value)`、`attach_note_lazy`
-- `boundary`、`map_inner`
+- `boundary`、`map_err`
 
 `category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `StaticRefStr` 共享存储。
 附件 key、payload 名称、payload media type、全局上下文 key 等持久化字符串也统一使用 `StaticRefStr`。

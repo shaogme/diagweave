@@ -318,7 +318,7 @@ Proxy versions of all `Report` chained configuration methods:
 - **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
 - **Source Errors**: `with_diag_src_err(err)`
 - **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
-- **Wrapping**: `boundary(outer)`, `map_inner(map)`
+- **Wrapping**: `boundary(outer)`, `map_err(map)`
 
 #### 3. `ReportResultInspectExt` (on `Result<T, Report<E>>`)
 Read-only helpers for error-path inspection without manually matching `Err`:
@@ -684,7 +684,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
             "db",
             "primary",
         )
-        .map_inner(AppError::Db)?; // Maps DatabaseError to AppError, preserving DB-layer context
+        .map_err(AppError::Db)?; // Maps DatabaseError to AppError, preserving DB-layer context
     Ok(())
 }
 ```

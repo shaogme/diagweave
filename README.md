@@ -80,7 +80,7 @@ With `default-features = false`, `diagweave` supports `no_std + alloc`.
 ## Quick Start
 
 ```rust
-use diagweave::prelude::{set, Diagnostic, Report, ReportResultExt};
+use diagweave::prelude::{set, Diagnostic, Report, ResultReportExt};
 
 set! {
     AuthError = {
@@ -97,12 +97,21 @@ fn verify(user_id: u64) -> Result<(), AuthError> {
 }
 
 fn main() {
-        let report: Report<AuthError> = verify(7)
-        .diag()
-        .with_ctx("request_id", "req-001")
-        .with_ctx("retry", 0)
-        .attach_note("auth gate rejected")
+    let report: Report<AuthError> = verify(7)
+        .to_report()
+        .and_then_report(|r| {
+            r.with_ctx("request_id", "req-001")
+                .with_ctx("retry", 0)
+                .attach_note("auth gate rejected")
+        })
         .expect_err("demo");
+
+    // Or equivalently using `diag` as a shorthand for the two-step chain
+    let diag_report = verify(7).diag(|r| {
+        r.with_ctx("request_id", "req-001")
+            .with_ctx("retry", 0)
+            .attach_note("auth gate rejected")
+    });
 
     println!("{}", report);          // compact output
     println!("{}", report.pretty()); // structured output
@@ -190,7 +199,7 @@ set! {
 Additional notes:
 - enum visibility follows the `set!` declaration (`pub`, `pub(crate)`, or private)
 - top-level attributes on the `set!` enum are preserved
-- auto helpers: `diag()` and `source()` on the enum
+- auto helpers: `to_report()`, `source()`, and `diag()` on the enum
 
 ## `union!`
 
@@ -239,7 +248,7 @@ Highlights:
 - auto `Error` implementation and auto `Debug` backfill
 - generated constructors and `*_report` helpers (same as `set!`)
 - supports `#[diagweave(constructor_prefix = "...", report_path = "...")]`
-- auto helpers: `diag()` and `source()` on the enum
+- auto helpers: `to_report()`, `source()`, and `diag()` on the enum
 
 ## Standalone `#[derive(Error)]`
 
@@ -259,23 +268,18 @@ pub enum MyError {
 }
 ```
 
-Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `diag()` integration.
+Supports `#[display(...)]`, `#[display(transparent)]`, `#[from]`, and `#[source]`, plus `to_report()` integration.
 
 ## `Report` and chain APIs
 
 From `Result<T, E>`:
 
-- `diag()`
-- `diag_note(message)`
+- `to_report()`
+- `to_report_note(message)`
 
 Common enrichers on `Result<T, Report<E>>`:
 
-- `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`
-- `attach_note`, `attach_payload`
-- `with_error_code`, `with_severity`, `with_category`, `with_retryable`
-- `with_display_cause`, `with_display_causes`, `with_diag_src_err`
-- `with_ctx_lazy(key, make_value)`, `attach_note_lazy`
-- `boundary`, `map_err`
+- `and_then_report(|r| r.with_ctx(key, value).with_severity(...))` — apply any chain of `Report` methods on the error path
 
 Hot-path string fields like `category`, `trace_state`, and trace event names are stored with `StaticRefStr` after capture.
 Attachment keys, payload names, payload media types, global context keys, and other stored string metadata also use `StaticRefStr`.
@@ -297,7 +301,7 @@ Attachment note access:
 - `Attachment::as_note() -> Option<String>` (materialized text view)
 - `Attachment::as_note_display() -> Option<&(dyn Display + Send + Sync + 'static)>` (zero-allocation display view)
 
-Read APIs on `Result<T, Report<E>>` via `ReportResultInspectExt`:
+Read APIs on `Result<T, Report<E>>` via `InspectReportExt`:
 
 - `report_ref()`, `report_metadata()`, `report_attachments()`
 - `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`

@@ -80,7 +80,7 @@ diagweave = { version = "0.1", default-features = false }
 ## 快速开始
 
 ```rust
-use diagweave::prelude::{set, Diagnostic, Report, ReportResultExt};
+use diagweave::prelude::{set, Diagnostic, Report, ResultReportExt};
 
 set! {
     AuthError = {
@@ -97,12 +97,21 @@ fn verify(user_id: u64) -> Result<(), AuthError> {
 }
 
 fn main() {
-        let report: Report<AuthError> = verify(7)
-        .diag()
-        .with_ctx("request_id", "req-001")
-        .with_ctx("retry", 0)
-        .attach_note("auth gate rejected")
+    let report: Report<AuthError> = verify(7)
+        .to_report()
+        .and_then_report(|r| {
+            r.with_ctx("request_id", "req-001")
+                .with_ctx("retry", 0)
+                .attach_note("auth gate rejected")
+        })
         .expect_err("demo");
+
+    // 也可以用 diag 作为两步链路的简写
+    let diag_report = verify(7).diag(|r| {
+        r.with_ctx("request_id", "req-001")
+            .with_ctx("retry", 0)
+            .attach_note("auth gate rejected")
+    });
 
     println!("{}", report);          // 紧凑输出
     println!("{}", report.pretty()); // 结构化输出
@@ -190,7 +199,7 @@ set! {
 补充说明：
 - 枚举可见性遵循 `set!` 声明（`pub` / `pub(crate)` / 私有）
 - `set!` 顶层属性会保留在生成的 enum 上
-- 自动生成 `diag()` 与 `source()` 方法
+- 自动生成 `to_report()`、`source()`、以及 `diag()` 方法
 
 ## `union!`
 
@@ -239,7 +248,7 @@ union! {
 - 自动实现 `Error`，缺少 `Debug` 时自动补充
 - 自动生成构造器与 `*_report`（同 `set!`）
 - 支持 `#[diagweave(constructor_prefix = \"...\", report_path = \"...\")]`
-- 自动生成 `diag()` 与 `source()` 方法
+- 自动生成 `to_report()` 与 `source()` 方法
 
 ## 独立 `#[derive(Error)]`
 
@@ -259,23 +268,18 @@ pub enum MyError {
 }
 ```
 
-支持 `#[display("...")]`、`#[display(transparent)]`、`#[from]`、`#[source]`，并可直接接入 `diag()`。
+支持 `#[display("...")]`、`#[display(transparent)]`、`#[from]`、`#[source]`，并可直接接入 `to_report()`、`diag()`。 
 
 ## `Report` 与链式 API
 
 从 `Result<T, E>` 转换：
 
-- `diag()`
-- `diag_note(message)`
+- `to_report()`
+- `to_report_note(message)`
 
 常用链式增强（`Result<T, Report<E>>`）：
 
-- `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`
-- `attach_note`、`attach_payload`
-- `with_error_code`、`with_severity`、`with_category`、`with_retryable`
-- `with_display_cause`、`with_display_causes`、`with_diag_src_err`
-- `with_ctx_lazy(key, make_value)`、`attach_note_lazy`
-- `boundary`、`map_err`
+- `and_then_report(|r| r.with_ctx(key, value).with_severity(...))` — 在错误路径上应用任意 `Report` 方法链
 
 `category`、`trace_state` 和 trace 事件名等高频字符串在捕获后会以 `StaticRefStr` 共享存储。
 附件 key、payload 名称、payload media type、全局上下文 key 等持久化字符串也统一使用 `StaticRefStr`。
@@ -297,7 +301,7 @@ Note 附件读取：
 - `Attachment::as_note() -> Option<String>`（物化后的文本视图）
 - `Attachment::as_note_display() -> Option<&(dyn Display + Send + Sync + 'static)>`（零分配显示视图）
 
-`Result<T, Report<E>>` 的只读扩展（`ReportResultInspectExt`）：
+`Result<T, Report<E>>` 的只读扩展（`InspectReportExt`）：
 
 - `report_ref()`、`report_metadata()`、`report_attachments()`
 - `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`

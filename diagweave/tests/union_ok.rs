@@ -165,7 +165,7 @@ fn from_attribute_generates_from_impls() {
 
 #[test]
 fn union_enum_provides_diag_helpers() {
-    let report = ApiError::rate_limited(8).diag();
+    let report = ApiError::rate_limited(8).to_report();
     assert_eq!(report.to_string(), "Rate limited for 8s");
     assert!(ApiError::rate_limited(8).source().is_none());
 }

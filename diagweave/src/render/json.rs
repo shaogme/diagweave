@@ -58,17 +58,15 @@ where
     }
     #[cfg(feature = "trace")]
     if options.show_trace_section
-    	&& (options.show_empty_sections || report.trace().is_some_and(|trace| !trace.is_empty()))
+        && (options.show_empty_sections || report.trace().is_some_and(|trace| !trace.is_empty()))
     {
-    	write_object_field(f, pretty, 0, &mut first, "trace", |f| {
-    		report::write_trace_object(f, pretty, 1, report, options)
-    	})?;
+        write_object_field(f, pretty, 0, &mut first, "trace", |f| {
+            report::write_trace_object(f, pretty, 1, report, options)
+        })?;
     }
     #[cfg(not(feature = "trace"))]
     if options.show_trace_section && options.show_empty_sections {
-    	write_object_field(f, pretty, 0, &mut first, "trace", |f| {
-    		f.write_str("{}")
-    	})?;
+        write_object_field(f, pretty, 0, &mut first, "trace", |f| f.write_str("{}"))?;
     }
     if options.show_context_section && (options.show_empty_sections || section_flags.has_context) {
         write_object_field(f, pretty, 0, &mut first, "context", |f| {

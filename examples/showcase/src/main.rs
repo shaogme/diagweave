@@ -3,7 +3,7 @@ use std::io;
 
 use diagweave::prelude::{
     AttachmentValue, Compact, ContextValue, Diagnostic, Error, GlobalContext, HasSeverity,
-    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ReportResultExt, Severity,
+    ParentSpanId, Pretty, Report, ReportRenderOptions, ReportRenderer, ResultReportExt, Severity,
     SeverityState, SpanId, TraceEventAttribute, TraceEventLevel, TraceId, register_global_injector,
     set, union,
 };
@@ -148,20 +148,20 @@ fn db_operation() -> Result<(), DatabaseError> {
 }
 
 fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
-    db_operation()
-        .diag()
-        .with_ctx("user_id", user_id)
-        .attach_note("failing over to secondary database")
-        .with_display_cause("db operation failed")
-        .with_display_cause("query plan fallback selected")
-        .with_diag_src_err(io::Error::other("replica lag detected"))
-        .capture_stack_trace()
-        .map_err(|db_err| match db_err {
-            DatabaseError::ConnectionLost(io) => AppError::Io(io),
-            DatabaseError::ConstraintViolation { .. } => AppError::Internal {
-                msg: "db constraint".into(),
-            },
-        })?;
+    db_operation().diag(|r| {
+        r.with_ctx("user_id", user_id)
+            .attach_note("failing over to secondary database")
+            .with_display_cause("db operation failed")
+            .with_display_cause("query plan fallback selected")
+            .with_diag_src_err(io::Error::other("replica lag detected"))
+            .capture_stack_trace()
+            .map_err(|db_err| match db_err {
+                DatabaseError::ConnectionLost(io) => AppError::Io(io),
+                DatabaseError::ConstraintViolation { .. } => AppError::Internal {
+                    msg: "db constraint".into(),
+                },
+            })
+    })?;
 
     Ok(())
 }
@@ -186,38 +186,39 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
         }
     };
 
-    service_layer(1001)
-        .with_ctx("request_id", request_id)
-        .attach_payload(
-            "request_meta",
-            serde_json::json!({ "version": "v1", "retry": 3 }),
-            Some("application/json"),
-        )
-        .with_error_code("ERR_AUTH_001")
-        .with_severity(Severity::Fatal)
-        .with_category("auth")
-        .with_retryable(false)
-        .with_trace_ids(trace_id, span_id)
-        .with_parent_span_id(parent_span_id)
-        .with_trace_sampled(true)
-        .with_trace_state("service=api")
-        .with_trace_flags(1)
-        .push_trace_event_with(
-            "api.handler",
-            Some(TraceEventLevel::Error),
-            Some(1_713_337_000_000_000_000),
-            vec![
-                TraceEventAttribute {
-                    key: "http.route".into(),
-                    value: AttachmentValue::from("/v1/session"),
-                },
-                TraceEventAttribute {
-                    key: "component".into(),
-                    value: AttachmentValue::from("gateway"),
-                },
-            ],
-        )
-        .map_err(ApiError::App)?;
+    service_layer(1001).and_then_report(|r| {
+        r.with_ctx("request_id", request_id)
+            .attach_payload(
+                "request_meta",
+                serde_json::json!({ "version": "v1", "retry": 3 }),
+                Some("application/json"),
+            )
+            .with_error_code("ERR_AUTH_001")
+            .with_severity(Severity::Fatal)
+            .with_category("auth")
+            .with_retryable(false)
+            .with_trace_ids(trace_id, span_id)
+            .with_parent_span_id(parent_span_id)
+            .with_trace_sampled(true)
+            .with_trace_state("service=api")
+            .with_trace_flags(1)
+            .push_trace_event_with(
+                "api.handler",
+                Some(TraceEventLevel::Error),
+                Some(1_713_337_000_000_000_000),
+                vec![
+                    TraceEventAttribute {
+                        key: "http.route".into(),
+                        value: AttachmentValue::from("/v1/session"),
+                    },
+                    TraceEventAttribute {
+                        key: "component".into(),
+                        value: AttachmentValue::from("gateway"),
+                    },
+                ],
+            )
+            .map_err(ApiError::App)
+    })?;
 
     Ok("Success".into())
 }
@@ -383,10 +384,11 @@ fn demo_specialized_stores() {
     println!("--- Unified Display Causes ---");
 
     let report = Result::<(), _>::Err(BaseError::not_found("item_1".into()))
-        .diag()
-        .with_display_cause("cache invalidated")
-        .with_display_cause(io::Error::other("hardware failure"))
-        .attach_note("local processing delayed")
+        .diag(|r| {
+            r.with_display_cause("cache invalidated")
+                .with_display_cause(io::Error::other("hardware failure"))
+                .attach_note("local processing delayed")
+        })
         .expect_err("demo");
     println!("Report:\n{}\n", report.pretty());
 }
@@ -455,8 +457,8 @@ fn demo_new_capabilities() {
     println!("constructor_prefix: {}", ctor);
     println!("constructor_prefix report: {}", ctor_report);
 
-    let variant_report = AuthError::SessionExpired { user_id: 1001 }.diag();
-    println!("Variant.diag(): {}", variant_report);
+    let variant_report = AuthError::SessionExpired { user_id: 1001 }.to_report();
+    println!("Variant.to_report(): {}", variant_report);
 
     let auto_ctx = Report::new(BaseError::Timeout(1500));
     println!(

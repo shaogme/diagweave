@@ -1,7 +1,7 @@
 mod report_common;
 use diagweave::prelude::*;
 use diagweave::report::{AttachmentValue, StackTrace, StackTraceFormat};
-#[cfg(feature = "trace")]
+#[cfg(all(feature = "json", feature = "trace"))]
 use diagweave::report::{
     ParentSpanId, SpanId, TraceEvent, TraceEventAttribute, TraceEventLevel, TraceId,
 };

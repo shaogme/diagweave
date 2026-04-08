@@ -47,9 +47,9 @@ where
         render_trace_section(f, report, options)?;
         #[cfg(not(feature = "trace"))]
         if options.show_trace_section && options.show_empty_sections {
-        	writeln!(f, "Trace:")?;
-        	write_indent(f, options.pretty_indent)?;
-        	writeln!(f, "- (none)")?;
+            writeln!(f, "Trace:")?;
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- (none)")?;
         }
         render_stack_trace(f, report, options)?;
         render_attachments(f, report, options)?;

@@ -8,7 +8,7 @@ mod pretty;
 #[path = "render/stack_filter.rs"]
 mod stack_filter;
 
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use core::fmt::{self, Display, Formatter};
 
 use crate::report::{HasSeverity, Report, SeverityState};

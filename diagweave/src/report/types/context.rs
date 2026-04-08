@@ -313,8 +313,17 @@ impl ContextMap {
     /// Returns a reference to the default empty ContextMap.
     #[cfg(not(feature = "std"))]
     pub fn default_ref() -> &'static ContextMap {
-        static DEFAULT: ContextMap = ContextMap(FastMap::new());
-        &DEFAULT
+        use alloc::boxed::Box;
+        use core::ptr;
+        static mut DEFAULT: *const ContextMap = ptr::null();
+        // SAFETY: Single-threaded lazy init for no_std. Caller must ensure
+        // no concurrent access during initialization.
+        unsafe {
+            if DEFAULT.is_null() {
+                DEFAULT = Box::leak(Box::new(ContextMap::new()));
+            }
+            &*DEFAULT
+        }
     }
 }
 
@@ -377,13 +386,15 @@ impl SystemContext {
     /// Returns a reference to the default empty SystemContext.
     #[cfg(not(feature = "std"))]
     pub fn default_ref() -> &'static SystemContext {
-        static DEFAULT: SystemContext = SystemContext {
-            service: ContextMap(FastMap::new()),
-            deployment: ContextMap(FastMap::new()),
-            runtime: ContextMap(FastMap::new()),
-            request: ContextMap(FastMap::new()),
-        };
-        &DEFAULT
+        use alloc::boxed::Box;
+        use core::ptr;
+        static mut DEFAULT: *const SystemContext = ptr::null();
+        unsafe {
+            if DEFAULT.is_null() {
+                DEFAULT = Box::leak(Box::new(SystemContext::new()));
+            }
+            &*DEFAULT
+        }
     }
 }
 

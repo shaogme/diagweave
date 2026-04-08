@@ -87,13 +87,13 @@ fn wrap_preserves_deep_source_chains() {
 fn result_inspect_ext_reads_report_fields() {
     let _guard = init_test();
 
-    let err: Result<(), Report<AuthError, HasSeverity>> = fail_auth()
-        .diag()
-        .with_error_code("AUTH.INVALID_TOKEN")
-        .with_severity(Severity::Error)
-        .with_category("auth")
-        .with_retryable(false)
-        .with_ctx("request_id", "req-inspect");
+    let err: Result<(), Report<AuthError, HasSeverity>> = fail_auth().diag(|r| {
+        r.with_error_code("AUTH.INVALID_TOKEN")
+            .with_severity(Severity::Error)
+            .with_category("auth")
+            .with_retryable(false)
+            .with_ctx("request_id", "req-inspect")
+    });
 
     assert_eq!(
         err.report_error_code().map(ToString::to_string),

@@ -31,6 +31,14 @@ fn derive_source_errors_and_diag_work() {
     let src = up.source().expect("source exists");
     assert_eq!(src.to_string(), "db down");
 
-    let report = ClientError { code: 403 }.diag();
+    let report = ClientError { code: 403 }.to_report();
     assert_eq!(report.into_inner().to_string(), "client error code=403");
+}
+
+#[test]
+fn derive_direct_diag_on_client_error() {
+    // Directly call diag on a ClientError instance (inherent method provided by macro)
+    let report = ClientError { code: 403 }.diag(|r| r.attach_note("note"));
+    // Ensure we got a report and inner error renders as expected
+    assert_eq!(report.inner().to_string(), "client error code=403");
 }

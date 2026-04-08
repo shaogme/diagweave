@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{Attribute, Error, Fields, Ident, LitStr, Result, spanned::Spanned};
+use syn::{spanned::Spanned, Attribute, Error, Fields, Ident, LitStr, Result};
 
 #[derive(Clone)]
 pub(crate) enum ErrorDisplay {

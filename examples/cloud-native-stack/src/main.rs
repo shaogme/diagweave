@@ -2,7 +2,7 @@ use std::io;
 
 use diagweave::prelude::{
     AttachmentValue, Compact, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report,
-    ReportRenderOptions, ReportResultExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel,
+    ReportRenderOptions, ResultReportExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel,
     TraceId, register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
@@ -231,31 +231,32 @@ mod order {
         order_id: u64,
         amount_cents: u64,
     ) -> Result<(), Report<OrderError, HasSeverity>> {
-        payment::charge(amount_cents)
-            .with_ctx("order_id", order_id)
-            .with_ctx("order_amount_cents", amount_cents)
-            .attach_note("order pipeline entered payment stage")
-            .with_error_code("ORDER.PAYMENT_FAILED")
-            .with_severity(Severity::Error)
-            .with_category("order")
-            .with_retryable(true)
-            .with_display_cause("order payment stage failed")
-            .push_trace_event_with(
-                "order.payment",
-                Some(TraceEventLevel::Error),
-                Some(1_713_337_005_000_000_000),
-                vec![
-                    TraceEventAttribute {
-                        key: "order.id".into(),
-                        value: AttachmentValue::from(order_id),
-                    },
-                    TraceEventAttribute {
-                        key: "order.amount_cents".into(),
-                        value: AttachmentValue::from(amount_cents),
-                    },
-                ],
-            )
-            .map_err(|_err| OrderError::payment_failed(order_id))?;
+        payment::charge(amount_cents).and_then_report(|r| {
+            r.with_ctx("order_id", order_id)
+                .with_ctx("order_amount_cents", amount_cents)
+                .attach_note("order pipeline entered payment stage")
+                .with_error_code("ORDER.PAYMENT_FAILED")
+                .with_severity(Severity::Error)
+                .with_category("order")
+                .with_retryable(true)
+                .with_display_cause("order payment stage failed")
+                .push_trace_event_with(
+                    "order.payment",
+                    Some(TraceEventLevel::Error),
+                    Some(1_713_337_005_000_000_000),
+                    vec![
+                        TraceEventAttribute {
+                            key: "order.id".into(),
+                            value: AttachmentValue::from(order_id),
+                        },
+                        TraceEventAttribute {
+                            key: "order.amount_cents".into(),
+                            value: AttachmentValue::from(amount_cents),
+                        },
+                    ],
+                )
+                .map_err(|_err| OrderError::payment_failed(order_id))
+        })?;
         Ok(())
     }
 }
@@ -294,62 +295,65 @@ mod gateway {
     }
 
     fn payment_declined() -> Result<String, Report<ApiError, HasSeverity>> {
-        payment::charge(0)
-            .with_ctx("route", "/v1/charge")
-            .attach_note("gateway forwarding to payment")
-            .with_error_code("API.PAYMENT_DECLINED")
-            .with_severity(Severity::Warn)
-            .with_category("api")
-            .with_retryable(false)
-            .push_trace_event_with(
-                "gateway.forward.payment",
-                Some(TraceEventLevel::Warn),
-                Some(1_713_337_006_000_000_000),
-                vec![TraceEventAttribute {
-                    key: "http.route".into(),
-                    value: AttachmentValue::from("/v1/charge"),
-                }],
-            )
-            .map_err(ApiError::Payment)?;
+        payment::charge(0).and_then_report(|r| {
+            r.with_ctx("route", "/v1/charge")
+                .attach_note("gateway forwarding to payment")
+                .with_error_code("API.PAYMENT_DECLINED")
+                .with_severity(Severity::Warn)
+                .with_category("api")
+                .with_retryable(false)
+                .push_trace_event_with(
+                    "gateway.forward.payment",
+                    Some(TraceEventLevel::Warn),
+                    Some(1_713_337_006_000_000_000),
+                    vec![TraceEventAttribute {
+                        key: "http.route".into(),
+                        value: AttachmentValue::from("/v1/charge"),
+                    }],
+                )
+                .map_err(ApiError::Payment)
+        })?;
         Ok("OK".to_owned())
     }
 
     fn order_network_error() -> Result<String, Report<ApiError, HasSeverity>> {
-        order::create_with_amount(9002, 2)
-            .with_ctx("route", "/v1/order")
-            .attach_note("gateway forwarding to order service")
-            .with_error_code("API.ORDER_UPSTREAM_FAILURE")
-            .with_severity(Severity::Error)
-            .with_category("api")
-            .with_retryable(true)
-            .with_display_cause("order service call failed")
-            .push_trace_event_with(
-                "gateway.forward.order",
-                Some(TraceEventLevel::Error),
-                Some(1_713_337_007_000_000_000),
-                vec![TraceEventAttribute {
-                    key: "http.route".into(),
-                    value: AttachmentValue::from("/v1/order"),
-                }],
-            )
-            .map_err(ApiError::Order)?;
+        order::create_with_amount(9002, 2).and_then_report(|r| {
+            r.with_ctx("route", "/v1/order")
+                .attach_note("gateway forwarding to order service")
+                .with_error_code("API.ORDER_UPSTREAM_FAILURE")
+                .with_severity(Severity::Error)
+                .with_category("api")
+                .with_retryable(true)
+                .with_display_cause("order service call failed")
+                .push_trace_event_with(
+                    "gateway.forward.order",
+                    Some(TraceEventLevel::Error),
+                    Some(1_713_337_007_000_000_000),
+                    vec![TraceEventAttribute {
+                        key: "http.route".into(),
+                        value: AttachmentValue::from("/v1/order"),
+                    }],
+                )
+                .map_err(ApiError::Order)
+        })?;
         Ok("OK".to_owned())
     }
 
     fn success_path() -> Result<String, Report<ApiError, HasSeverity>> {
-        order::create(9001)
-            .with_ctx("route", "/v1/order")
-            .attach_note("gateway forwarding to order service")
-            .push_trace_event_with(
-                "gateway.forward.order",
-                Some(TraceEventLevel::Info),
-                Some(1_713_337_008_000_000_000),
-                vec![TraceEventAttribute {
-                    key: "http.route".into(),
-                    value: AttachmentValue::from("/v1/order"),
-                }],
-            )
-            .map_err(ApiError::Order)?;
+        order::create(9001).and_then_report(|r| {
+            r.with_ctx("route", "/v1/order")
+                .attach_note("gateway forwarding to order service")
+                .push_trace_event_with(
+                    "gateway.forward.order",
+                    Some(TraceEventLevel::Info),
+                    Some(1_713_337_008_000_000_000),
+                    vec![TraceEventAttribute {
+                        key: "http.route".into(),
+                        value: AttachmentValue::from("/v1/order"),
+                    }],
+                )
+                .map_err(ApiError::Order)
+        })?;
         Ok("OK".to_owned())
     }
 }

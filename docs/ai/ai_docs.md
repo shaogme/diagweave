@@ -3,7 +3,7 @@
 ## 1. `set!` Macro
 
 ### Overview
-Used to define a series of structured error enums (Error Sets). It automatically implements composition logic between sets, `From` conversions, snake_case named constructors, report semantics, and enum helpers (`diag()`/`source()`).
+Used to define a series of structured error enums (Error Sets). It automatically implements composition logic between sets, `From` conversions, snake_case named constructors, report semantics, and enum helpers (`to_report()`/`source()`/`diag()`).
 
 ### Syntax Definition
 ```text
@@ -52,7 +52,7 @@ set! {
 | :--- | :--- | :--- |
 | `AuthError::user_not_found(id: u64)` | `AuthError` | Snake_case constructor |
 | `AuthError::user_not_found_report(id: u64)` | `Report<AuthError>` | Returns a report object containing the current error |
-| `AuthError::diag(self)` | `Report<AuthError>` | Converts error instance into a report |
+| `AuthError::to_report(self)` | `Report<AuthError>` | Converts error instance into a report |
 | `AuthError::source(&self)` | `Option<&dyn Error>` | Access to the underlying error source |
 | `From<AuthError> for ServiceError` | `ServiceError` | Automatic mapping from subset to superset |
 
@@ -111,7 +111,7 @@ union! {
 - **From Injection**: Injects `impl From<T> for Union` for every external member type.
 - **Constructors**: Generates snake_case constructors and `*_report` helpers for inline and external variants.
 - **Options**: Supports `#[diagweave(constructor_prefix = "...", report_path = "...")]` on the union enum.
-- **Helpers**: Generates `diag()` and `source()` on the union enum.
+- **Helpers**: Generates `to_report()`, `source()`, and `diag()` on the union enum.
 
 ---
 
@@ -131,7 +131,7 @@ Provides convenient implementations of `Display` and `std::error::Error` traits 
 Any type deriving `Error` automatically gains the following helper methods:
 | Method Declaration | Return Type | Description |
 | :--- | :--- | :--- |
-| `pub fn diag(self)` | `Report<Self>` | Converts to a basic report object |
+| `pub fn to_report(self)` | `Report<Self>` | Converts to a basic report object |
 | `pub fn source(&self)` | `Option<&dyn Error>` | Convenient access to the underlying error source |
 
 ### Usage Example
@@ -299,28 +299,28 @@ let report = report.capture_stack_trace();
 
 ---
 
-## 5. `Result` Extension Traits (`Diagnostic` / `ReportResultExt` / `ReportResultInspectExt`)
+## 5. `Result` Extension Traits (`Diagnostic` / `ResultReportExt` / `InspectReportExt`)
 
 ### Overview
 Provides pipelines for seamless diagnostic info injection on error paths by implementing extension traits for `Result<T, E>` and `Result<T, Report<E>>`.
 
 ### Core Traits
 #### 1. `Diagnostic` (on `Result<T, E>`)
-- `diag()`: Lifts `Err(E)` to `Err(Report<E>)`.
-- `diag_note(msg)`: Lifts and injects note.
+- `to_report()`: Lifts `Err(E)` to `Err(Report<E>)`.
+- `to_report_note(msg)`: Lifts and injects note.
+- `diag(...)`: Short-hand for chaining a transformation on the error path. Generic signature:
+  `diag<E2, State2>(self, f: impl FnOnce(Report<E>) -> Report<E2, State2>) -> Result<T, Report<E2, State2>>`.
+  The closure receives a `Report<E>` and returns a `Report<E2, State2>`. When only adding metadata,
+  no explicit type annotations are needed; when transforming the error type (e.g., via `boundary` or `map_err`),
+  the return type must be annotated.
 
-#### 2. `ReportResultExt` (on `Result<T, Report<E>>`)
-Proxy versions of all `Report` chained configuration methods:
-- **Metadata**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **Context/Attachments**: `with_ctx(key, value)`, `with_system(key, value)`, `with_system_context(system)`, `attach_printable`/`attach_note`, `attach_payload`/`attach_payload`
-- **System Shape**: rendered `system` is structured as `system.service`, `system.deployment`, `system.runtime`, `system.request`
-- **Lazy Loading**: `with_ctx_lazy(key, f)`, `attach_note_lazy(f)` (closure runs only on Err)
-- **Display Causes**: `with_display_cause(c)`, `with_display_causes(cc)`
-- **Source Errors**: `with_diag_src_err(err)`
-- **Stack Trace**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
-- **Wrapping**: `boundary(outer)`, `map_err(map)`
+#### 2. `ResultReportExt` (on `Result<T, Report<E>>`)
+Instead of duplicating every `Report` method, this trait provides a single combinator:
+- `and_then_report(|r| r.with_ctx(...).with_severity(...))` — applies any chain of `Report` builder methods on the error path only
 
-#### 3. `ReportResultInspectExt` (on `Result<T, Report<E>>`)
+The closure receives an owned `Report` and must return an owned `Report`. On the `Ok` path the closure is never invoked, providing natural lazy semantics.
+
+#### 3. `InspectReportExt` (on `Result<T, Report<E>>`)
 Read-only helpers for error-path inspection without manually matching `Err`:
 - `report_ref()`, `report_metadata()`, `report_attachments()`
 - `report_error_code()`, `report_severity()`, `report_category()`, `report_retryable()`
@@ -336,11 +336,13 @@ fn process() -> Result<(), Report<io::Error, HasSeverity>> {
     let file_key = "file";
     let timestamp_key = "timestamp";
     fs::read_to_string("config.toml")
-        .diag()
-        .with_ctx(file_key, "config.toml") // Converts and attaches context
-        .with_severity(Severity::Warn)
-        .with_ctx_lazy(timestamp_key, || format!("{:?}", SystemTime::now()).into())
-        .attach_printable("failed to load system config")?;
+        .to_report()
+        .and_then_report(|r| {
+            r.with_ctx(file_key, "config.toml")
+                .with_severity(Severity::Warn)
+                .with_ctx(timestamp_key, ContextValue::String(format!("{:?}", SystemTime::now()).into()))
+                .attach_printable("failed to load system config")
+        })?;
         
     Ok(())
 }
@@ -679,12 +681,11 @@ fn db_operation() -> Result<(), DatabaseError> {
 
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()
-        .diag()
-        .with_ctx(
-            "db",
-            "primary",
-        )
-        .map_err(AppError::Db)?; // Maps DatabaseError to AppError, preserving DB-layer context
+        .to_report()
+        .and_then_report(|r| {
+            r.with_ctx("db", "primary")
+                .map_err(AppError::Db)
+        })?;
     Ok(())
 }
 ```

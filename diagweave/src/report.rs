@@ -19,7 +19,7 @@ use ref_str::StaticRefStr;
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
-pub use ext::{Diagnostic, ReportResultExt, ReportResultInspectExt};
+pub use ext::{Diagnostic, InspectReportExt, ResultReportExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, ContextMap, ContextValue,
     DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalErrorMeta, HasSeverity, MissingSeverity,

@@ -3,7 +3,7 @@
 ## 1. `set!` 宏
 
 ### 概览
-用于定义一系列结构化的错误枚举（Error Set），自动实现集合间的组合逻辑、`From` 转换、蛇形命名构造器、报告语义，以及枚举辅助方法（`diag()`/`source()`）。
+用于定义一系列结构化的错误枚举（Error Set），自动实现集合间的组合逻辑、`From` 转换、蛇形命名构造器、报告语义，以及枚举辅助方法（`to_report()`/`source()`/`diag()`）。
 
 ### 语法定义
 ```text
@@ -52,7 +52,7 @@ set! {
 | :--- | :--- | :--- |
 | `AuthError::user_not_found(id: u64)` | `AuthError` | 蛇形命名构造器 |
 | `AuthError::user_not_found_report(id: u64)` | `Report<AuthError>` | 返回包含当前错误的报告对象 |
-| `AuthError::diag(self)` | `Report<AuthError>` | 将错误实例转换为报告 |
+| `AuthError::to_report(self)` | `Report<AuthError>` | 将错误实例转换为报告 |
 | `AuthError::source(&self)` | `Option<&dyn Error>` | 读取底层 source 错误 |
 | `From<AuthError> for ServiceError` | `ServiceError` | 自动实现子集到超集的映射 |
 
@@ -111,7 +111,7 @@ union! {
 - **From 注入**：为每一个外部成员类型注入 `impl From<T> for Union`。
 - **构造器**：为内联与外部变体生成蛇形命名构造器与 `*_report`。
 - **选项**：支持在 union enum 上使用 `#[diagweave(constructor_prefix = \"...\", report_path = \"...\")]`。
-- **辅助方法**：自动生成 `diag()` 与 `source()`。
+- **辅助方法**：自动生成 `to_report()`、`source()` 与 `diag()`。
 
 ---
 
@@ -131,7 +131,7 @@ union! {
 任何派生了 `Error` 的类型会自动获得以下辅助方法：
 | 方法声明 | 返回类型 | 说明 |
 | :--- | :--- | :--- |
-| `pub fn diag(self)` | `Report<Self>` | 转换为基础报告对象 |
+| `pub fn to_report(self)` | `Report<Self>` | 转换为基础报告对象 |
 | `pub fn source(&self)` | `Option<&dyn Error>` | 便捷访问底层 Error 源 |
 
 ### 示例用法
@@ -296,28 +296,27 @@ let report = report.capture_stack_trace();
 
 ---
 
-## 5. `Result` 扩展特质 (`Diagnostic` / `ReportResultExt` / `ReportResultInspectExt`)
+## 5. `Result` 扩展特质 (`Diagnostic` / `ResultReportExt` / `InspectReportExt`)
 
 ### 概览
 通过为 `Result<T, E>` 和 `Result<T, Report<E>>` 实现扩展特质，提供在错误路径上无缝注入诊断信息的管道。
 
 ### 核心特质
 #### 1. `Diagnostic` (作用于 `Result<T, E>`)
-- `diag()`: 提升 `Err(E)` 为 `Err(Report<E>)`。
-- `diag_note(msg)`: 提升并注入备注。
+- `to_report()`: 提升 `Err(E)` 为 `Err(Report<E>)`。
+- `to_report_note(msg)`: 提升并注入备注。
+- `diag(...)`：Result<T, E> 上的快捷入口，泛型版本允许转换错误类型和状态类型；签名：
+  `diag<E2, State2>(self, f: impl FnOnce(Report<E>) -> Report<E2, State2>) -> Result<T, Report<E2, State2>>`。
+  闭包接收 `Report<E>` 并返回 `Report<E2, State2>`。当仅添加元数据时无需显式类型标注；
+  当转换错误类型（如通过 `boundary` 或 `map_err`）时需要标注返回类型。
 
-#### 2. `ReportResultExt` (作用于 `Result<T, Report<E>>`)
-所有 `Report` 的链式配置方法均有对应的代理版本：
-- **元数据**: `with_severity`, `with_error_code`, `with_category`, `with_retryable`
-- **上下文/附件**: `with_ctx(key, value)`、`with_system(key, value)`、`with_system_context(system)`、`attach_printable`/`attach_note`、`attach_payload`/`attach_payload`
-- **system 结构**: `system` 现在是强类型对象，固定分区为 `system.service`、`system.deployment`、`system.runtime`、`system.request`
-- **延迟加载**: `with_ctx_lazy(key, f)`、`attach_note_lazy(f)` (仅在 Err 时执行闭包)
-- **展示原因**: `with_display_cause(c)`, `with_display_causes(cc)`
-- **错误源**: `with_diag_src_err(err)`
-- **堆栈**: `capture_stack_trace()`, `clear_stack_trace()`, `with_stack_trace(st)`
-- **包装**: `boundary(outer)`, `map_err(map)`
+#### 2. `ResultReportExt` (作用于 `Result<T, Report<E>>`)
+不再重复每个 `Report` 方法，而是提供单一组合子：
+- `and_then_report(|r| r.with_ctx(...).with_severity(...))` — 仅在错误路径上应用任意 `Report` 方法链
 
-#### 3. `ReportResultInspectExt` (作用于 `Result<T, Report<E>>`)
+闭包接收 owned `Report` 并返回 owned `Report`。在 `Ok` 路径上闭包永远不会被调用，提供天然的延迟语义。
+
+#### 3. `InspectReportExt` (作用于 `Result<T, Report<E>>`)
 用于在错误路径做只读查询，避免手动 `match Err(report)`：
 - `report_ref()`、`report_metadata()`、`report_attachments()`
 - `report_error_code()`、`report_severity()`、`report_category()`、`report_retryable()`
@@ -333,11 +332,13 @@ fn process() -> Result<(), Report<io::Error, HasSeverity>> {
     let file_key = "file";
     let timestamp_key = "timestamp";
     fs::read_to_string("config.toml")
-        .diag()
-        .with_ctx(file_key, "config.toml") // 转换并附加 context
-        .with_severity(Severity::Warn)
-        .with_ctx_lazy(timestamp_key, || format!("{:?}", SystemTime::now()).into())
-        .attach_printable("failed to load system config")?;
+        .to_report()
+        .and_then_report(|r| {
+            r.with_ctx(file_key, "config.toml")
+                .with_severity(Severity::Warn)
+                .with_ctx(timestamp_key, ContextValue::String(format!("{:?}", SystemTime::now()).into()))
+                .attach_printable("failed to load system config")
+        })?;
         
     Ok(())
 }
@@ -676,12 +677,11 @@ fn db_operation() -> Result<(), DatabaseError> {
 
 fn service_layer() -> Result<(), Report<AppError>> {
     db_operation()
-        .diag()
-        .with_ctx(
-            "db",
-            "primary",
-        )
-        .map_err(AppError::Db)?; // 将 DatabaseError 映射为 AppError，同时保留 DB 层的 context
+        .to_report()
+        .and_then_report(|r| {
+            r.with_ctx("db", "primary")
+                .map_err(AppError::Db)
+        })?;
     Ok(())
 }
 ```

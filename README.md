@@ -309,7 +309,8 @@ Read APIs on `Result<T, Report<E>>` via `InspectReportExt`:
 `ErrorCode` design:
 
 - dual representation: `Integer(i64)` or `String(StaticRefStr)`
-- write path: `with_error_code(x)` accepts `impl Into<ErrorCode>`
+- write path: `set_error_code(x)` or `with_error_code(x)` accepts `impl Into<ErrorCode>`
+- `set_error_code(x)` replaces existing value; `with_error_code(x)` only sets if not already set
 - integer inputs that fit in `i64` are stored as `Integer`; overflow falls back to decimal `String`
 - read path: `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` to integer types (`i8..i128`, `u8..u128`, `isize`, `usize`)
 - string path: `Into<String>` and `to_string()` are both supported

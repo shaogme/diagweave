@@ -243,10 +243,14 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 `system` is no longer a flat free-form map in rendered JSON. It is emitted as a typed governance object with fixed top-level sections: `system.service`, `system.deployment`, `system.runtime`, and `system.request`.
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
-| `with_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal) |
-| `with_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001") |
-| `with_category` | `impl Into<StaticRefStr>` | Set error category (for monitoring metrics) |
-| `with_retryable` | `bool` | Mark if the error is suggested to be retried |
+| `set_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal), replacing existing value |
+| `with_severity` | `Severity` | Set severity only if not already set (preserves underlying diagnostic info) |
+| `set_error_code` | `impl Into<ErrorCode>` | Set stable error code (e.g., "E001"), replacing existing value |
+| `with_error_code` | `impl Into<ErrorCode>` | Set error code only if not already set (preserves underlying diagnostic info) |
+| `set_category` | `impl Into<StaticRefStr>` | Set error category (for monitoring metrics), replacing existing value |
+| `with_category` | `impl Into<StaticRefStr>` | Set category only if not already set (preserves underlying diagnostic info) |
+| `set_retryable` | `bool` | Mark if the error is suggested to be retried, replacing existing value |
+| `with_retryable` | `bool` | Set retryable flag only if not already set (preserves underlying diagnostic info) |
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | Add multiple display-cause strings |
 | `with_diag_src_err` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |

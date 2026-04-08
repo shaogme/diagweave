@@ -240,10 +240,14 @@ pub struct Report<E> {
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加系统上下文键值对 |
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
 | `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
-| `with_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal) |
-| `with_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001") |
-| `with_category` | `impl Into<StaticRefStr>` | 设置错误分类 (用于监控指标) |
-| `with_retryable` | `bool` | 标记该错误是否建议重试 |
+| `set_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal)，覆盖已有值 |
+| `with_severity` | `Severity` | 设置严重程度，仅当未设置时生效 (保留底层诊断信息) |
+| `set_error_code` | `impl Into<ErrorCode>` | 设置稳定的错误代码 (如 "E001")，覆盖已有值 |
+| `with_error_code` | `impl Into<ErrorCode>` | 设置错误代码，仅当未设置时生效 (保留底层诊断信息) |
+| `set_category` | `impl Into<StaticRefStr>` | 设置错误分类 (用于监控指标)，覆盖已有值 |
+| `with_category` | `impl Into<StaticRefStr>` | 设置错误分类，仅当未设置时生效 (保留底层诊断信息) |
+| `set_retryable` | `bool` | 标记该错误是否建议重试，覆盖已有值 |
+| `with_retryable` | `bool` | 标记是否建议重试，仅当未设置时生效 (保留底层诊断信息) |
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | 批量添加展示原因字符串 |
 | `with_diag_src_err` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |

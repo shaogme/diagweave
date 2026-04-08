@@ -181,27 +181,59 @@ where
         }
     }
 
-    /// Returns metadata with the specified error code.
-    pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
+    /// Sets the error code, replacing any existing value.
+    pub fn set_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
         self.error_code = Some(error_code.into());
         self
     }
 
+    /// Sets the error code only if not already set.
+    pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
+        if self.error_code.is_none() {
+            self.error_code = Some(error_code.into());
+        }
+        self
+    }
+
     /// Replaces the metadata typestate with a concrete severity.
-    pub fn with_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
+    pub fn set_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
         self.map_severity(HasSeverity::new(severity))
     }
 
-    /// Returns metadata with the specified category.
-    pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
+    /// Sets the category, replacing any existing value.
+    pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
         self.category = Some(category.into());
         self
     }
 
-    /// Returns metadata with the specified retryability flag.
-    pub fn with_retryable(mut self, retryable: bool) -> Self {
+    /// Sets the category only if not already set.
+    pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
+        if self.category.is_none() {
+            self.category = Some(category.into());
+        }
+        self
+    }
+
+    /// Sets the retryability flag, replacing any existing value.
+    pub fn set_retryable(mut self, retryable: bool) -> Self {
         self.retryable = Some(retryable);
         self
+    }
+
+    /// Sets the retryability flag only if not already set.
+    pub fn with_retryable(mut self, retryable: bool) -> Self {
+        if self.retryable.is_none() {
+            self.retryable = Some(retryable);
+        }
+        self
+    }
+}
+
+impl ReportMetadata<MissingSeverity> {
+    /// Sets the severity only if not already set (always sets for MissingSeverity).
+    /// This is equivalent to `set_severity` for the missing-severity typestate.
+    pub fn with_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
+        self.set_severity(severity)
     }
 }
 
@@ -209,6 +241,12 @@ impl ReportMetadata<HasSeverity> {
     /// Returns the guaranteed severity.
     pub const fn required_severity(&self) -> Severity {
         self.severity.severity()
+    }
+
+    /// Returns self unchanged since severity is already set.
+    /// This allows conditional chaining without type-state changes.
+    pub fn with_severity(self, _severity: Severity) -> Self {
+        self
     }
 }
 

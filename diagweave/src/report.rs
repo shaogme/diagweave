@@ -66,6 +66,14 @@ impl<E> Report<E, MissingSeverity> {
         report.apply_global_context();
         report
     }
+
+    /// Sets the severity for the report.
+    ///
+    /// This is an alias for `set_severity()` for convenience when starting
+    /// from a `Report<E, MissingSeverity>`.
+    pub fn with_severity(self, severity: Severity) -> Report<E, HasSeverity> {
+        self.set_severity(severity)
+    }
 }
 
 impl<E, State> Report<E, State>
@@ -368,14 +376,20 @@ where
         }
     }
 
-    /// Sets the error code for the report.
+    /// Sets the error code for the report, replacing any existing value.
+    pub fn set_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
+        self.metadata = self.metadata.set_error_code(error_code);
+        self
+    }
+
+    /// Sets the error code only if not already set.
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
         self.metadata = self.metadata.with_error_code(error_code);
         self
     }
 
-    /// Sets the severity for the report.
-    pub fn with_severity(self, severity: Severity) -> Report<E, HasSeverity> {
+    /// Sets the severity for the report, replacing any existing value.
+    pub fn set_severity(self, severity: Severity) -> Report<E, HasSeverity> {
         let Self {
             inner,
             metadata,
@@ -383,18 +397,30 @@ where
         } = self;
         Report {
             inner,
-            metadata: metadata.with_severity(severity),
+            metadata: metadata.set_severity(severity),
             cold,
         }
     }
 
-    /// Sets the category for the report.
+    /// Sets the category for the report, replacing any existing value.
+    pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
+        self.metadata = self.metadata.set_category(category);
+        self
+    }
+
+    /// Sets the category only if not already set.
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
         self.metadata = self.metadata.with_category(category);
         self
     }
 
-    /// Sets whether the error is retryable.
+    /// Sets whether the error is retryable, replacing any existing value.
+    pub fn set_retryable(mut self, retryable: bool) -> Self {
+        self.metadata = self.metadata.set_retryable(retryable);
+        self
+    }
+
+    /// Sets whether the error is retryable only if not already set.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
         self.metadata = self.metadata.with_retryable(retryable);
         self
@@ -631,6 +657,16 @@ where
             visit(err)?;
         }
         Ok(iter.state())
+    }
+}
+
+impl<E> Report<E, HasSeverity> {
+    /// Sets the severity only if not already set (returns self unchanged since severity is already present).
+    ///
+    /// This allows conditional chaining without type-state changes when severity
+    /// is already set. Use `set_severity()` to force a new severity value.
+    pub fn with_severity(self, _severity: Severity) -> Self {
+        self
     }
 }
 

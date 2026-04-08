@@ -309,7 +309,8 @@ Note 附件读取：
 `ErrorCode` 设计：
 
 - 双表示：`Integer(i64)` 或 `String(StaticRefStr)`
-- 写入路径：`with_error_code(x)` 接收 `impl Into<ErrorCode>`
+- 写入路径：`set_error_code(x)` 或 `with_error_code(x)` 接收 `impl Into<ErrorCode>`
+- `set_error_code(x)` 替换已有值；`with_error_code(x)` 仅当未设置时才设置（保留底层诊断信息）
 - 整型输入若可放入 `i64` 则存为 `Integer`；超范围自动降级为十进制字符串 `String`
 - 读取路径：支持 `TryFrom<ErrorCode>` / `TryFrom<&ErrorCode>` 到整型（`i8..i128`、`u8..u128`、`isize`、`usize`）
 - 字符串路径：同时支持 `Into<String>` 与 `to_string()`

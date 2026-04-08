@@ -169,6 +169,19 @@ mod payment {
     }
 }
 
+union! {
+    #[derive(Debug)]
+    pub enum ScenarioError =
+        order::OrderError as Order |
+        payment::PaymentError as Payment |
+        {
+            #[display("bad request: {reason}")]
+            BadRequest { reason: String },
+        }
+}
+
+type ScenarioReport = Report<ScenarioError, HasSeverity>;
+
 mod order {
     use super::*;
 
@@ -264,19 +277,8 @@ mod order {
 mod gateway {
     use super::*;
 
-    union! {
-        #[derive(Debug)]
-        pub enum ApiError =
-            order::OrderError as Order |
-            payment::PaymentError as Payment |
-            {
-                #[display("bad request: {reason}")]
-                BadRequest { reason: String },
-            }
-    }
-
-    /// Handles a single API request and maps failures to API errors.
-    pub fn handle_request(request_id: &str) -> Result<String, Report<ApiError, HasSeverity>> {
+    /// Handles a single API request and maps failures to the shared scenario error union.
+    pub fn handle_request(request_id: &str) -> Result<String, ScenarioReport> {
         match request_id {
             "bad-request" => bad_request(),
             "payment-declined" => payment_declined(),
@@ -285,16 +287,16 @@ mod gateway {
         }
     }
 
-    fn bad_request() -> Result<String, Report<ApiError, HasSeverity>> {
-        Err(
-            Report::new(ApiError::bad_request("missing auth header".to_owned()))
-                .with_severity(Severity::Warn)
-                .attach_note("gateway rejected request")
-                .with_ctx("route", "/v1/order"),
-        )
+    fn bad_request() -> Result<String, ScenarioReport> {
+        Err(Report::new(ScenarioError::BadRequest {
+            reason: "missing auth header".to_owned(),
+        })
+        .with_severity(Severity::Warn)
+        .attach_note("gateway rejected request")
+        .with_ctx("route", "/v1/order"))
     }
 
-    fn payment_declined() -> Result<String, Report<ApiError, HasSeverity>> {
+    fn payment_declined() -> Result<String, ScenarioReport> {
         payment::charge(0).and_then_report(|r| {
             r.with_ctx("route", "/v1/charge")
                 .attach_note("gateway forwarding to payment")
@@ -311,12 +313,12 @@ mod gateway {
                         value: AttachmentValue::from("/v1/charge"),
                     }],
                 )
-                .map_err(ApiError::Payment)
+                .map_err(ScenarioError::Payment)
         })?;
         Ok("OK".to_owned())
     }
 
-    fn order_network_error() -> Result<String, Report<ApiError, HasSeverity>> {
+    fn order_network_error() -> Result<String, ScenarioReport> {
         order::create_with_amount(9002, 2).and_then_report(|r| {
             r.with_ctx("route", "/v1/order")
                 .attach_note("gateway forwarding to order service")
@@ -334,12 +336,12 @@ mod gateway {
                         value: AttachmentValue::from("/v1/order"),
                     }],
                 )
-                .map_err(ApiError::Order)
+                .map_err(ScenarioError::Order)
         })?;
         Ok("OK".to_owned())
     }
 
-    fn success_path() -> Result<String, Report<ApiError, HasSeverity>> {
+    fn success_path() -> Result<String, ScenarioReport> {
         order::create(9001).and_then_report(|r| {
             r.with_ctx("route", "/v1/order")
                 .attach_note("gateway forwarding to order service")
@@ -352,7 +354,7 @@ mod gateway {
                         value: AttachmentValue::from("/v1/order"),
                     }],
                 )
-                .map_err(ApiError::Order)
+                .map_err(ScenarioError::Order)
         })?;
         Ok("OK".to_owned())
     }
@@ -413,10 +415,8 @@ fn main() {
 
     for (label, scenario) in scenarios {
         match scenario.run() {
-            ScenarioResult::Ok(value) => println!("[{label}] OK: {value}"),
-            ScenarioResult::Api(report) => render_report(label, report),
-            ScenarioResult::Order(report) => render_report(label, report),
-            ScenarioResult::Payment(report) => render_report(label, report),
+            Ok(value) => println!("[{label}] OK: {value}"),
+            Err(report) => render_report(label, report),
         }
     }
 }
@@ -428,32 +428,20 @@ enum Scenario<'a> {
 }
 
 impl<'a> Scenario<'a> {
-    fn run(self) -> ScenarioResult {
+    fn run(self) -> Result<String, ScenarioReport> {
         match self {
-            Scenario::Api(request_id) => match gateway::handle_request(request_id) {
-                Ok(value) => ScenarioResult::Ok(value),
-                Err(report) => ScenarioResult::Api(report),
-            },
-            Scenario::Order(order_id) => match order::create(order_id) {
-                Ok(()) => ScenarioResult::Ok("OK".to_owned()),
-                Err(report) => ScenarioResult::Order(report),
-            },
-            Scenario::Payment(amount_cents) => match payment::charge(amount_cents) {
-                Ok(()) => ScenarioResult::Ok("OK".to_owned()),
-                Err(report) => ScenarioResult::Payment(report),
-            },
+            Scenario::Api(request_id) => gateway::handle_request(request_id),
+            Scenario::Order(order_id) => order::create(order_id)
+                .map(|()| "OK".to_owned())
+                .map_err(|report| report.map_err(ScenarioError::Order)),
+            Scenario::Payment(amount_cents) => payment::charge(amount_cents)
+                .map(|()| "OK".to_owned())
+                .map_err(|report| report.map_err(ScenarioError::Payment)),
         }
     }
 }
 
-enum ScenarioResult {
-    Ok(String),
-    Api(Report<gateway::ApiError, HasSeverity>),
-    Order(Report<order::OrderError, HasSeverity>),
-    Payment(Report<payment::PaymentError, HasSeverity>),
-}
-
-fn render_report(label: &str, report: Report<impl std::error::Error + 'static, HasSeverity>) {
+fn render_report(label: &str, report: ScenarioReport) {
     let pretty_opts = ReportRenderOptions {
         pretty_indent: PrettyIndent::Spaces(2),
         show_empty_sections: false,

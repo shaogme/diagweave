@@ -118,7 +118,7 @@ where
 {
     let metadata = report.metadata();
     let has_metadata = metadata.error_code().is_some()
-        || metadata.severity().is_some()
+        || report.severity().is_some()
         || metadata.category().is_some()
         || metadata.retryable().is_some();
 
@@ -128,25 +128,26 @@ where
             write_indent(f, options.pretty_indent)?;
             writeln!(f, "- (none)")?;
         } else {
-            render_gov_meta(f, metadata, options.pretty_indent)?;
+            render_gov_meta(f, report, options.pretty_indent)?;
         }
     }
     Ok(())
 }
 
-fn render_gov_meta<State>(
+fn render_gov_meta<E, State>(
     f: &mut Formatter<'_>,
-    metadata: &crate::report::ReportMetadata<State>,
+    report: &Report<E, State>,
     indent: PrettyIndent,
 ) -> fmt::Result
 where
     State: SeverityState,
 {
+    let metadata = report.metadata();
     if let Some(error_code) = metadata.error_code() {
         write_indent(f, indent)?;
         writeln!(f, "- error_code: {error_code}")?;
     }
-    if let Some(severity) = metadata.severity() {
+    if let Some(severity) = report.severity() {
         write_indent(f, indent)?;
         writeln!(f, "- severity: {severity}")?;
     }

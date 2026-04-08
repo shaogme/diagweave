@@ -38,13 +38,13 @@ pub use trace::{
 #[cfg(feature = "trace")]
 pub use types::GlobalTraceContext;
 
-use types::{DiagnosticBag, append_source_chain, limit_depth_source_chain};
+use types::{ColdData, DiagnosticBag, append_source_chain, limit_depth_source_chain};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 pub struct Report<E, State = MissingSeverity> {
     inner: E,
-    metadata: ReportMetadata<State>,
-    cold: Option<Box<DiagnosticBag>>,
+    severity: State,
+    cold: Option<Box<ColdData>>,
     options: ReportOptions,
 }
 
@@ -54,14 +54,14 @@ impl<E> Report<E, MissingSeverity> {
         #[cfg(feature = "std")]
         let mut report = Self {
             inner,
-            metadata: ReportMetadata::default(),
+            severity: MissingSeverity,
             cold: None,
             options: ReportOptions::default(),
         };
         #[cfg(not(feature = "std"))]
         let report = Self {
             inner,
-            metadata: ReportMetadata::default(),
+            severity: MissingSeverity,
             cold: None,
             options: ReportOptions::default(),
         };
@@ -209,28 +209,36 @@ where
     }
 
     /// Returns the metadata associated with the report.
-    pub fn metadata(&self) -> &ReportMetadata<State> {
-        &self.metadata
+    pub fn metadata(&self) -> &ReportMetadata {
+        match self.cold.as_deref() {
+            Some(cold) => &cold.metadata,
+            None => ReportMetadata::default_ref(),
+        }
     }
 
     /// Returns the error code from report metadata, if present.
     pub fn error_code(&self) -> Option<&ErrorCode> {
-        self.metadata().error_code()
+        self.cold.as_deref().and_then(|c| c.metadata.error_code())
     }
 
-    /// Returns the severity from report metadata, if present.
+    /// Returns the severity from report typestate.
     pub fn severity(&self) -> Option<Severity> {
-        self.metadata().severity()
+        self.severity.severity()
+    }
+
+    /// Returns the severity state from report typestate.
+    pub(crate) fn severity_state(&self) -> State {
+        self.severity
     }
 
     /// Returns the category from report metadata, if present.
     pub fn category(&self) -> Option<&str> {
-        self.metadata().category()
+        self.cold.as_deref().and_then(|c| c.metadata.category())
     }
 
     /// Returns whether the report is marked retryable, if present.
     pub fn retryable(&self) -> Option<bool> {
-        self.metadata().retryable()
+        self.cold.as_deref().and_then(|c| c.metadata.retryable())
     }
 
     /// Returns the stack trace associated with the report, if any.
@@ -240,24 +248,20 @@ where
     }
 
     fn diagnostics(&self) -> Option<&DiagnosticBag> {
-        self.cold.as_deref()
+        self.cold.as_deref().map(|cold| &cold.bag)
     }
 
-    fn ensure_cold(&mut self) -> &mut DiagnosticBag {
+    fn ensure_cold(&mut self) -> &mut ColdData {
         self.cold
-            .get_or_insert_with(|| Box::new(DiagnosticBag::default()))
-            .as_mut()
+            .get_or_insert_with(|| Box::new(ColdData::default()))
     }
 
     fn diagnostics_mut(&mut self) -> &mut DiagnosticBag {
-        self.ensure_cold()
+        &mut self.ensure_cold().bag
     }
 
     #[cfg(feature = "std")]
-    fn apply_global_context(&mut self)
-    where
-        State: Clone,
-    {
+    fn apply_global_context(&mut self) {
         let Some(injector) = global_context_injector().get() else {
             return;
         };
@@ -275,14 +279,15 @@ where
         } = global;
 
         if let Some(error) = error {
+            let cold = self.ensure_cold();
             if let Some(error_code) = error.error_code {
-                self.metadata = self.metadata.clone().with_error_code(error_code);
+                cold.metadata = cold.metadata.clone().with_error_code(error_code);
             }
             if let Some(category) = error.category {
-                self.metadata = self.metadata.clone().with_category(category);
+                cold.metadata = cold.metadata.clone().with_category(category);
             }
             if let Some(retryable) = error.retryable {
-                self.metadata = self.metadata.clone().with_retryable(retryable);
+                cold.metadata = cold.metadata.clone().with_retryable(retryable);
             }
         }
 
@@ -367,33 +372,29 @@ where
     }
 
     /// Sets the metadata for the report.
-    pub fn with_metadata<NewState>(self, metadata: ReportMetadata<NewState>) -> Report<E, NewState>
-    where
-        NewState: SeverityState,
-    {
-        let Self {
-            inner,
-            cold,
-            options,
-            ..
-        } = self;
-        Report {
-            inner,
-            metadata,
-            cold,
-            options,
+    pub fn with_metadata(mut self, metadata: ReportMetadata) -> Self {
+        if let Some(cold) = self.cold.as_mut() {
+            cold.metadata = metadata;
+        } else {
+            self.cold = Some(Box::new(ColdData {
+                metadata,
+                bag: DiagnosticBag::default(),
+            }));
         }
+        self
     }
 
     /// Sets the error code for the report, replacing any existing value.
     pub fn set_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        self.metadata = self.metadata.set_error_code(error_code);
+        let cold = self.ensure_cold();
+        cold.metadata = cold.metadata.clone().set_error_code(error_code);
         self
     }
 
     /// Sets the error code only if not already set.
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        self.metadata = self.metadata.with_error_code(error_code);
+        let cold = self.ensure_cold();
+        cold.metadata = cold.metadata.clone().with_error_code(error_code);
         self
     }
 
@@ -401,13 +402,13 @@ where
     pub fn set_severity(self, severity: Severity) -> Report<E, HasSeverity> {
         let Self {
             inner,
-            metadata,
+            severity: _,
             cold,
             options,
         } = self;
         Report {
             inner,
-            metadata: metadata.set_severity(severity),
+            severity: HasSeverity::new(severity),
             cold,
             options,
         }
@@ -415,25 +416,29 @@ where
 
     /// Sets the category for the report, replacing any existing value.
     pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        self.metadata = self.metadata.set_category(category);
+        let cold = self.ensure_cold();
+        cold.metadata = cold.metadata.clone().set_category(category);
         self
     }
 
     /// Sets the category only if not already set.
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        self.metadata = self.metadata.with_category(category);
+        let cold = self.ensure_cold();
+        cold.metadata = cold.metadata.clone().with_category(category);
         self
     }
 
     /// Sets whether the error is retryable, replacing any existing value.
     pub fn set_retryable(mut self, retryable: bool) -> Self {
-        self.metadata = self.metadata.set_retryable(retryable);
+        let cold = self.ensure_cold();
+        cold.metadata = cold.metadata.clone().set_retryable(retryable);
         self
     }
 
     /// Sets whether the error is retryable only if not already set.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
-        self.metadata = self.metadata.with_retryable(retryable);
+        let cold = self.ensure_cold();
+        cold.metadata = cold.metadata.clone().with_retryable(retryable);
         self
     }
 
@@ -588,7 +593,7 @@ where
     {
         let Self {
             inner,
-            metadata,
+            severity,
             cold,
             options,
         } = self;
@@ -601,7 +606,7 @@ where
             // First, compute the existing source chain from inner.source() or stored chain
             let existing_source_chain = cold
                 .as_ref()
-                .and_then(|diag| diag.origin_source_errors.clone())
+                .and_then(|c| c.bag.origin_source_errors.clone())
                 .or_else(|| {
                     inner.source().map(|source| {
                         SourceErrorChain::from_source(
@@ -628,58 +633,36 @@ where
             // Now create the outer error
             let outer = map(inner);
 
-            // Extract diagnostic data from the original cold using a helper struct
-            struct ExtractedDiag {
-                #[cfg(feature = "trace")]
-                trace: Option<ReportTrace>,
-                stack_trace: Option<StackTrace>,
-                context: ContextMap,
-                system: SystemContext,
-                attachments: Vec<Attachment>,
-                display_causes: Option<DisplayCauseChain>,
-                diagnostic_source_errors: Option<SourceErrorChain>,
-            }
-
-            let extracted = cold.map_or(
-                ExtractedDiag {
-                    #[cfg(feature = "trace")]
-                    trace: None,
-                    stack_trace: None,
-                    context: ContextMap::default(),
-                    system: SystemContext::default(),
-                    attachments: Vec::new(),
-                    display_causes: None,
-                    diagnostic_source_errors: None,
-                },
-                |b| {
-                    let diag = *b;
-                    ExtractedDiag {
-                        #[cfg(feature = "trace")]
-                        trace: diag.trace,
-                        stack_trace: diag.stack_trace,
-                        context: diag.context,
-                        system: diag.system,
-                        attachments: diag.attachments,
-                        display_causes: diag.display_causes,
-                        diagnostic_source_errors: diag.diagnostic_source_errors,
-                    }
-                },
-            );
+            // Extract diagnostic data from the original cold
+            let new_cold = match cold {
+                Some(c) => {
+                    let c = *c;
+                    Some(Box::new(ColdData {
+                        metadata: c.metadata,
+                        bag: DiagnosticBag {
+                            #[cfg(feature = "trace")]
+                            trace: c.bag.trace,
+                            stack_trace: c.bag.stack_trace,
+                            context: c.bag.context,
+                            system: c.bag.system,
+                            attachments: c.bag.attachments,
+                            display_causes: c.bag.display_causes,
+                            origin_source_errors: Some(origin_source_errors),
+                            diagnostic_source_errors: c.bag.diagnostic_source_errors,
+                        },
+                    }))
+                }
+                None => {
+                    let mut cold_data = ColdData::new(ReportMetadata::default());
+                    cold_data.bag.origin_source_errors = Some(origin_source_errors);
+                    Some(Box::new(cold_data))
+                }
+            };
 
             Report {
                 inner: outer,
-                metadata,
-                cold: Some(Box::new(DiagnosticBag {
-                    #[cfg(feature = "trace")]
-                    trace: extracted.trace,
-                    stack_trace: extracted.stack_trace,
-                    context: extracted.context,
-                    system: extracted.system,
-                    attachments: extracted.attachments,
-                    display_causes: extracted.display_causes,
-                    origin_source_errors: Some(origin_source_errors),
-                    diagnostic_source_errors: extracted.diagnostic_source_errors,
-                })),
+                severity,
+                cold: new_cold,
                 options,
             }
         } else {
@@ -687,7 +670,7 @@ where
             let outer = map(inner);
             Report {
                 inner: outer,
-                metadata,
+                severity,
                 cold,
                 options,
             }

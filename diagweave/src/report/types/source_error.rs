@@ -32,6 +32,57 @@ pub(crate) struct DiagnosticBag {
     pub(crate) diagnostic_source_errors: Option<SourceErrorChain>,
 }
 
+impl Clone for DiagnosticBag {
+    fn clone(&self) -> Self {
+        Self {
+            #[cfg(feature = "trace")]
+            trace: self.trace.clone(),
+            stack_trace: self.stack_trace.clone(),
+            context: self.context.clone(),
+            system: self.system.clone(),
+            attachments: self.attachments.clone(),
+            display_causes: self.display_causes.clone(),
+            origin_source_errors: self.origin_source_errors.clone(),
+            diagnostic_source_errors: self.diagnostic_source_errors.clone(),
+        }
+    }
+}
+
+impl PartialEq for DiagnosticBag {
+    fn eq(&self, other: &Self) -> bool {
+        #[cfg(feature = "trace")]
+        if self.trace != other.trace {
+            return false;
+        }
+        self.stack_trace == other.stack_trace
+            && self.context == other.context
+            && self.system == other.system
+            && self.attachments == other.attachments
+            && self.display_causes == other.display_causes
+            && self.origin_source_errors == other.origin_source_errors
+            && self.diagnostic_source_errors == other.diagnostic_source_errors
+    }
+}
+
+/// Cold data storage for Report - contains metadata and diagnostic bag.
+/// This struct is used to reduce Report's size by combining
+/// metadata and DiagnosticBag into a single boxed structure.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct ColdData {
+    pub(crate) metadata: ReportMetadata,
+    pub(crate) bag: DiagnosticBag,
+}
+
+impl ColdData {
+    /// Creates a new ColdData with the given metadata and empty diagnostic bag.
+    pub(crate) fn new(metadata: ReportMetadata) -> Self {
+        Self {
+            metadata,
+            bag: DiagnosticBag::default(),
+        }
+    }
+}
+
 /// Global context information that can be injected into reports.
 #[derive(Debug, Clone, Default)]
 pub struct GlobalContext {

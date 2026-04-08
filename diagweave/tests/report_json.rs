@@ -141,15 +141,13 @@ fn report_metadata_requires_explicit_severity_typestate_for_deserialization() {
     })
     .to_string();
 
-    let metadata: ReportMetadata<HasSeverity> =
-        serde_json::from_str(&json).expect("explicit typestate should deserialize");
+    let metadata: ReportMetadata =
+        serde_json::from_str(&json).expect("metadata should deserialize");
 
     assert_eq!(
         metadata.error_code().map(ToString::to_string),
         Some("API.UNAUTHORIZED".to_owned())
     );
-    assert_eq!(metadata.severity(), Some(Severity::Error));
-    assert_eq!(metadata.severity(), Some(Severity::Error));
     assert_eq!(metadata.category(), Some("auth"));
     assert_eq!(metadata.retryable(), Some(false));
 }

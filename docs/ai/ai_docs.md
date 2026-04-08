@@ -163,10 +163,16 @@ Hot path strings such as `category`, `trace_state`, trace event names, and stack
 
 ### Declaration and Definition
 ```rust
-struct ColdData;
+use diagweave::report::ReportOptions;
 
-pub struct Report<E> {
+struct ColdData {
+    metadata: ReportMetadata,
+    bag: DiagnosticBag,
+}
+
+pub struct Report<E, State = MissingSeverity> {
     inner: E,
+    severity: State,
     cold: Option<Box<ColdData>>,
     options: ReportOptions,
 }
@@ -181,7 +187,7 @@ pub struct Report<E> {
 | `report.attachments()` | Returns a list of all associated attachments (`&[Attachment]`) |
 | `report.metadata()` | Returns a reference to the raw metadata (`&ReportMetadata`) |
 | `report.error_code()` | Reads metadata error code (`Option<&ErrorCode>`) |
-| `report.severity()` | Reads metadata severity (`Option<Severity>`) |
+| `report.severity()` | Reads severity from the typestate (`Option<Severity>`) |
 | `report.category()` | Reads metadata category (`Option<&str>`) |
 | `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
@@ -201,7 +207,7 @@ pub struct Report<E> {
 | `report.set_accumulate_source_chain(accumulate: bool)` | Quick toggle for `map_err()` origin `source` chain accumulation |
 | `report.map_err(map: FnOnce(E) -> Outer)`| Maps internal error type while preserving diagnostics; when source chain accumulation is enabled, the old inner error is attached to the new error's `source` chain |
 
-`ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `severity()`, `category()`, and `retryable()`, while composition uses builder methods such as `with_error_code(...)` and `with_severity(...)`.
+`ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `category()`, and `retryable()`. Severity is stored directly in the `Report` typestate, not in `ReportMetadata`. Composition uses builder methods such as `with_error_code(...)` and `set_severity(...)`.
 
 ### `ReportOptions`
 

@@ -163,10 +163,16 @@ enum FileError {
 
 ### 声明定义
 ```rust
-struct ColdData;
+use diagweave::report::ReportOptions;
 
-pub struct Report<E> {
+struct ColdData {
+    metadata: ReportMetadata,
+    bag: DiagnosticBag,
+}
+
+pub struct Report<E, State = MissingSeverity> {
     inner: E,
+    severity: State,
     cold: Option<Box<ColdData>>,
     options: ReportOptions,
 }
@@ -181,7 +187,7 @@ pub struct Report<E> {
 | `report.attachments()` | 返回关联的所有附件列表 (`&[Attachment]`) |
 | `report.metadata()` | 返回原始元数据引用 (`&ReportMetadata`) |
 | `report.error_code()` | 读取元数据错误码 (`Option<&ErrorCode>`) |
-| `report.severity()` | 读取元数据严重级别 (`Option<Severity>`) |
+| `report.severity()` | 从类型状态读取严重级别 (`Option<Severity>`) |
 | `report.category()` | 读取元数据分类 (`Option<&str>`) |
 | `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
@@ -201,7 +207,7 @@ pub struct Report<E> {
 | `report.set_accumulate_source_chain(accumulate: bool)` | 快速设置 `map_err()` 的原生 `source` 链累积行为 |
 | `report.map_err(map: FnOnce(E) -> Outer)` | 映射内部错误类型并保留诊断信息；当启用 source 链累积时，会把旧的内层错误接到新错误的 `source` 链上 |
 
-`ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`severity()`、`category()`、`retryable()` 等接口；写入式组合请使用 `with_error_code(...)`、`with_severity(...)` 这类 builder 方法。
+`ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`category()`、`retryable()` 等接口。Severity 直接存储在 `Report` 的类型状态中，而非 `ReportMetadata` 内。写入式组合请使用 `with_error_code(...)`、`set_severity(...)` 等 builder 方法。
 
 ### `ReportOptions`
 

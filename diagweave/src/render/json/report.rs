@@ -45,10 +45,9 @@ where
     E: Error + Display + 'static,
     State: SeverityState,
 {
-    let metadata = report.metadata();
     let mut first = true;
     f.write_char('{')?;
-    write_meta_gov_fields(f, pretty, depth, &mut first, metadata)?;
+    write_meta_gov_fields(f, pretty, depth, &mut first, report)?;
     close_object(f, pretty, depth, first)
 }
 
@@ -204,22 +203,24 @@ where
     report.diag_src_err_chain().is_some()
 }
 
-fn write_meta_gov_fields<State>(
+fn write_meta_gov_fields<E, State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
     first: &mut bool,
-    metadata: &crate::report::ReportMetadata<State>,
+    report: &Report<E, State>,
 ) -> fmt::Result
 where
+    E: Error + 'static,
     State: SeverityState,
 {
+    let metadata = report.metadata();
     if let Some(code) = metadata.error_code() {
         write_object_field(f, pretty, depth, first, "error_code", |f| {
             write_error_code(f, code)
         })?;
     }
-    if let Some(severity) = metadata.severity() {
+    if let Some(severity) = report.severity() {
         write_object_field(f, pretty, depth, first, "severity", |f| {
             write_json_display(f, &severity)
         })?;

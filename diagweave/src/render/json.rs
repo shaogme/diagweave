@@ -108,7 +108,7 @@ where
 {
     let metadata = report.metadata();
     let has_metadata = metadata.error_code().is_some()
-        || metadata.severity().is_some()
+        || report.severity().is_some()
         || metadata.category().is_some()
         || metadata.retryable().is_some();
     let has_context = !report.context().is_empty();

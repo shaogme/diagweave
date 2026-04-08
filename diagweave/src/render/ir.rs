@@ -254,7 +254,7 @@ where
             },
             metadata: DiagnosticIrMetadata {
                 error_code: metadata.error_code(),
-                severity: metadata.severity_state(),
+                severity: self.severity_state(),
                 category: metadata.category(),
                 retryable: metadata.retryable(),
                 stack_trace: self.stack_trace(),

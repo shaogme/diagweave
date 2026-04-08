@@ -116,43 +116,42 @@ impl<'de> serde::Deserialize<'de> for HasSeverity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize))]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 /// Report metadata carried alongside a diagnostic.
 ///
-/// When the `json` feature is enabled, deserialization is intentionally exposed
-/// only for [`ReportMetadata<HasSeverity>`]. The default
-/// [`ReportMetadata`] alias keeps the stricter missing-severity typestate
-/// and does not implement `Deserialize`.
-pub struct ReportMetadata<State = MissingSeverity> {
+/// Contains optional error code, category, and retryable flag.
+/// Severity is stored separately in the Report typestate.
+pub struct ReportMetadata {
     error_code: Option<ErrorCode>,
-    severity: State,
     category: Option<StaticRefStr>,
     retryable: Option<bool>,
 }
 
-impl Default for ReportMetadata<MissingSeverity> {
+impl Default for ReportMetadata {
     fn default() -> Self {
         Self {
             error_code: None,
-            severity: MissingSeverity,
             category: None,
             retryable: None,
         }
     }
 }
 
-impl<State> ReportMetadata<State>
-where
-    State: SeverityState,
-{
+impl ReportMetadata {
+    /// Returns a static reference to a default ReportMetadata.
+    /// This is useful for cases where no cold data exists.
+    pub(crate) fn default_ref() -> &'static Self {
+        static DEFAULT: ReportMetadata = ReportMetadata {
+            error_code: None,
+            category: None,
+            retryable: None,
+        };
+        &DEFAULT
+    }
+
     /// Returns the error code, if present.
     pub fn error_code(&self) -> Option<&ErrorCode> {
         self.error_code.as_ref()
-    }
-
-    /// Returns the severity, if present.
-    pub fn severity(&self) -> Option<Severity> {
-        self.severity.severity()
     }
 
     /// Returns the category, if present.
@@ -163,22 +162,6 @@ where
     /// Returns whether the metadata marks the diagnostic as retryable, if present.
     pub fn retryable(&self) -> Option<bool> {
         self.retryable
-    }
-
-    pub(crate) fn severity_state(&self) -> State {
-        self.severity
-    }
-
-    pub(crate) fn map_severity<NewState>(self, severity: NewState) -> ReportMetadata<NewState>
-    where
-        NewState: SeverityState,
-    {
-        ReportMetadata {
-            error_code: self.error_code,
-            severity,
-            category: self.category,
-            retryable: self.retryable,
-        }
     }
 
     /// Sets the error code, replacing any existing value.
@@ -193,11 +176,6 @@ where
             self.error_code = Some(error_code.into());
         }
         self
-    }
-
-    /// Replaces the metadata typestate with a concrete severity.
-    pub fn set_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
-        self.map_severity(HasSeverity::new(severity))
     }
 
     /// Sets the category, replacing any existing value.
@@ -226,51 +204,6 @@ where
             self.retryable = Some(retryable);
         }
         self
-    }
-}
-
-impl ReportMetadata<MissingSeverity> {
-    /// Sets the severity only if not already set (always sets for MissingSeverity).
-    /// This is equivalent to `set_severity` for the missing-severity typestate.
-    pub fn with_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
-        self.set_severity(severity)
-    }
-}
-
-impl ReportMetadata<HasSeverity> {
-    /// Returns the guaranteed severity.
-    pub const fn required_severity(&self) -> Severity {
-        self.severity.severity()
-    }
-
-    /// Returns self unchanged since severity is already set.
-    /// This allows conditional chaining without type-state changes.
-    pub fn with_severity(self, _severity: Severity) -> Self {
-        self
-    }
-}
-
-#[cfg(feature = "json")]
-impl<'de> serde::Deserialize<'de> for ReportMetadata<HasSeverity> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(serde::Deserialize)]
-        struct ReportMetadataWire {
-            error_code: Option<ErrorCode>,
-            severity: Severity,
-            category: Option<StaticRefStr>,
-            retryable: Option<bool>,
-        }
-
-        let wire = ReportMetadataWire::deserialize(deserializer)?;
-        Ok(ReportMetadata {
-            error_code: wire.error_code,
-            severity: HasSeverity::new(wire.severity),
-            category: wire.category,
-            retryable: wire.retryable,
-        })
     }
 }
 

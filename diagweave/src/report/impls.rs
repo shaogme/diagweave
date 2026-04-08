@@ -68,7 +68,7 @@ where
         write!(f, "{}", self.inner())?;
         let metadata = self.metadata();
         let has_metadata = metadata.error_code().is_some()
-            || metadata.severity().is_some()
+            || self.severity().is_some()
             || metadata.category().is_some()
             || metadata.retryable().is_some();
         let has_diagnostics = self.diagnostics().is_some_and(|diag| {
@@ -116,7 +116,7 @@ where
         if let Some(code) = metadata.error_code() {
             write_field("code", code)?;
         }
-        if let Some(sev) = metadata.severity() {
+        if let Some(sev) = self.severity() {
             write_field("severity", &sev)?;
         }
         if let Some(cat) = metadata.category() {

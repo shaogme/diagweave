@@ -52,10 +52,10 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
         .with_metadata(
             ReportMetadata::default()
                 .with_error_code("API.UNAUTHORIZED")
-                .with_severity(Severity::Error)
                 .with_category("auth")
                 .with_retryable(false),
         )
+        .set_severity(Severity::Error)
         .with_ctx("request_id", "req-ir-1")
         .attach_printable("note")
         .attach_payload(

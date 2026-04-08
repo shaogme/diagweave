@@ -53,9 +53,9 @@ pub mod report {
         Attachment, AttachmentValue, AttachmentVisit, CauseCollectOptions, CauseKind,
         CauseTraversalState, ContextMap, ContextValue, Diagnostic, DisplayCauseChain, ErrorCode,
         ErrorCodeIntError, GlobalContext, GlobalErrorMeta, HasSeverity, InspectReportExt,
-        MissingSeverity, Report, ReportMetadata, ReportSourceErrorIter, ResultReportExt, Severity,
-        SeverityParseError, SeverityState, SourceErrorChain, SourceErrorEntry, SourceErrorItem,
-        StackFrame, StackTrace, StackTraceFormat, SystemContext,
+        MissingSeverity, Report, ReportMetadata, ReportOptions, ReportSourceErrorIter,
+        ResultReportExt, Severity, SeverityParseError, SeverityState, SourceErrorChain,
+        SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat, SystemContext,
     };
     #[cfg(feature = "trace")]
     pub use crate::report_impl::{

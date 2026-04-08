@@ -21,9 +21,9 @@ Display Causes:
   - (none)
 Origin Source Errors:
   - message: api wrapped code=500
-  - type: null
+  - type: report_snapshots::report_common::ApiError
     - source:
     - message: api unauthorized
-    - type: null
+    - type: report_snapshots::report_common::ApiError
 Diagnostic Source Errors:
   - (none)

@@ -443,18 +443,13 @@ impl SourceErrorChain {
     }
 
     pub(crate) fn from_source(error: &dyn Error, options: CauseCollectOptions) -> Self {
-        Self::from_borrowed_error(error, options)
-    }
-
-    pub(crate) fn from_root_source<T>(
-        error: T,
-        source: Option<SourceErrorChain>,
-        state: CauseTraversalState,
-    ) -> Self
-    where
-        T: Error + Send + Sync + 'static,
-    {
-        Self::build_chain_root(SourceErrorItem::new(error), source.as_ref(), state)
+        let (source, state) = Self::from_borrowed_srcs(error.source(), options);
+        let root = SourceErrorItem {
+            error: Arc::new(StringError(error.to_string())),
+            type_name: None,
+            source_roots: Vec::new(),
+        };
+        Self::build_chain_root(root, source.as_deref(), state)
     }
 
     pub(crate) fn from_error<T>(error: T) -> Self
@@ -508,25 +503,22 @@ impl SourceErrorChain {
         self.nodes.get(id)
     }
 
-    pub(crate) fn state(&self) -> CauseTraversalState {
-        CauseTraversalState {
-            truncated: self.truncated,
-            cycle_detected: self.cycle_detected,
-        }
-    }
-
     pub(crate) fn clear_cycle_flags(&mut self) {
         self.cycle_detected = false;
     }
 
-    pub(super) fn from_borrowed_error(error: &dyn Error, options: CauseCollectOptions) -> Self {
-        let (source, state) = Self::from_borrowed_srcs(error.source(), options);
+    pub(crate) fn from_borrowed_error<T: Error + ?Sized>(
+        error: &T,
+        type_name: Option<StaticRefStr>,
+        source: Option<SourceErrorChain>,
+        state: CauseTraversalState,
+    ) -> Self {
         let root = SourceErrorItem {
             error: Arc::new(StringError(error.to_string())),
-            type_name: None,
+            type_name,
             source_roots: Vec::new(),
         };
-        Self::build_chain_root(root, source.as_deref(), state)
+        Self::build_chain_root(root, source.as_ref(), state)
     }
 
     pub(super) fn from_borrowed_srcs(

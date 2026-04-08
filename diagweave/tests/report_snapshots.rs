@@ -16,7 +16,7 @@ fn snap_pretty_basic() {
         .with_severity(Severity::Error)
         .with_ctx("request_id", "tx-snap-1")
         .attach_note("token expired at midnight")
-        .boundary(ApiError::Unauthorized);
+        .map_err(|_| ApiError::Unauthorized);
 
     let output = report.snap_pretty();
     insta::assert_snapshot!(output);
@@ -52,8 +52,8 @@ fn snap_pretty_nested_sources() {
     let _guard = init_test();
 
     let pretty = Report::new(ApiError::Unauthorized)
-        .boundary(ApiError::Wrapped { code: 500 })
-        .boundary(ApiError::Wrapped { code: 501 })
+        .map_err(|_| ApiError::Wrapped { code: 500 })
+        .map_err(|_| ApiError::Wrapped { code: 501 })
         .snap_pretty();
 
     insta::assert_snapshot!(pretty);
@@ -78,7 +78,7 @@ fn snap_compact_with_boundary() {
     let report = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_ctx("request_id", "tx-2")
-        .boundary(ApiError::Unauthorized);
+        .map_err(|_| ApiError::Unauthorized);
 
     let output = report.snap_compact();
     insta::assert_snapshot!(output);
@@ -94,7 +94,7 @@ fn snap_json_basic() {
         .with_severity(Severity::Error)
         .with_ctx("request_id", "tx-json-snap")
         .attach_note("snapshot test note")
-        .boundary(ApiError::Unauthorized);
+        .map_err(|_| ApiError::Unauthorized);
 
     let output = report.snap_json();
     insta::assert_snapshot!(output);

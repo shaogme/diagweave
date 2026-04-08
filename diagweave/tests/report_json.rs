@@ -13,7 +13,8 @@ use report_common::*;
 #[cfg(feature = "json")]
 #[test]
 fn render_format_supports_compact_pretty_and_json() {
-    let report = Report::new(AuthError::InvalidToken)
+    // Use a simple report without map_err to test the case where origin_source_errors is absent
+    let report = Report::new(ApiError::Unauthorized)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_retryable(true)
         .with_ctx("request_id", "tx-json")
@@ -24,8 +25,7 @@ fn render_format_supports_compact_pretty_and_json() {
                 AttachmentValue::from("/session"),
             ]),
             Some("application/x.debug".to_owned()),
-        )
-        .map_err(|_| ApiError::Unauthorized);
+        );
 
     let _guard = init_test();
 
@@ -57,7 +57,6 @@ fn render_format_supports_compact_pretty_and_json() {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
         assert_eq!(parsed["schema_version"], REPORT_JSON_SCHEMA_VERSION);
         assert_eq!(parsed["error"]["message"], "api unauthorized");
-        // map_err preserves all metadata fields
         assert_eq!(
             parsed["metadata"]["error_code"].as_str(),
             Some("AUTH.INVALID_TOKEN")
@@ -233,11 +232,13 @@ fn json_source_errors_hide_internal_report_wrapper_types() {
 
     let json = report.render(Json::default()).to_string();
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("json schema shape");
-    // map_err does not create origin_source_errors, field is omitted
-    assert_eq!(
-        parsed["diagnostic_bag"]["origin_source_errors"].as_object(),
-        None
-    );
+    // map_err creates origin_source_errors with the inner error as source
+    let source = &parsed["diagnostic_bag"]["origin_source_errors"];
+    let nodes = source["nodes"].as_array().expect("nodes should be array");
+    assert_eq!(nodes.len(), 1);
+    assert_eq!(nodes[0]["message"], "auth invalid token");
+    // The type should be the inner error type, not a Report wrapper
+    assert_eq!(nodes[0]["type"], std::any::type_name::<AuthError>());
 }
 
 #[cfg(feature = "json")]

@@ -285,6 +285,8 @@ Hot-path string fields like `category`, `trace_state`, and trace event names are
 Attachment keys, payload names, payload media types, global context keys, and other stored string metadata also use `StaticRefStr`.
 The matching setters accept `impl Into<StaticRefStr>`, so callers can pass owned shared strings without an extra copy.
 
+`map_err()` is the recommended entry point for error type transformation; whether it accumulates the origin `source` chain is controlled by `ReportOptions` (debug: enabled, release: disabled by default).
+
 Read APIs on `Report<E>`:
 
 - `attachments()`, `metadata()`, `stack_trace()`
@@ -295,6 +297,9 @@ Read APIs on `Report<E>`:
 - `visit_diag_sources(visit)` / `visit_diag_srcs_ext(options, visit)`
 - `iter_origin_sources()` / `iter_origin_src_ext(options)`
 - `iter_diag_sources()` / `iter_diag_srcs_ext(options)`
+- `options()` — read current `ReportOptions`
+- `set_options(options: ReportOptions)` — replace report options
+- `set_accumulate_source_chain(accumulate: bool)` — quick toggle for `map_err()` source chain accumulation
 
 Attachment note access:
 
@@ -322,7 +327,7 @@ Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
 - `with_diag_src_err` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
-- Origin source propagation is maintained by `boundary` / `map_err` and `Error::source()`, while diagnostic source propagation is maintained by `with_diag_src_err`.
+- Origin source propagation is maintained by `map_err()` and `Error::source()`; whether `map_err()` continues to chain the old inner error is controlled by `ReportOptions.accumulate_source_chain`.
 
 Global context injector (`std`):
 

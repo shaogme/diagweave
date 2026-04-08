@@ -157,8 +157,9 @@ enum FileError {
 ## 4. `Report<E>` Diagnostic Report
 
 ### Overview
-The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, display-cause chain, trace info). Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
+The core diagnostic container, wrapping the original error `E` and holding optional "cold data" (metadata, attachments, display-cause chain, trace info) plus per-report `ReportOptions`. Uses a lazy allocation strategy, only allocating heap memory when auxiliary information is added.
 Hot path strings such as `category`, `trace_state`, trace event names, and stack trace raw text are stored with shared `StaticRefStr` handles once captured.
+`map_err()` is now the recommended entry point for error type transformation; whether it continues to accumulate the origin `source` chain is controlled by `ReportOptions`.
 
 ### Declaration and Definition
 ```rust
@@ -167,6 +168,7 @@ struct ColdData;
 pub struct Report<E> {
     inner: E,
     cold: Option<Box<ColdData>>,
+    options: ReportOptions,
 }
 ```
 
@@ -187,8 +189,6 @@ pub struct Report<E> {
 | `report.visit_causes(visit)` | Streams display causes with default options |
 | `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
 | `report.visit_origin_sources(visit)` | Streams origin source errors with default options |
-
-`ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `severity()`, `category()`, and `retryable()`, while composition uses builder methods such as `with_error_code(...)` and `with_severity(...)`.
 | `report.visit_origin_src_ext(options, visit)` | Streams origin source errors with custom options |
 | `report.visit_diag_sources(visit)` | Streams diagnostic source errors with default options |
 | `report.visit_diag_srcs_ext(options, visit)` | Streams diagnostic source errors with custom options |
@@ -196,8 +196,19 @@ pub struct Report<E> {
 | `report.iter_origin_src_ext(options)` | Iterates origin source errors with custom options |
 | `report.iter_diag_sources()` | Iterates diagnostic source errors with default options |
 | `report.iter_diag_srcs_ext(options)` | Iterates diagnostic source errors with custom options |
-| `report.boundary(outer: Outer)` | Creates a diagnostic boundary, linking the report into a new error source chain |
-| `report.map_err(map: FnOnce(E) -> Outer)`| Maps internal error while preserving all diagnostic info |
+| `report.options()` | Reads the current `ReportOptions` configuration |
+| `report.set_options(options: ReportOptions)` | Replaces the current report options |
+| `report.set_accumulate_source_chain(accumulate: bool)` | Quick toggle for `map_err()` origin `source` chain accumulation |
+| `report.map_err(map: FnOnce(E) -> Outer)`| Maps internal error type while preserving diagnostics; when source chain accumulation is enabled, the old inner error is attached to the new error's `source` chain |
+
+`ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `severity()`, `category()`, and `retryable()`, while composition uses builder methods such as `with_error_code(...)` and `with_severity(...)`.
+
+### `ReportOptions`
+
+`ReportOptions` controls whether `map_err()` automatically accumulates the origin source chain for an individual `Report`. The default depends on the build profile: `true` in debug builds, `false` in release builds. For stable behavior, explicitly call `set_accumulate_source_chain(true/false)` or use `set_options(ReportOptions::new(...))`.
+
+Currently only one core switch is provided:
+- `accumulate_source_chain`: when enabled, `map_err()` preserves and extends the origin `source` chain; when disabled, it only transforms the error type without touching the source chain.
 
 ### `ErrorCode` Design and Conversions
 - Internal model:
@@ -216,6 +227,12 @@ pub struct Report<E> {
   - `ErrorCodeIntError::OutOfRange`
 
 `AttachmentValue::String` also uses `StaticRefStr` internally, so repeated report wrapping can reuse string payloads without copying. Stored attachment keys, payload names/media types, global context keys, and trace/category metadata follow the same storage rule.
+
+### Cause Semantics
+
+- `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
+- `with_diag_src_err` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
+- The origin source chain is maintained by `map_err()` and `Error::source()`; whether the old inner error continues to be chained onto the new error's `source` is decided by `ReportOptions`.
 
 ### Global Injection
 Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
@@ -239,6 +256,8 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add business context key-value pairs |
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add a runtime-scoped system field |
 | `with_system_context` | `(SystemContext)` | Replace the structured system context object |
+| `set_options` | `ReportOptions` | Replace the current report options |
+| `set_accumulate_source_chain` | `bool` | Quick toggle for `map_err()` origin `source` chain accumulation |
 
 `system` is no longer a flat free-form map in rendered JSON. It is emitted as a typed governance object with fixed top-level sections: `system.service`, `system.deployment`, `system.runtime`, and `system.request`.
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
@@ -315,8 +334,9 @@ Provides pipelines for seamless diagnostic info injection on error paths by impl
 - `diag(...)`: Short-hand for chaining a transformation on the error path. Generic signature:
   `diag<E2, State2>(self, f: impl FnOnce(Report<E>) -> Report<E2, State2>) -> Result<T, Report<E2, State2>>`.
   The closure receives a `Report<E>` and returns a `Report<E2, State2>`. When only adding metadata,
-  no explicit type annotations are needed; when transforming the error type (e.g., via `boundary` or `map_err`),
-  the return type must be annotated.
+  no explicit type annotations are needed; when transforming the error type (e.g., via `map_err`),
+  the return type must be annotated. If you need to control whether the origin source chain continues
+  to accumulate, configure the report options first via `set_accumulate_source_chain()`.
 
 #### 2. `ResultReportExt` (on `Result<T, Report<E>>`)
 Instead of duplicating every `Report` method, this trait provides a single combinator:
@@ -688,6 +708,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
         .to_report()
         .and_then_report(|r| {
             r.with_ctx("db", "primary")
+                .set_accumulate_source_chain(true)
                 .map_err(AppError::Db)
         })?;
     Ok(())

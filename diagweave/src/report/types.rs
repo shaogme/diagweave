@@ -403,3 +403,79 @@ impl CauseCollectOptions {
         self
     }
 }
+
+/// Per-report configuration for error source chain accumulation behavior.
+///
+/// This controls whether [`Report::map_err()`] automatically accumulates
+/// the source error chain when transforming error types.
+///
+/// # Default Behavior
+///
+/// The default value depends on the build profile:
+/// - **Debug builds** (`debug_assertions` enabled): `accumulate_source_chain = true`
+/// - **Release builds** (`debug_assertions` disabled): `accumulate_source_chain = false`
+///
+/// This provides a better debugging experience during development while
+/// avoiding performance overhead in production.
+///
+/// # Example
+///
+/// ```ignore
+/// use diagweave::{Report, ReportOptions};
+///
+/// // Create a report with default options (debug: enabled, release: disabled)
+/// let report = Report::new(my_error);
+///
+/// // Explicitly enable source chain accumulation
+/// let report = report.set_accumulate_source_chain(true);
+///
+/// // Or set full options
+/// let report = report.set_options(ReportOptions::new(true));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReportOptions {
+    /// Whether `map_err()` should automatically accumulate source error chains.
+    ///
+    /// When `true`, calling `map_err()` will preserve and extend the origin
+    /// source error chain, similar to the old `boundary()` behavior.
+    ///
+    /// When `false`, `map_err()` only transforms the error type without
+    /// accumulating source chains.
+    pub accumulate_source_chain: bool,
+}
+
+impl ReportOptions {
+    /// Creates new report options with the specified source chain accumulation setting.
+    pub const fn new(accumulate_source_chain: bool) -> Self {
+        Self {
+            accumulate_source_chain,
+        }
+    }
+
+    /// Returns the default report options based on build profile.
+    ///
+    /// - Debug builds: `accumulate_source_chain = true`
+    /// - Release builds: `accumulate_source_chain = false`
+    pub const fn default_for_profile() -> Self {
+        Self {
+            // In debug builds, enable source chain accumulation for better debugging
+            // In release builds, disable for better performance
+            #[cfg(debug_assertions)]
+            accumulate_source_chain: true,
+            #[cfg(not(debug_assertions))]
+            accumulate_source_chain: false,
+        }
+    }
+
+    /// Sets whether source chains should be accumulated during `map_err()`.
+    pub const fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
+        self.accumulate_source_chain = accumulate;
+        self
+    }
+}
+
+impl Default for ReportOptions {
+    fn default() -> Self {
+        Self::default_for_profile()
+    }
+}

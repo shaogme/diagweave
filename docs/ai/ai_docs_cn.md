@@ -157,8 +157,9 @@ enum FileError {
 ## 4. `Report<E>` 诊断报告
 
 ### 概览
-核心诊断容器，封装原始错误 `E` 并持有可选的“冷数据”（元数据、附件、展示原因链、追踪信息）。采用延迟分配策略，仅在添加辅助信息时才分配堆内存。
+核心诊断容器，封装原始错误 `E` 并持有可选的“冷数据”（元数据、附件、展示原因链、追踪信息）以及按报告粒度生效的 `ReportOptions`。采用延迟分配策略，仅在添加辅助信息时才分配堆内存。
 `category`、`trace_state`、trace 事件名和 stack trace 原始文本等高频字符串在捕获后会以共享 `StaticRefStr` 持有。
+`map_err()` 是当前推荐的错误类型转换入口；其是否继续累积原生 `source` 链由 `ReportOptions` 控制。
 
 ### 声明定义
 ```rust
@@ -167,6 +168,7 @@ struct ColdData;
 pub struct Report<E> {
     inner: E,
     cold: Option<Box<ColdData>>,
+    options: ReportOptions,
 }
 ```
 
@@ -187,8 +189,6 @@ pub struct Report<E> {
 | `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
 | `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
 | `report.visit_origin_sources(visit)` | 使用默认选项流式遍历原生传播链 |
-
-`ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`severity()`、`category()`、`retryable()` 等接口；写入式组合请使用 `with_error_code(...)`、`with_severity(...)` 这类 builder 方法。
 | `report.visit_origin_src_ext(options, visit)` | 使用自定义选项流式遍历原生传播链 |
 | `report.visit_diag_sources(visit)` | 使用默认选项流式遍历诊断补充链 |
 | `report.visit_diag_srcs_ext(options, visit)` | 使用自定义选项流式遍历诊断补充链 |
@@ -196,8 +196,19 @@ pub struct Report<E> {
 | `report.iter_origin_src_ext(options)` | 使用自定义选项迭代原生传播链 |
 | `report.iter_diag_sources()` | 使用默认选项迭代诊断补充链 |
 | `report.iter_diag_srcs_ext(options)` | 使用自定义选项迭代诊断补充链 |
-| `report.boundary(outer: Outer)` | 创建诊断边界，将当前报告接入新错误 `source` 链 |
-| `report.map_err(map: FnOnce(E) -> Outer)` | 映射内部错误并保留所有诊断信息 |
+| `report.options()` | 读取当前 `ReportOptions` 配置 |
+| `report.set_options(options: ReportOptions)` | 替换当前报告的选项配置 |
+| `report.set_accumulate_source_chain(accumulate: bool)` | 快速设置 `map_err()` 的原生 `source` 链累积行为 |
+| `report.map_err(map: FnOnce(E) -> Outer)` | 映射内部错误类型并保留诊断信息；当启用 source 链累积时，会把旧的内层错误接到新错误的 `source` 链上 |
+
+`ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`severity()`、`category()`、`retryable()` 等接口；写入式组合请使用 `with_error_code(...)`、`with_severity(...)` 这类 builder 方法。
+
+### `ReportOptions`
+
+`ReportOptions` 用于控制单个 `Report` 在调用 `map_err()` 时是否自动累积 origin source chain。默认值按构建配置决定：debug 构建为 `true`，release 构建为 `false`。如果需要固定行为，建议显式调用 `set_accumulate_source_chain(true/false)`，或者使用 `set_options(ReportOptions::new(...))` 一次性设置完整选项。
+
+当前只提供一个核心开关：
+- `accumulate_source_chain`：启用后，`map_err()` 会保留并延伸原生 `source` 链；关闭后仅转换错误类型，不改动 source 链。
 
 ### `ErrorCode` 设计与转换规则
 - 内部模型：
@@ -216,6 +227,12 @@ pub struct Report<E> {
   - `ErrorCodeIntError::OutOfRange`
 
 `AttachmentValue::String` 也使用 `StaticRefStr` 作为内部存储，重复包装同一份 report 时可以减少字符串拷贝。附件 key、payload 名称/media type、全局上下文 key，以及 trace/category 元数据等持久化字符串也遵循同样规则。
+
+### 原因链语义
+
+- `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
+- `with_diag_src_err` 用于显式追加错误对象到**诊断补充链**，参数要求 `impl Error + Send + Sync + 'static`。
+- 原生传播链由 `map_err()` 与 `Error::source()` 维护；是否把旧内层错误继续串接到新错误的 `source` 链，由 `ReportOptions` 决定。
 
 ### 全局注入 (Global Injection)
 用于跨层级自动注入上下文（如 RequestID、SessionID）。
@@ -238,6 +255,8 @@ pub struct Report<E> {
 | :--- | :--- | :--- |
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加业务上下文键值对 |
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加系统上下文键值对 |
+| `set_options` | `ReportOptions` | 替换当前报告的选项配置 |
+| `set_accumulate_source_chain` | `bool` | 快速设置 `map_err()` 是否累积原生 `source` 链 |
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
 | `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
 | `set_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal)，覆盖已有值 |
@@ -312,7 +331,7 @@ let report = report.capture_stack_trace();
 - `diag(...)`：Result<T, E> 上的快捷入口，泛型版本允许转换错误类型和状态类型；签名：
   `diag<E2, State2>(self, f: impl FnOnce(Report<E>) -> Report<E2, State2>) -> Result<T, Report<E2, State2>>`。
   闭包接收 `Report<E>` 并返回 `Report<E2, State2>`。当仅添加元数据时无需显式类型标注；
-  当转换错误类型（如通过 `boundary` 或 `map_err`）时需要标注返回类型。
+  当转换错误类型（如通过 `map_err`）时需要标注返回类型。若需要控制原生 source 链是否继续累积，可先通过 `set_accumulate_source_chain()` 配置报告选项。
 
 #### 2. `ResultReportExt` (作用于 `Result<T, Report<E>>`)
 不再重复每个 `Report` 方法，而是提供单一组合子：
@@ -644,7 +663,7 @@ let _report = Report::new(MyError).attach_payload(
 ```
 
 ### 2. 多层包装与错误链透传 (Wrap)
-在架构各层之间传递时保留完整的 `source` 错误链。
+在架构各层之间传递时保留完整的 `source` 错误链。`map_err()` 默认会在 debug 构建中累积原生 source 链，在 release 构建中默认关闭；可以通过 `set_accumulate_source_chain(true/false)` 显式控制。
 ```rust
 use diagweave::prelude::*;
 use std::fmt;
@@ -684,6 +703,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
         .to_report()
         .and_then_report(|r| {
             r.with_ctx("db", "primary")
+                .set_accumulate_source_chain(true)
                 .map_err(AppError::Db)
         })?;
     Ok(())

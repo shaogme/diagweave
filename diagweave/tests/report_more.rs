@@ -67,7 +67,7 @@ fn wrap_preserves_deep_source_chains() {
     let _guard = init_test();
 
     let report = (0..18).fold(Report::new(ApiError::Unauthorized), |report, idx| {
-        report.boundary(ApiError::Wrapped {
+        report.map_err(|_| ApiError::Wrapped {
             code: 500 + idx as u16,
         })
     });

@@ -65,14 +65,15 @@ fn diagweave_wraps_previous_report_as_source() {
     let inner = Report::new(AuthError::InvalidToken)
         .with_error_code("AUTH.INVALID_TOKEN")
         .with_ctx("request_id", "tx-2");
-    let outer = inner.boundary(ApiError::Unauthorized);
+    let outer = inner.map_err(|_| ApiError::Unauthorized);
 
-    assert_eq!(outer.to_string(), "api unauthorized");
-    let source = outer.source().expect("diagweave should preserve source");
+    // Now map_err accumulates source chain and preserves metadata
     assert_eq!(
-        source.to_string(),
-        "auth invalid token [code=AUTH.INVALID_TOKEN, request_id=tx-2]"
+        outer.to_string(),
+        "api unauthorized [code=AUTH.INVALID_TOKEN, request_id=tx-2]"
     );
+    let source = outer.source().expect("diagweave should preserve source");
+    assert_eq!(source.to_string(), "auth invalid token");
 }
 
 #[test]
@@ -88,7 +89,8 @@ fn diagweave_with_changes_context_and_keeps_metadata() {
         outer.to_string(),
         "api wrapped code=401 [code=AUTH.INVALID_TOKEN, request_id=tx-9]"
     );
-    assert!(outer.source().is_none());
+    // Now map_err accumulates source chain by default
+    assert!(outer.source().is_some());
 }
 
 fn fail_auth() -> Result<(), AuthError> {
@@ -139,16 +141,17 @@ fn result_ext_builds_report_chain() {
         .diag(|r| {
             r.with_ctx("request_id", 77u64)
                 .with_error_code("AUTH.INVALID_TOKEN")
-                .boundary(ApiError::Unauthorized)
+                .map_err(|_| ApiError::Unauthorized)
         })
         .expect_err("should fail");
 
-    assert_eq!(err.to_string(), "api unauthorized");
-    let source = err.source().expect("outer should have source");
+    // Metadata is propagated to the outer error
     assert_eq!(
-        source.to_string(),
-        "auth invalid token [code=AUTH.INVALID_TOKEN, request_id=77]"
+        err.to_string(),
+        "api unauthorized [code=AUTH.INVALID_TOKEN, request_id=77]"
     );
+    let source = err.source().expect("outer should have source");
+    assert_eq!(source.to_string(), "auth invalid token");
 }
 
 #[test]
@@ -248,7 +251,8 @@ fn result_ext_diagweave_with_maps_error() {
         err.to_string(),
         "api wrapped code=403 [category=auth, incoming token is stale]"
     );
-    assert!(err.source().is_none());
+    // map_err accumulates source chain by default
+    assert!(err.source().is_some());
 }
 
 #[test]
@@ -290,17 +294,21 @@ fn pretty_output_is_structured() {
             AttachmentValue::Bytes(vec![1, 2, 3]),
             Some("application/octet-stream".to_owned()),
         )
-        .boundary(ApiError::Unauthorized)
+        .map_err(|_| ApiError::Unauthorized)
         .pretty()
         .to_string();
 
     assert!(pretty.contains("Error:"));
-    assert!(pretty.contains("  - message: api unauthorized"));
+    assert!(pretty.contains(" - message: api unauthorized"));
     assert!(pretty.contains("Governance:"));
+    assert!(pretty.contains("- error_code: AUTH.INVALID_TOKEN"));
+    assert!(pretty.contains("- severity: error"));
     assert!(pretty.contains("Context:"));
+    assert!(pretty.contains("- request_id: tx-pretty"));
     assert!(pretty.contains("Attachments:"));
-    assert!(pretty.contains("Source Errors:"));
-    assert!(pretty.contains("auth invalid token [code=AUTH.INVALID_TOKEN, severity=error, request_id=tx-pretty, raw_body=<3 bytes> (application/octet-stream)]"));
+    assert!(pretty.contains("payload raw_body (application/octet-stream): <3 bytes>"));
+    assert!(pretty.contains("Origin Source Errors:"));
+    assert!(pretty.contains("- message: auth invalid token"));
 }
 
 #[test]
@@ -308,8 +316,8 @@ fn pretty_indents_nested_source_errors() {
     let _guard = init_test();
 
     let pretty = Report::new(ApiError::Unauthorized)
-        .boundary(ApiError::Wrapped { code: 500 })
-        .boundary(ApiError::Wrapped { code: 501 })
+        .map_err(|_| ApiError::Wrapped { code: 500 })
+        .map_err(|_| ApiError::Wrapped { code: 501 })
         .pretty()
         .to_string();
 
@@ -321,8 +329,8 @@ fn pretty_respects_max_source_depth() {
     let _guard = init_test();
 
     let report = Report::new(AuthError::InvalidToken)
-        .boundary(ApiError::Unauthorized)
-        .boundary(ApiError::Wrapped { code: 500 });
+        .map_err(|_| ApiError::Unauthorized)
+        .map_err(|_| ApiError::Wrapped { code: 500 });
 
     let options = ReportRenderOptions {
         max_source_depth: 1,
@@ -561,7 +569,7 @@ fn wrap_keeps_explicit_source_chain_isolated_from_inner_source() {
 
     let report = Report::new(SourcefulError)
         .with_diag_src_err(ApiError::Unauthorized)
-        .boundary(ApiError::Wrapped { code: 500 });
+        .map_err(|_| ApiError::Wrapped { code: 500 });
 
     let messages: Vec<String> = report
         .iter_origin_src_ext(CauseCollectOptions {
@@ -603,7 +611,7 @@ fn source_iteration_keeps_top_level_siblings_at_same_depth() {
 fn source_iteration_keeps_siblings_after_truncation() {
     let _guard = init_test();
 
-    let deep_branch = Report::new(AuthError::InvalidToken).boundary(ApiError::Unauthorized);
+    let deep_branch = Report::new(AuthError::InvalidToken).map_err(|_| ApiError::Unauthorized);
     let report = Report::new(ApiError::Wrapped { code: 400 })
         .with_diag_src_err(deep_branch)
         .with_diag_src_err(std::io::Error::other("network down"));

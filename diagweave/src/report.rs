@@ -23,7 +23,7 @@ pub use ext::{Diagnostic, InspectReportExt, ResultReportExt};
 pub use types::{
     Attachment, AttachmentValue, CauseCollectOptions, CauseKind, ContextMap, ContextValue,
     DisplayCauseChain, ErrorCode, ErrorCodeIntError, GlobalErrorMeta, HasSeverity, MissingSeverity,
-    ReportMetadata, Severity, SeverityParseError, SeverityState, SourceErrorChain,
+    ReportMetadata, ReportOptions, Severity, SeverityParseError, SeverityState, SourceErrorChain,
     SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat, SystemContext,
 };
 pub use types::{AttachmentVisit, CauseTraversalState, GlobalContext, ReportSourceErrorIter};
@@ -45,6 +45,7 @@ pub struct Report<E, State = MissingSeverity> {
     inner: E,
     metadata: ReportMetadata<State>,
     cold: Option<Box<DiagnosticBag>>,
+    options: ReportOptions,
 }
 
 impl<E> Report<E, MissingSeverity> {
@@ -55,12 +56,14 @@ impl<E> Report<E, MissingSeverity> {
             inner,
             metadata: ReportMetadata::default(),
             cold: None,
+            options: ReportOptions::default(),
         };
         #[cfg(not(feature = "std"))]
         let report = Self {
             inner,
             metadata: ReportMetadata::default(),
             cold: None,
+            options: ReportOptions::default(),
         };
         #[cfg(feature = "std")]
         report.apply_global_context();
@@ -368,11 +371,17 @@ where
     where
         NewState: SeverityState,
     {
-        let Self { inner, cold, .. } = self;
+        let Self {
+            inner,
+            cold,
+            options,
+            ..
+        } = self;
         Report {
             inner,
             metadata,
             cold,
+            options,
         }
     }
 
@@ -394,11 +403,13 @@ where
             inner,
             metadata,
             cold,
+            options,
         } = self;
         Report {
             inner,
             metadata: metadata.set_severity(severity),
             cold,
+            options,
         }
     }
 
@@ -504,67 +515,182 @@ where
         self
     }
 
-    /// Wraps the report into another error type, creating a diagnostic boundary.
-    pub fn boundary<Outer>(self, outer: Outer) -> Report<Outer, MissingSeverity>
-    where
-        Self: Error + Send + Sync + 'static,
-        E: Error + Send + Sync + 'static,
-    {
-        let origin_source_errors = match self
-            .diagnostics()
-            .and_then(|diag| diag.origin_source_errors.as_ref())
-        {
-            Some(source_errors) => Some(source_errors.clone()),
-            None => self.origin_src_err_view(CauseCollectOptions {
-                max_depth: usize::MAX,
-                detect_cycle: true,
-            }),
-        };
-        let Report {
-            inner,
-            metadata,
-            cold,
-        } = self;
-        let source_report = Report {
-            inner,
-            metadata,
-            cold,
-        };
-        let source_state = origin_source_errors
-            .as_ref()
-            .map(SourceErrorChain::state)
-            .unwrap_or_default();
-        let origin_source_errors =
-            SourceErrorChain::from_root_source(source_report, origin_source_errors, source_state);
-        Report {
-            inner: outer,
-            metadata: ReportMetadata::default(),
-            cold: Some(Box::new(DiagnosticBag {
-                #[cfg(feature = "trace")]
-                trace: None,
-                stack_trace: None,
-                context: ContextMap::default(),
-                system: SystemContext::default(),
-                attachments: Vec::new(),
-                display_causes: None,
-                origin_source_errors: Some(origin_source_errors),
-                diagnostic_source_errors: None,
-            })),
-        }
+    /// Sets the report options for this report.
+    ///
+    /// This replaces any existing options with the provided ones.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use diagweave::{Report, ReportOptions};
+    ///
+    /// // Disable source chain accumulation for this specific report
+    /// let report = report.set_options(ReportOptions::new(false));
+    /// ```
+    pub fn set_options(mut self, options: ReportOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Sets whether source chains should be accumulated during `map_err()`.
+    ///
+    /// This is a convenience method for setting the `accumulate_source_chain` option.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use diagweave::Report;
+    ///
+    /// // Enable source chain accumulation for this specific report
+    /// let report = report.set_accumulate_source_chain(true);
+    /// ```
+    pub fn set_accumulate_source_chain(mut self, accumulate: bool) -> Self {
+        self.options = ReportOptions::new(accumulate);
+        self
+    }
+
+    /// Returns the current report options.
+    pub fn options(&self) -> &ReportOptions {
+        &self.options
     }
 
     /// Maps the inner error type while preserving all diagnostic data.
-    pub fn map_err<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, State> {
+    ///
+    /// When source chain accumulation is enabled via [`ReportOptions::accumulate_source_chain`],
+    /// this method also accumulates the origin source error chain, similar to the old `boundary()` behavior.
+    ///
+    /// # Source Chain Accumulation
+    ///
+    /// If `accumulate_source_chain` is `true`:
+    /// - The current report's origin source chain (if any) is preserved
+    /// - The old inner error is added as a source of the new outer error
+    /// - The resulting chain reflects: `outer -> old_inner -> ...old sources`
+    ///
+    /// If `accumulate_source_chain` is `false`:
+    /// - Only the error type is transformed
+    /// - No source chain manipulation occurs
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use diagweave::{Report, ReportOptions};
+    ///
+    /// // Transform error type while preserving diagnostics
+    /// let report: Report<OuterError> = inner_report.map_err(|e| OuterError::from(e));
+    ///
+    /// // Control source chain accumulation per-report
+    /// let report = report.set_accumulate_source_chain(false); // Disable accumulation
+    /// ```
+    pub fn map_err<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, State>
+    where
+        E: Error + Send + Sync + 'static,
+        Outer: Error + Send + Sync + 'static,
+    {
         let Self {
             inner,
             metadata,
             cold,
+            options,
         } = self;
-        let outer = map(inner);
-        Report {
-            inner: outer,
-            metadata,
-            cold,
+
+        // Check if source chain accumulation is enabled for this report
+        if options.accumulate_source_chain {
+            // Build origin source chain with the old inner as the new root
+            // We use a borrowed representation (StringError) to avoid ownership issues
+
+            // First, compute the existing source chain from inner.source() or stored chain
+            let existing_source_chain = cold
+                .as_ref()
+                .and_then(|diag| diag.origin_source_errors.clone())
+                .or_else(|| {
+                    inner.source().map(|source| {
+                        SourceErrorChain::from_source(
+                            source,
+                            CauseCollectOptions {
+                                max_depth: usize::MAX,
+                                detect_cycle: true,
+                            },
+                        )
+                    })
+                });
+
+            // Get type name for inner before moving it
+            let inner_type_name: Option<StaticRefStr> = Some(core::any::type_name::<E>().into());
+
+            // Create origin chain with old inner's info as root (using borrowed representation)
+            let origin_source_errors = SourceErrorChain::from_borrowed_error(
+                &inner,
+                inner_type_name,
+                existing_source_chain,
+                CauseTraversalState::default(),
+            );
+
+            // Now create the outer error
+            let outer = map(inner);
+
+            // Extract diagnostic data from the original cold using a helper struct
+            struct ExtractedDiag {
+                #[cfg(feature = "trace")]
+                trace: Option<ReportTrace>,
+                stack_trace: Option<StackTrace>,
+                context: ContextMap,
+                system: SystemContext,
+                attachments: Vec<Attachment>,
+                display_causes: Option<DisplayCauseChain>,
+                diagnostic_source_errors: Option<SourceErrorChain>,
+            }
+
+            let extracted = cold.map_or(
+                ExtractedDiag {
+                    #[cfg(feature = "trace")]
+                    trace: None,
+                    stack_trace: None,
+                    context: ContextMap::default(),
+                    system: SystemContext::default(),
+                    attachments: Vec::new(),
+                    display_causes: None,
+                    diagnostic_source_errors: None,
+                },
+                |b| {
+                    let diag = *b;
+                    ExtractedDiag {
+                        #[cfg(feature = "trace")]
+                        trace: diag.trace,
+                        stack_trace: diag.stack_trace,
+                        context: diag.context,
+                        system: diag.system,
+                        attachments: diag.attachments,
+                        display_causes: diag.display_causes,
+                        diagnostic_source_errors: diag.diagnostic_source_errors,
+                    }
+                },
+            );
+
+            Report {
+                inner: outer,
+                metadata,
+                cold: Some(Box::new(DiagnosticBag {
+                    #[cfg(feature = "trace")]
+                    trace: extracted.trace,
+                    stack_trace: extracted.stack_trace,
+                    context: extracted.context,
+                    system: extracted.system,
+                    attachments: extracted.attachments,
+                    display_causes: extracted.display_causes,
+                    origin_source_errors: Some(origin_source_errors),
+                    diagnostic_source_errors: extracted.diagnostic_source_errors,
+                })),
+                options,
+            }
+        } else {
+            // Simple transformation without source chain accumulation
+            let outer = map(inner);
+            Report {
+                inner: outer,
+                metadata,
+                cold,
+                options,
+            }
         }
     }
 

@@ -6,7 +6,8 @@ Error:
   - message: api unauthorized
   - type: report_snapshots::report_common::ApiError
 Governance:
-  - (none)
+  - error_code: AUTH.INVALID_TOKEN
+  - severity: error
 Trace:
   - (none)
 Stack Trace:
@@ -14,13 +15,13 @@ Stack Trace:
 System:
   - (none)
 Context:
-  - (none)
+  - request_id: tx-snap-1
 Attachments:
-  - (none)
+  - note: token expired at midnight
 Display Causes:
   - (none)
 Origin Source Errors:
-  - message: auth invalid token [code=AUTH.INVALID_TOKEN, severity=error, request_id=tx-snap-1, token expired at midnight]
-  - type: null
+  - message: auth invalid token
+  - type: report_snapshots::report_common::AuthError
 Diagnostic Source Errors:
   - (none)

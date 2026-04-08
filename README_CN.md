@@ -285,6 +285,8 @@ pub enum MyError {
 附件 key、payload 名称、payload media type、全局上下文 key 等持久化字符串也统一使用 `StaticRefStr`。
 对应的设置接口也接受 `impl Into<StaticRefStr>`，可以直接传入共享字符串而不再额外拷贝。
 
+`map_err()` 是当前推荐的错误类型转换入口；是否继续累积原生 `source` 链由 `ReportOptions` 控制（debug 构建默认启用，release 构建默认关闭）。
+
 `Report<E>` 的读取接口：
 
 - `attachments()`、`metadata()`、`stack_trace()`
@@ -295,6 +297,9 @@ pub enum MyError {
 - `visit_diag_sources(visit)` / `visit_diag_srcs_ext(options, visit)`
 - `iter_origin_sources()` / `iter_origin_src_ext(options)`
 - `iter_diag_sources()` / `iter_diag_srcs_ext(options)`
+- `options()` — 读取当前 `ReportOptions` 配置
+- `set_options(options: ReportOptions)` — 替换报告选项
+- `set_accumulate_source_chain(accumulate: bool)` — 快速开关 `map_err()` 的 source 链累积行为
 
 Note 附件读取：
 
@@ -322,7 +327,7 @@ Note 附件读取：
 
 - `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
 - `with_diag_src_err` 用于显式追加错误对象到**诊断补充链**，参数要求 `impl Error + Send + Sync + 'static`。
-- 原生传播链由 `boundary` / `map_err` 与 `Error::source()` 维护；诊断补充链由 `with_diag_src_err` 维护。
+- 原生传播链由 `map_err()` 与 `Error::source()` 维护；`map_err()` 是否把旧内层错误继续串接到新错误的 `source` 链，由 `ReportOptions.accumulate_source_chain` 决定。
 
 全局上下文注入（`std`）：
 

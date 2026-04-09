@@ -511,12 +511,27 @@ pub struct CauseCollectOptions {
 }
 
 impl Default for CauseCollectOptions {
-    #[inline]
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CauseCollectOptions {
+    pub const fn new() -> Self {
         Self {
             max_depth: ProfileDefaults::max_depth(),
             detect_cycle: ProfileDefaults::detect_cycle(),
         }
+    }
+
+    pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
+        self.max_depth = max_depth;
+        self
+    }
+
+    pub const fn with_detect_cycle(mut self, detect_cycle: bool) -> Self {
+        self.detect_cycle = detect_cycle;
+        self
     }
 }
 

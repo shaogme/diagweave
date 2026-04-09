@@ -15,7 +15,7 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 - `diagnostic_bag: { stack_trace: StackTrace|null, display_causes: DisplayCauseChain|null, origin_source_errors: SourceErrorChain|null, diagnostic_source_errors: SourceErrorChain|null }`
 - `trace: { context: TraceContext, events: TraceEvent[] }`
 - `context: object` (business context map; object keys are non-empty strings)
-- `system: { service: object, deployment: object, runtime: object, request: object }` (strongly typed system context object)
+- `system: object` (system context map; same structure as context)
 - `attachments: Array<Note|Payload>`
 
 ## StackTrace model
@@ -68,18 +68,10 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 ```json
 {
   "system": {
-    "service": {
-      "name": { "kind": "string", "value": "cloud-native-stack" }
-    },
-    "deployment": {
-      "environment": { "kind": "string", "value": "staging" }
-    },
-    "runtime": {
-      "host.arch": { "kind": "string", "value": "x86_64" }
-    },
-    "request": {
-      "request_id": { "kind": "string", "value": "req-20260327-0001" }
-    }
+    "service.name": { "kind": "string", "value": "cloud-native-stack" },
+    "deployment.environment": { "kind": "string", "value": "staging" },
+    "host.arch": { "kind": "string", "value": "x86_64" },
+    "request_id": { "kind": "string", "value": "req-20260327-0001" }
   }
 }
 ```
@@ -91,14 +83,9 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 
 ## System model
 
-- `system` is a structured governance object with fixed sections:
-  - `system.service`
-  - `system.deployment`
-  - `system.runtime`
-  - `system.request`
-- each system section is an object map from non-empty string key to `AttachmentValue`
-- `system` does not allow additional top-level section names
-- emitters should place governance/runtime/platform metadata into one of these four sections instead of flattening them into a single free-form map
+- `system` is an object map from business context key to `AttachmentValue`
+- system context keys are non-empty strings
+- emitters should use namespaced keys (e.g., `service.name`, `deployment.environment`) for organization
 
 ## AttachmentValue
 

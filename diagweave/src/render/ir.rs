@@ -19,7 +19,7 @@ use crate::report::SourceErrorChain;
 use crate::report::StackFrame;
 use crate::report::{
     Attachment, CauseTraversalState, ContextMap, ErrorCode, HasSeverity, MissingSeverity, Report,
-    Severity, SeverityState, StackTrace, SystemContext,
+    Severity, SeverityState, StackTrace,
 };
 #[cfg(feature = "trace")]
 use crate::report::{ReportTrace, TraceContext, TraceEvent};
@@ -174,7 +174,7 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     #[cfg(feature = "trace")]
     pub trace: Option<&'a ReportTrace>,
     pub context: &'a ContextMap,
-    pub system: &'a SystemContext,
+    pub system: &'a ContextMap,
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,
@@ -289,7 +289,7 @@ where
 #[cfg(feature = "trace")]
 pub(crate) fn build_ctx_and_attachments(
     context: &ContextMap,
-    system: &SystemContext,
+    system: &ContextMap,
     attachments: &[Attachment],
 ) -> (AttachmentValue, AttachmentValue, Vec<AttachmentValue>) {
     let mut context_map = FastMap::new();
@@ -299,15 +299,8 @@ pub(crate) fn build_ctx_and_attachments(
     for (key, value) in context {
         context_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
     }
-    for (section_name, section) in system.sections() {
-        let mut section_map = FastMap::new();
-        for (key, value) in section {
-            section_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
-        }
-        system_map.insert(
-            section_name.to_string(),
-            AttachmentValue::Object(section_map),
-        );
+    for (key, value) in system {
+        system_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
     }
 
     for attachment in attachments {

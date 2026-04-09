@@ -12,9 +12,8 @@ Trace:
 Stack Trace:
   - (none)
 System:
-  - runtime:
-    - host: prod-web-01
-    - region: us-east-1
+  - host: prod-web-01
+  - region: us-east-1
 Context:
   - (none)
 Attachments:

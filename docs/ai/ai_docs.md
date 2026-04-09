@@ -328,7 +328,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | GlobalContext Field | Description |
 | :--- | :--- |
 | `context` | `ContextMap` globally injected business context |
-| `system` | `SystemContext` globally injected structured system context (`service` / `deployment` / `runtime` / `request`) |
+| `system` | `ContextMap` globally injected system context (namespaced keys recommended, e.g., `service.name`, `deployment.environment`) |
 | `error` | `Option<GlobalErrorMeta>` metadata override (`error_code` / `category` / `retryable` / `severity`) |
 | `trace` (`trace` feature) | `Option<GlobalTraceContext>` globally injected trace context |
 
@@ -347,12 +347,11 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add business context key-value pairs |
-| `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add a runtime-scoped system field |
-| `with_system_context` | `(SystemContext)` | Replace the structured system context object |
+| `set_ctx` | `(ContextMap)` | Replace the business context map |
+| `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add a system context key-value pair |
+| `set_system` | `(ContextMap)` | Replace the system context map |
 | `set_options` | `ReportOptions` | Replace the current report options |
 | `set_accumulate_source_chain` | `bool` | Quick toggle for `map_err()` origin `source` chain accumulation |
-
-`system` is no longer a flat free-form map in rendered JSON. It is emitted as a typed governance object with fixed top-level sections: `system.service`, `system.deployment`, `system.runtime`, and `system.request`.
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `set_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal), replacing existing value |

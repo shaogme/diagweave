@@ -347,7 +347,9 @@ let report3 = Report::new(error3).set_options(
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加业务上下文键值对 |
+| `set_ctx` | `(ContextMap)` | 替换业务上下文映射 |
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加系统上下文键值对 |
+| `set_system` | `(ContextMap)` | 替换系统上下文映射 |
 | `set_options` | `ReportOptions` | 替换当前报告的选项配置 |
 | `set_accumulate_source_chain` | `bool` | 快速设置 `map_err()` 是否累积原生 `source` 链 |
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |

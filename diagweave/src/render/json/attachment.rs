@@ -4,7 +4,7 @@ use super::{
 };
 use crate::report::{
     AttachmentValue, AttachmentVisit, ContextValue, JsonContext, JsonContextEntry, Report,
-    SeverityState, SystemContext,
+    SeverityState,
 };
 use alloc::vec::Vec;
 use core::error::Error;
@@ -44,21 +44,9 @@ where
     let mut first = true;
     f.write_char('{')?;
     let system = build_json_system(report.system());
-    for section in &system.sections {
-        write_object_field(f, pretty, depth, &mut first, section.name, |f| {
-            let mut section_first = true;
-            f.write_char('{')?;
-            for entry in &section.entries {
-                write_object_field(
-                    f,
-                    pretty,
-                    depth + 1,
-                    &mut section_first,
-                    entry.key.as_ref(),
-                    |f| write_context_value(f, pretty, depth + 2, &entry.value),
-                )?;
-            }
-            close_object(f, pretty, depth + 1, section_first)
+    for entry in &system.entries {
+        write_object_field(f, pretty, depth, &mut first, entry.key.as_ref(), |f| {
+            write_context_value(f, pretty, depth + 1, &entry.value)
         })?;
     }
     close_object(f, pretty, depth, first)
@@ -158,24 +146,14 @@ fn build_json_context(context: &crate::report::ContextMap) -> JsonContext {
     JsonContext { entries }
 }
 
-struct JsonSystemSection<'a> {
-    name: &'a str,
+struct JsonSystem {
     entries: Vec<JsonContextEntry>,
 }
 
-struct JsonSystem<'a> {
-    sections: Vec<JsonSystemSection<'a>>,
-}
-
-fn build_json_system(system: &SystemContext) -> JsonSystem<'_> {
-    let mut sections = Vec::new();
-    for (name, section) in system.sections() {
-        sections.push(JsonSystemSection {
-            name,
-            entries: build_json_context(section).entries,
-        });
+fn build_json_system(system: &crate::report::ContextMap) -> JsonSystem {
+    JsonSystem {
+        entries: build_json_context(system).entries,
     }
-    JsonSystem { sections }
 }
 
 pub(super) fn write_attachments_array<E, State>(

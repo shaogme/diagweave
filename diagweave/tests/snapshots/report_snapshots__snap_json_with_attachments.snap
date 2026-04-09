@@ -2,4 +2,4 @@
 source: diagweave/tests/report_snapshots.rs
 expression: output
 ---
-{"schema_version":"v0.1.0","error":{"message":"api unauthorized","type":"report_snapshots::report_common::ApiError"},"metadata":{"error_code":"API.UNAUTHORIZED","severity":"error","category":"auth","retryable":false},"diagnostic_bag":{},"trace":{},"context":{"request_id":{"kind":"string","value":"req-json-snap"}},"system":{"service":{},"deployment":{},"runtime":{},"request":{}},"attachments":[{"kind":"note","message":"token rejected"},{"kind":"payload","name":"response","value":{"kind":"bytes","value":[7,8,9]},"media_type":"application/octet-stream"}]}
+{"schema_version":"v0.1.0","error":{"message":"api unauthorized","type":"report_snapshots::report_common::ApiError"},"metadata":{"error_code":"API.UNAUTHORIZED","severity":"error","category":"auth","retryable":false},"diagnostic_bag":{},"trace":{},"context":{"request_id":{"kind":"string","value":"req-json-snap"}},"system":{},"attachments":[{"kind":"note","message":"token rejected"},{"kind":"payload","name":"response","value":{"kind":"bytes","value":[7,8,9]},"media_type":"application/octet-stream"}]}

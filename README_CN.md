@@ -338,7 +338,7 @@ Note 附件读取：
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context.insert("request_id", "req-001".into());
+        ctx.context.insert("request_id", "req-001");
         Some(ctx)
     });
 }

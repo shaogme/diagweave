@@ -187,7 +187,7 @@ fn snap_pretty_with_display_causes() {
 }
 
 #[test]
-fn snap_pretty_with_system_context() {
+fn snap_pretty_set_system() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized)

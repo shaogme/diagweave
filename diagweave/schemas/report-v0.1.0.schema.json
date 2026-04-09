@@ -438,19 +438,6 @@
       },
       "additionalProperties": { "$ref": "#/$defs/context_value" }
     },
-    "system_section": {
-      "$ref": "#/$defs/context_map"
-    },
-    "system_context": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "service": { "$ref": "#/$defs/system_section" },
-        "deployment": { "$ref": "#/$defs/system_section" },
-        "runtime": { "$ref": "#/$defs/system_section" },
-        "request": { "$ref": "#/$defs/system_section" }
-      }
-    },
     "trace_event": {
       "type": "object",
       "additionalProperties": false,
@@ -524,7 +511,7 @@
       "$ref": "#/$defs/context_map"
     },
     "system": {
-      "$ref": "#/$defs/system_context"
+      "$ref": "#/$defs/context_map"
     },
     "attachments": {
       "type": "array",

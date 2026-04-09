@@ -107,12 +107,7 @@ pub struct HexId<const N: usize>(StaticRefStr);
 impl<const N: usize> HexId<N> {
     /// Creates a validated hexadecimal identifier.
     pub fn new(value: impl Into<StaticRefStr>) -> Result<Self, ()> {
-        let value = value.into();
-        if Self::is_valid(value.as_str()) {
-            Ok(Self(value))
-        } else {
-            Err(())
-        }
+        HexId::try_from(value.into())
     }
 
     /// Creates an identifier without validation.
@@ -137,6 +132,28 @@ impl<const N: usize> HexId<N> {
     /// Returns the owned inner string.
     pub fn into_inner(self) -> StaticRefStr {
         self.0
+    }
+}
+
+impl<const N: usize> TryFrom<StaticRefStr> for HexId<N> {
+    type Error = ();
+    fn try_from(value: StaticRefStr) -> Result<Self, Self::Error> {
+        if Self::is_valid(value.as_str()) {
+            Ok(Self(value))
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl<const N: usize> TryFrom<&'static str> for HexId<N> {
+    type Error = ();
+    fn try_from(value: &'static str) -> Result<Self, Self::Error> {
+        if Self::is_valid(value) {
+            Ok(Self(value.into()))
+        } else {
+            Err(())
+        }
     }
 }
 

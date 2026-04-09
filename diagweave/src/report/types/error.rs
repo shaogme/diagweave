@@ -154,12 +154,18 @@ impl Display for ErrorCode {
     }
 }
 
+impl ErrorCode {
+    pub fn into_string(self) -> String {
+        match self {
+            ErrorCode::Integer(i) => i.to_string(),
+            ErrorCode::String(s) => s.into_string(),
+        }
+    }
+}
+
 impl From<ErrorCode> for String {
     fn from(value: ErrorCode) -> Self {
-        match value {
-            ErrorCode::Integer(v) => v.to_string(),
-            ErrorCode::String(v) => v.to_string(),
-        }
+        value.into_string()
     }
 }
 

@@ -288,8 +288,12 @@ impl ContextMap {
         self.0.len()
     }
 
-    pub fn insert(&mut self, key: impl Into<StaticRefStr>, value: ContextValue) {
-        self.0.insert(key.into(), value);
+    pub fn contains_key<'a>(&self, key: impl Into<&'a str>) -> bool {
+        self.0.contains_key(key.into())
+    }
+
+    pub fn insert(&mut self, key: impl Into<StaticRefStr>, value: impl Into<ContextValue>) {
+        self.0.insert(key.into(), value.into());
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&StaticRefStr, &ContextValue)> {
@@ -333,68 +337,6 @@ impl<'a> IntoIterator for &'a ContextMap {
 
     fn into_iter(self) -> Self::IntoIter {
         (&self.0).into_iter()
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub struct SystemContext {
-    pub service: ContextMap,
-    pub deployment: ContextMap,
-    pub runtime: ContextMap,
-    pub request: ContextMap,
-}
-
-impl SystemContext {
-    /// Creates an empty system context.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.service.is_empty()
-            && self.deployment.is_empty()
-            && self.runtime.is_empty()
-            && self.request.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.service.len() + self.deployment.len() + self.runtime.len() + self.request.len()
-    }
-
-    pub fn insert(&mut self, key: impl Into<StaticRefStr>, value: ContextValue) {
-        self.runtime.insert(key, value);
-    }
-
-    pub fn sections(&self) -> [(&'static str, &ContextMap); 4] {
-        [
-            ("service", &self.service),
-            ("deployment", &self.deployment),
-            ("runtime", &self.runtime),
-            ("request", &self.request),
-        ]
-    }
-
-    /// Returns a reference to the default empty SystemContext.
-    #[cfg(feature = "std")]
-    pub fn default_ref() -> &'static SystemContext {
-        static DEFAULT: std::sync::LazyLock<SystemContext> =
-            std::sync::LazyLock::new(SystemContext::new);
-        &DEFAULT
-    }
-
-    /// Returns a reference to the default empty SystemContext.
-    #[cfg(not(feature = "std"))]
-    pub fn default_ref() -> &'static SystemContext {
-        use alloc::boxed::Box;
-        use core::ptr;
-        static mut DEFAULT: *const SystemContext = ptr::null();
-        unsafe {
-            if DEFAULT.is_null() {
-                DEFAULT = Box::leak(Box::new(SystemContext::new()));
-            }
-            &*DEFAULT
-        }
     }
 }
 

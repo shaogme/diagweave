@@ -18,8 +18,7 @@ Stack Trace:
   - handler
   - process
 System:
-  - runtime:
-    - host: prod-01
+  - host: prod-01
 Context:
   - user_id: u-123
 Attachments:

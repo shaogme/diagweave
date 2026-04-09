@@ -438,8 +438,7 @@ fn init_tracing() {
 fn init_global_context() {
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
-        ctx.context
-            .insert("global_request_id", "req-global-001".into());
+        ctx.context.insert("global_request_id", "req-global-001");
         ctx.trace = Some(diagweave::report::GlobalTraceContext {
             trace_id: TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok(),
             span_id: SpanId::new("00f067aa0ba902b7").ok(),

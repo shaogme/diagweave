@@ -2,7 +2,7 @@ use alloc::vec;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 
-use crate::report::{ContextMap, Report, SeverityState};
+use crate::report::{Report, SeverityState};
 
 use super::{PrettyIndent, ReportRenderOptions, ReportRenderer, filtered_frames};
 
@@ -342,15 +342,12 @@ where
 
     let mut wrote_header = false;
     let system = report.system();
-    for (section_name, section) in system.sections() {
-        if render_system_subsection(
-            f,
-            section_name,
-            section,
-            options.pretty_indent,
-            wrote_header,
-        )? {
-            wrote_header = true;
+    if !system.is_empty() {
+        writeln!(f, "System:")?;
+        wrote_header = true;
+        for (key, value) in system.sorted_entries() {
+            write_indent(f, options.pretty_indent)?;
+            writeln!(f, "- {}: {}", key.as_ref(), value)?;
         }
     }
 
@@ -360,31 +357,6 @@ where
         writeln!(f, "- (none)")?;
     }
     Ok(())
-}
-
-fn render_system_subsection(
-    f: &mut Formatter<'_>,
-    section_name: &str,
-    section: &ContextMap,
-    indent: PrettyIndent,
-    wrote_header: bool,
-) -> Result<bool, fmt::Error> {
-    if section.is_empty() {
-        return Ok(false);
-    }
-
-    if !wrote_header {
-        writeln!(f, "System:")?;
-    }
-    write_indent(f, indent)?;
-    writeln!(f, "- {section_name}:")?;
-
-    for (key, value) in section.sorted_entries() {
-        write_indent(f, indent)?;
-        write_indent(f, indent)?;
-        writeln!(f, "- {}: {}", key.as_ref(), value)?;
-    }
-    Ok(true)
 }
 
 fn render_context_section<State>(

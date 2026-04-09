@@ -167,15 +167,8 @@ where
             write_field!(f, *idx, key, value);
         }
 
-        for (section_name, section) in diag.system.sections() {
-            for (key, value) in section.sorted_entries() {
-                write_field!(
-                    f,
-                    *idx,
-                    format_args!("system.{}.{}", section_name, key),
-                    value
-                );
-            }
+        for (key, value) in diag.system.sorted_entries() {
+            write_field!(f, *idx, format_args!("system.{}", key), value);
         }
 
         for attachment in &diag.attachments {

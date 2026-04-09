@@ -132,15 +132,19 @@ pub struct ReportMetadata {
 
 impl Default for ReportMetadata {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReportMetadata {
+    pub const fn new() -> Self {
         Self {
             error_code: None,
             category: None,
             retryable: None,
         }
     }
-}
 
-impl ReportMetadata {
     /// Returns a static reference to a default ReportMetadata.
     /// This is useful for cases where no cold data exists.
     pub(crate) fn default_ref() -> &'static Self {

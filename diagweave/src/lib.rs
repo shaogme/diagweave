@@ -55,7 +55,7 @@ pub mod report {
         ErrorCodeIntError, GlobalContext, GlobalErrorMeta, HasSeverity, InspectReportExt,
         MissingSeverity, Report, ReportMetadata, ReportOptions, ReportSourceErrorIter,
         ResultReportExt, Severity, SeverityParseError, SeverityState, SourceErrorChain,
-        SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat, SystemContext,
+        SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat,
     };
     #[cfg(feature = "std")]
     pub use crate::report_impl::{

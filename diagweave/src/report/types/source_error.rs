@@ -25,26 +25,16 @@ pub(crate) struct DiagnosticBag {
     pub(crate) trace: Option<ReportTrace>,
     pub(crate) stack_trace: Option<StackTrace>,
     pub(crate) context: ContextMap,
-    pub(crate) system: SystemContext,
+    pub(crate) system: ContextMap,
     pub(crate) attachments: Vec<Attachment>,
     pub(crate) display_causes: Option<DisplayCauseChain>,
     pub(crate) origin_source_errors: Option<SourceErrorChain>,
     pub(crate) diagnostic_source_errors: Option<SourceErrorChain>,
 }
 
-impl Clone for DiagnosticBag {
-    fn clone(&self) -> Self {
-        Self {
-            #[cfg(feature = "trace")]
-            trace: self.trace.clone(),
-            stack_trace: self.stack_trace.clone(),
-            context: self.context.clone(),
-            system: self.system.clone(),
-            attachments: self.attachments.clone(),
-            display_causes: self.display_causes.clone(),
-            origin_source_errors: self.origin_source_errors.clone(),
-            diagnostic_source_errors: self.diagnostic_source_errors.clone(),
-        }
+impl DiagnosticBag {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -67,7 +57,7 @@ impl PartialEq for DiagnosticBag {
 /// Cold data storage for Report - contains metadata, diagnostic bag, and options.
 /// This struct is used to reduce Report's size by combining
 /// metadata, DiagnosticBag, and ReportOptions into a single boxed structure.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct ColdData {
     pub(crate) metadata: ReportMetadata,
     pub(crate) bag: DiagnosticBag,
@@ -88,8 +78,8 @@ impl ColdData {
 impl Default for ColdData {
     fn default() -> Self {
         Self {
-            metadata: ReportMetadata::default(),
-            bag: DiagnosticBag::default(),
+            metadata: ReportMetadata::new(),
+            bag: DiagnosticBag::new(),
             options: ReportOptions::new(),
         }
     }
@@ -101,7 +91,7 @@ pub struct GlobalContext {
     #[cfg(feature = "trace")]
     pub trace: Option<GlobalTraceContext>,
     pub error: Option<GlobalErrorMeta>,
-    pub system: SystemContext,
+    pub system: ContextMap,
     pub context: ContextMap,
 }
 

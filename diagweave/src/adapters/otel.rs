@@ -349,13 +349,11 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 value: OtelValue::from(value),
             });
         }
-        for (section_name, section) in self.system.sections() {
-            for (key, value) in section {
-                attributes.push(OtelAttribute {
-                    key: format!("system.{section_name}.{}", key.as_ref()).into(),
-                    value: OtelValue::from(value),
-                });
-            }
+        for (key, value) in self.system {
+            attributes.push(OtelAttribute {
+                key: format!("system.{}", key.as_ref()).into(),
+                value: OtelValue::from(value),
+            });
         }
         for attachment in self.attachments {
             match attachment {

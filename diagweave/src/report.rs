@@ -279,42 +279,57 @@ where
             error,
             system,
             context,
-        } = global;
+        } = &global;
 
-        if let Some(error) = error {
-            let has_any =
-                error.error_code.is_some() || error.category.is_some() || error.retryable.is_some();
-            if has_any {
-                let cold = self.ensure_cold();
-                if let Some(error_code) = error.error_code {
-                    cold.metadata.with_error_code_mut(error_code);
-                }
-                if let Some(category) = error.category {
-                    cold.metadata.with_category_mut(category);
-                }
-                if let Some(retryable) = error.retryable {
-                    cold.metadata.with_retryable_mut(retryable);
-                }
+        // Check if we actually need to allocate ColdData
+        // This is the lazy initialization optimization - only allocate when there's real data
+        let needs_allocation = {
+            let has_error_meta = error
+                .as_ref()
+                .map(|e| e.error_code.is_some() || e.category.is_some() || e.retryable.is_some())
+                .unwrap_or(false);
+            let has_system = !system.is_empty();
+            let has_context = !context.is_empty();
+
+            #[cfg(feature = "trace")]
+            let has_trace = trace.is_some();
+            #[cfg(not(feature = "trace"))]
+            let has_trace = false;
+
+            has_error_meta || has_system || has_context || has_trace
+        };
+
+        if !needs_allocation {
+            return;
+        }
+
+        // Now we know we need ColdData, allocate it
+        let cold = self.ensure_cold();
+
+        if let Some(error) = global.error {
+            if let Some(error_code) = error.error_code {
+                cold.metadata.with_error_code_mut(error_code);
+            }
+            if let Some(category) = error.category {
+                cold.metadata.with_category_mut(category);
+            }
+            if let Some(retryable) = error.retryable {
+                cold.metadata.with_retryable_mut(retryable);
             }
         }
 
-        if !system.is_empty() {
-            let diag = self.diagnostics_mut();
-            diag.system = system;
+        if !global.system.is_empty() {
+            cold.bag.system = global.system;
         }
-        if !context.is_empty() {
-            let diag = self.diagnostics_mut();
-            for (key, value) in &context {
-                diag.context.insert(key.clone(), value.clone());
+        if !global.context.is_empty() {
+            for (key, value) in &global.context {
+                cold.bag.context.insert(key.clone(), value.clone());
             }
         }
 
         #[cfg(feature = "trace")]
-        if let Some(trace) = trace {
-            let report_trace = self
-                .diagnostics_mut()
-                .trace
-                .get_or_insert_with(ReportTrace::default);
+        if let Some(trace) = global.trace {
+            let report_trace = cold.bag.trace.get_or_insert_with(ReportTrace::default);
             report_trace.context.trace_id = trace.trace_id;
             report_trace.context.span_id = trace.span_id;
             report_trace.context.parent_span_id = trace.parent_span_id;

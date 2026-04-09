@@ -211,9 +211,11 @@ pub struct Report<E, State = MissingSeverity> {
 
 `ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`category()`、`retryable()` 等接口。Severity 直接存储在 `Report` 的类型状态中，而非 `ReportMetadata` 内。写入式组合请使用 `with_error_code(...)`、`set_severity(...)` 等 builder 方法。
 
-### `ReportOptions`
+### `ReportOptions` 和 `GlobalConfig`
 
-`ReportOptions` 用于控制单个 `Report` 的错误源链累积行为和原因收集行为。所有默认值根据构建配置决定，以在开发期间提供更好的调试体验，同时在生产环境中优化性能。
+`ReportOptions` 用于控制单个 `Report` 的错误源链累积行为和原因收集行为。所有字段都是 `Option<T>` 类型，配置值通过以下优先级解析：
+
+**配置优先级**：ReportOptions > GlobalConfig > Profile defaults
 
 #### 配置文件相关的默认值
 
@@ -225,25 +227,51 @@ pub struct Report<E, State = MissingSeverity> {
 
 #### 配置选项说明
 
-- `accumulate_source_chain`：启用后，`map_err()` 会保留并延伸原生 `source` 链；关闭后仅转换错误类型，不改动 source 链。
-- `max_depth`：原因收集时的最大深度限制。较高的值提供更完整的错误上下文，但对于非常深的错误链可能影响性能。
-- `detect_cycle`：启用后，错误链遍历将跟踪已访问的错误并在检测到循环时标记。关闭后跳过循环检测以获得更好的性能。
+- `accumulate_source_chain`：当为 `Some(true)` 时，`map_err()` 会保留并延伸原生 `source` 链；为 `Some(false)` 时仅转换错误类型，不改动 source 链。为 `None` 时从 `GlobalConfig` 或 profile 默认值继承。
+- `max_depth`：原因收集时的最大深度限制。较高的值提供更完整的错误上下文，但对于非常深的错误链可能影响性能。为 `None` 时从 `GlobalConfig` 或默认值 16 继承。
+- `detect_cycle`：当为 `Some(true)` 时，错误链遍历将跟踪已访问的错误并在检测到循环时标记。为 `Some(false)` 时跳过循环检测以获得更好的性能。为 `None` 时从 `GlobalConfig` 或 profile 默认值继承。
 
 #### 构建方法
 
 | 方法 | 说明 |
 |------|------|
-| `ReportOptions::new(accumulate: bool)` | 使用指定的累积设置创建选项 |
-| `ReportOptions::default_for_profile()` | 返回配置文件相关的默认值 |
-| `.with_accumulate_source_chain(bool)` | 设置源链累积行为 |
+| `ReportOptions::new()` | 创建所有字段为 `None` 的选项（从 GlobalConfig 或默认值继承） |
+| `.with_accumulate_source_chain(bool)` | 设置源链累积行为（包装为 `Some(...)`） |
 | `.with_max_depth(usize)` | 设置原因收集深度限制 |
 | `.with_cycle_detection(bool)` | 启用/禁用循环检测 |
+
+#### 解析方法
+
+| 方法 | 说明 |
+|------|------|
+| `.resolve_accumulate_source_chain()` | 解析实际使用的累积设置（优先级：ReportOptions > GlobalConfig > Profile default） |
+| `.resolve_max_depth()` | 解析实际使用的深度限制 |
+| `.resolve_detect_cycle()` | 解析实际使用的循环检测设置 |
+
+#### `GlobalConfig` 全局配置
+
+`GlobalConfig` 提供应用级别的配置默认值。当 `ReportOptions` 的字段为 `None` 时，会从 `GlobalConfig` 继承值。
+
+| 方法 | 说明 |
+|------|------|
+| `GlobalConfig::new()` | 创建具有 profile 相关默认值的全局配置 |
+| `.with_accumulate_source_chain(bool)` | 设置默认累积行为 |
+| `.with_max_depth(usize)` | 设置默认深度限制 |
+| `.with_cycle_detection(bool)` | 设置默认循环检测 |
+| `set_global_config(config)` | 设置全局配置（仅可调用一次） |
 
 #### 使用示例
 
 ```rust
 use diagweave::prelude::*;
-use diagweave::report::ReportOptions;
+use diagweave::report::{GlobalConfig, ReportOptions, set_global_config};
+
+// 设置全局默认值（应用启动时调用一次）
+let config = GlobalConfig::new()
+    .with_accumulate_source_chain(true)
+    .with_max_depth(32)
+    .with_cycle_detection(true);
+set_global_config(config).expect("全局配置已设置");
 
 // 使用配置文件相关的默认值
 let error = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
@@ -252,7 +280,7 @@ let report = Report::new(error);
 // 为性能关键路径配置
 let error2 = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
 let report2 = Report::new(error2).set_options(
-    ReportOptions::default_for_profile()
+    ReportOptions::new()
         .with_max_depth(8)
         .with_cycle_detection(false)
 );
@@ -260,7 +288,8 @@ let report2 = Report::new(error2).set_options(
 // 启用完整诊断用于调试
 let error3 = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
 let report3 = Report::new(error3).set_options(
-    ReportOptions::new(true)
+    ReportOptions::new()
+        .with_accumulate_source_chain(true)
         .with_max_depth(32)
         .with_cycle_detection(true)
 );
@@ -293,6 +322,7 @@ let report3 = Report::new(error3).set_options(
 ### 全局注入 (Global Injection)
 用于跨层级自动注入上下文（如 RequestID、SessionID）。
 - **注册器**: `register_global_injector(f: fn() -> Option<GlobalContext>)`
+- **全局配置**: `set_global_config(config: GlobalConfig)` - 设置应用级别的默认选项
 - **注入时机**: 每次创建一个新的 `Report` 实例时自动执行。
 
 | GlobalContext 字段 | 说明 |
@@ -301,6 +331,8 @@ let report3 = Report::new(error3).set_options(
 | `system` | `ContextMap` 全局注入的系统/运行时上下文 |
 | `error` | `Option<GlobalErrorMeta>` 元数据覆盖（`error_code` / `category` / `retryable` / `severity`） |
 | `trace`（`trace` feature） | `Option<GlobalTraceContext>` 全局注入的 trace 上下文 |
+
+**注意**: `GlobalConfig` 和 `set_global_config` 是独立的全局配置系统，用于设置 `ReportOptions` 的默认值；而 `register_global_injector` 用于注入上下文信息。两者可以配合使用。
 
 `TraceId` / `SpanId` / `ParentSpanId` 为十六进制校验后的标识符。构造方式：
 - `TraceId::new("32位hex")` / `SpanId::new("16位hex")` / `ParentSpanId::new("16位hex")`

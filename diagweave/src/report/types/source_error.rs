@@ -90,7 +90,7 @@ impl Default for ColdData {
         Self {
             metadata: ReportMetadata::default(),
             bag: DiagnosticBag::default(),
-            options: ReportOptions::default_for_profile(),
+            options: ReportOptions::new(),
         }
     }
 }

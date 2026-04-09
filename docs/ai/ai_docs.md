@@ -211,9 +211,11 @@ pub struct Report<E, State = MissingSeverity> {
 
 `ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `category()`, and `retryable()`. Severity is stored directly in the `Report` typestate, not in `ReportMetadata`. Composition uses builder methods such as `with_error_code(...)` and `set_severity(...)`.
 
-### `ReportOptions`
+### `ReportOptions` and `GlobalConfig`
 
-`ReportOptions` controls error source chain accumulation and cause collection behavior for an individual `Report`. All defaults are profile-dependent to provide better debugging experience during development while optimizing for performance in production.
+`ReportOptions` controls error source chain accumulation and cause collection behavior for an individual `Report`. All fields are `Option<T>` type, and configuration values are resolved with the following priority:
+
+**Configuration Priority**: ReportOptions > GlobalConfig > Profile defaults
 
 #### Profile-Dependent Defaults
 
@@ -225,25 +227,51 @@ pub struct Report<E, State = MissingSeverity> {
 
 #### Configuration Options
 
-- `accumulate_source_chain`: When `true`, `map_err()` preserves and extends the origin `source` chain; when `false`, it only transforms the error type without touching the source chain.
-- `max_depth`: Maximum depth of causes to collect during source error traversal. Higher values provide more complete error context but may impact performance for very deep error chains.
-- `detect_cycle`: When `true`, the error chain traversal will track visited errors and mark cycles when detected. When `false`, cycle detection is skipped for better performance.
+- `accumulate_source_chain`: When `Some(true)`, `map_err()` preserves and extends the origin `source` chain; when `Some(false)`, it only transforms the error type without touching the source chain. When `None`, inherits from `GlobalConfig` or profile defaults.
+- `max_depth`: Maximum depth of causes to collect during source error traversal. Higher values provide more complete error context but may impact performance for very deep error chains. When `None`, inherits from `GlobalConfig` or defaults to 16.
+- `detect_cycle`: When `Some(true)`, the error chain traversal will track visited errors and mark cycles when detected. When `Some(false)`, cycle detection is skipped for better performance. When `None`, inherits from `GlobalConfig` or profile defaults.
 
 #### Builder Methods
 
 | Method | Description |
 |--------|-------------|
-| `ReportOptions::new(accumulate: bool)` | Creates options with specified accumulation setting |
-| `ReportOptions::default_for_profile()` | Returns profile-dependent defaults |
-| `.with_accumulate_source_chain(bool)` | Sets source chain accumulation |
+| `ReportOptions::new()` | Creates options with all fields as `None` (inherits from GlobalConfig or defaults) |
+| `.with_accumulate_source_chain(bool)` | Sets source chain accumulation (wraps in `Some(...)`) |
 | `.with_max_depth(usize)` | Sets cause collection depth limit |
 | `.with_cycle_detection(bool)` | Enables/disables cycle detection |
+
+#### Resolution Methods
+
+| Method | Description |
+|--------|-------------|
+| `.resolve_accumulate_source_chain()` | Resolves the actual accumulation setting (Priority: ReportOptions > GlobalConfig > Profile default) |
+| `.resolve_max_depth()` | Resolves the actual depth limit |
+| `.resolve_detect_cycle()` | Resolves the actual cycle detection setting |
+
+#### `GlobalConfig` Global Configuration
+
+`GlobalConfig` provides application-level default configuration. When `ReportOptions` fields are `None`, values are inherited from `GlobalConfig`.
+
+| Method | Description |
+|--------|-------------|
+| `GlobalConfig::new()` | Creates global config with profile-dependent defaults |
+| `.with_accumulate_source_chain(bool)` | Sets default accumulation behavior |
+| `.with_max_depth(usize)` | Sets default depth limit |
+| `.with_cycle_detection(bool)` | Sets default cycle detection |
+| `set_global_config(config)` | Sets global config (can only be called once) |
 
 #### Example Usage
 
 ```rust
 use diagweave::prelude::*;
-use diagweave::report::ReportOptions;
+use diagweave::report::{GlobalConfig, ReportOptions, set_global_config};
+
+// Set global defaults (call once at application startup)
+let config = GlobalConfig::new()
+    .with_accumulate_source_chain(true)
+    .with_max_depth(32)
+    .with_cycle_detection(true);
+set_global_config(config).expect("Global config already set");
 
 // Use profile-dependent defaults
 let error = std::io::Error::new(std::io::ErrorKind::Other, "test error");
@@ -252,7 +280,7 @@ let report = Report::new(error);
 // Configure for performance-critical paths
 let error2 = std::io::Error::new(std::io::ErrorKind::Other, "test error");
 let report2 = Report::new(error2).set_options(
-    ReportOptions::default_for_profile()
+    ReportOptions::new()
         .with_max_depth(8)
         .with_cycle_detection(false)
 );
@@ -260,7 +288,8 @@ let report2 = Report::new(error2).set_options(
 // Enable full diagnostics for debugging
 let error3 = std::io::Error::new(std::io::ErrorKind::Other, "test error");
 let report3 = Report::new(error3).set_options(
-    ReportOptions::new(true)
+    ReportOptions::new()
+        .with_accumulate_source_chain(true)
         .with_max_depth(32)
         .with_cycle_detection(true)
 );
@@ -293,6 +322,7 @@ let report3 = Report::new(error3).set_options(
 ### Global Injection
 Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 - **Register**: `register_global_injector(f: fn() -> Option<GlobalContext>)`
+- **Global Config**: `set_global_config(config: GlobalConfig)` - Sets application-level default options
 - **Timing**: Automatically executed every time a new `Report` instance is created.
 
 | GlobalContext Field | Description |
@@ -301,6 +331,8 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `system` | `SystemContext` globally injected structured system context (`service` / `deployment` / `runtime` / `request`) |
 | `error` | `Option<GlobalErrorMeta>` metadata override (`error_code` / `category` / `retryable` / `severity`) |
 | `trace` (`trace` feature) | `Option<GlobalTraceContext>` globally injected trace context |
+
+**Note**: `GlobalConfig` and `set_global_config` are a separate global configuration system for setting default `ReportOptions` values; `register_global_injector` is used for injecting context information. The two can be used together.
 
 `TraceId` / `SpanId` / `ParentSpanId` are hex-validated identifiers. Construct them with:
 - `TraceId::new("32-hex")` / `SpanId::new("16-hex")` / `ParentSpanId::new("16-hex")`

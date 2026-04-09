@@ -57,6 +57,11 @@ pub mod report {
         ResultReportExt, Severity, SeverityParseError, SeverityState, SourceErrorChain,
         SourceErrorEntry, SourceErrorItem, StackFrame, StackTrace, StackTraceFormat, SystemContext,
     };
+    #[cfg(feature = "std")]
+    pub use crate::report_impl::{
+        GlobalConfig, RegisterGlobalContextError, SetGlobalConfigError, register_global_injector,
+        set_global_config,
+    };
     #[cfg(feature = "trace")]
     pub use crate::report_impl::{
         GlobalTraceContext, ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent,
@@ -64,8 +69,6 @@ pub mod report {
     };
     #[cfg(feature = "json")]
     pub use crate::report_impl::{JsonContext, JsonContextEntry};
-    #[cfg(feature = "std")]
-    pub use crate::report_impl::{RegisterGlobalContextError, register_global_injector};
 }
 
 #[cfg(feature = "trace")]

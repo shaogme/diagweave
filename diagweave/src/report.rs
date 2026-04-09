@@ -38,6 +38,9 @@ pub use trace::{
 #[cfg(feature = "trace")]
 pub use types::GlobalTraceContext;
 
+#[cfg(feature = "std")]
+pub use types::{GlobalConfig, SetGlobalConfigError, set_global_config};
+
 use types::{ColdData, DiagnosticBag, append_source_chain, limit_depth_source_chain};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
@@ -376,7 +379,7 @@ where
             self.cold = Some(Box::new(ColdData {
                 metadata,
                 bag: DiagnosticBag::default(),
-                options: ReportOptions::default_for_profile(),
+                options: ReportOptions::new(),
             }));
         }
         self
@@ -522,11 +525,20 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use diagweave::{Report, ReportOptions};
+    /// ```rust
+    /// use diagweave::prelude::Report;
+    /// use diagweave::report::ReportOptions;
+    /// use diagweave::Error;
+    ///
+    /// #[derive(Debug, Error)]
+    /// #[display("my error")]
+    /// struct MyError;
+    ///
+    /// let my_error = MyError;
+    /// let report = Report::new(my_error);
     ///
     /// // Disable source chain accumulation for this specific report
-    /// let report = report.set_options(ReportOptions::new(false));
+    /// let _report = report.set_options(ReportOptions::new().with_accumulate_source_chain(false));
     /// ```
     pub fn set_options(mut self, options: ReportOptions) -> Self {
         self.ensure_cold().options = options;
@@ -539,17 +551,26 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use diagweave::Report;
+    /// ```rust
+    /// use diagweave::prelude::Report;
+    /// use diagweave::Error;
+    ///
+    /// #[derive(Debug, Error)]
+    /// #[display("my error")]
+    /// struct MyError;
+    ///
+    /// let my_error = MyError;
+    /// let report = Report::new(my_error);
     ///
     /// // Enable source chain accumulation for this specific report
-    /// let report = report.set_accumulate_source_chain(true);
+    /// let _report = report.set_accumulate_source_chain(true);
     /// ```
     pub fn set_accumulate_source_chain(mut self, accumulate: bool) -> Self {
         let cold = self.ensure_cold();
-        cold.options = ReportOptions::new(accumulate)
-            .with_max_depth(cold.options.max_depth)
-            .with_cycle_detection(cold.options.detect_cycle);
+        cold.options = ReportOptions::new()
+            .with_accumulate_source_chain(accumulate)
+            .with_max_depth(cold.options.max_depth.unwrap_or(16))
+            .with_cycle_detection(cold.options.detect_cycle.unwrap_or(false));
         self
     }
 
@@ -579,14 +600,32 @@ where
     ///
     /// # Example
     ///
-    /// ```ignore
-    /// use diagweave::{Report, ReportOptions};
+    /// ```rust
+    /// use diagweave::prelude::Report;
+    /// use diagweave::Error;
+    ///
+    /// #[derive(Debug, Error)]
+    /// #[display("inner error")]
+    /// struct InnerError;
+    ///
+    /// #[derive(Debug, Error)]
+    /// #[display("outer error")]
+    /// struct OuterError;
+    ///
+    /// impl From<InnerError> for OuterError {
+    ///     fn from(e: InnerError) -> Self {
+    ///         OuterError
+    ///     }
+    /// }
+    ///
+    /// let inner_error = InnerError;
+    /// let inner_report = Report::new(inner_error);
     ///
     /// // Transform error type while preserving diagnostics
     /// let report: Report<OuterError> = inner_report.map_err(|e| OuterError::from(e));
     ///
     /// // Control source chain accumulation per-report
-    /// let report = report.set_accumulate_source_chain(false); // Disable accumulation
+    /// let _report = report.set_accumulate_source_chain(false); // Disable accumulation
     /// ```
     pub fn map_err<Outer>(self, map: impl FnOnce(E) -> Outer) -> Report<Outer, State>
     where
@@ -603,7 +642,7 @@ where
         let options = cold.as_ref().map(|c| c.options).unwrap_or_default();
 
         // Check if source chain accumulation is enabled for this report
-        if options.accumulate_source_chain {
+        if options.resolve_accumulate_source_chain() {
             // Build origin source chain with the old inner as the new root
             // We use a borrowed representation (StringError) to avoid ownership issues
 

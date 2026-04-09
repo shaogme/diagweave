@@ -310,9 +310,15 @@ pub enum AttachmentVisit<'a> {
 /// This controls whether [`Report::map_err()`] automatically accumulates the source error chain
 /// when transforming error types, as well as options for cause collection depth and cycle detection.
 ///
-/// # Default Behavior
+/// # Configuration Priority
 ///
-/// All default values depend on the build profile to provide better debugging experience
+/// All fields are optional (`Option<T>`). The effective value is determined by:
+/// 1. Report-level `ReportOptions` (if set)
+/// 2. Global `GlobalConfig` (if set)
+///
+/// # Default Behavior (when not explicitly set)
+///
+/// Default values depend on the build profile to provide better debugging experience
 /// during development while avoiding performance overhead in production:
 ///
 /// | Option | Debug Build | Release Build |
@@ -326,33 +332,42 @@ pub enum AttachmentVisit<'a> {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use diagweave::{Report, ReportOptions};
+/// ```rust
+/// use diagweave::prelude::Report;
+/// use diagweave::report::ReportOptions;
+/// use diagweave::Error;
 ///
 /// // Create a report with default options (profile-dependent)
+/// #[derive(Debug, Error)]
+/// #[display("my error")]
+/// struct MyError;
+///
+/// let my_error = MyError;
 /// let report = Report::new(my_error);
 ///
 /// // Explicitly enable source chain accumulation
-/// let report = report.set_accumulate_source_chain(true);
+/// let _report = report.set_accumulate_source_chain(true);
 ///
 /// // Configure cause collection depth
-/// let report = report.set_options(ReportOptions::default().with_max_depth(32));
+/// let _report = _report.set_options(ReportOptions::new().with_max_depth(32));
 ///
 /// // Disable cycle detection for performance-critical paths
-/// let report = report.set_options(ReportOptions::default().with_cycle_detection(false));
+/// let _report = _report.set_options(ReportOptions::new().with_cycle_detection(false));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReportOptions {
     /// Whether `map_err()` should automatically accumulate source error chains.
     ///
-    /// When `true`, calling `map_err()` will preserve and extend the origin
+    /// When `Some(true)`, calling `map_err()` will preserve and extend the origin
     /// source error chain, similar to the old `boundary()` behavior.
     ///
-    /// When `false`, `map_err()` only transforms the error type without
+    /// When `Some(false)`, `map_err()` only transforms the error type without
     /// accumulating source chains.
     ///
-    /// **Default**: `true` in debug builds, `false` in release builds.
-    pub accumulate_source_chain: bool,
+    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
+    ///
+    /// **Default**: `None` (inherits from global config or profile default).
+    pub accumulate_source_chain: Option<bool>,
 
     /// Maximum depth of causes to collect during source error traversal.
     ///
@@ -360,36 +375,186 @@ pub struct ReportOptions {
     /// source errors. A higher value provides more complete error context but
     /// may impact performance for very deep error chains.
     ///
-    /// **Default**: `16` (same for all build profiles).
-    pub max_depth: usize,
+    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
+    ///
+    /// **Default**: `None` (inherits from global config or `16`).
+    pub max_depth: Option<usize>,
 
     /// Whether to detect cycles in the cause chain during traversal.
     ///
-    /// When `true`, the error chain traversal will track visited errors and
+    /// When `Some(true)`, the error chain traversal will track visited errors and
     /// mark cycles when detected. This is useful for debugging but adds
     /// overhead from maintaining a visited set.
     ///
-    /// When `false`, cycle detection is skipped for better performance.
+    /// When `Some(false)`, cycle detection is skipped for better performance.
     /// Use this in release builds when error chains are trusted to be acyclic.
     ///
-    /// **Default**: `true` in debug builds, `false` in release builds.
-    pub detect_cycle: bool,
+    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
+    ///
+    /// **Default**: `None` (inherits from global config or profile default).
+    pub detect_cycle: Option<bool>,
 }
 
 impl ReportOptions {
-    /// Creates new report options with the specified source chain accumulation setting.
+    /// Creates new report options with all fields unset (None).
     ///
-    /// Uses profile-dependent defaults for `detect_cycle` and fixed default for `max_depth`.
-    pub const fn new(accumulate_source_chain: bool) -> Self {
+    /// All values will be inherited from [`GlobalConfig`] or profile defaults.
+    pub const fn new() -> Self {
         Self {
-            accumulate_source_chain,
-            max_depth: 16,
-            // Note: detect_cycle uses runtime default, not const-evaluated profile
-            detect_cycle: true,
+            accumulate_source_chain: None,
+            max_depth: None,
+            detect_cycle: None,
         }
     }
 
-    /// Returns the default report options based on build profile.
+    /// Sets whether source chains should be accumulated during `map_err()`.
+    pub const fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
+        self.accumulate_source_chain = Some(accumulate);
+        self
+    }
+
+    /// Sets the maximum depth for cause collection.
+    pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
+        self.max_depth = Some(max_depth);
+        self
+    }
+
+    /// Enables or disables cycle detection during cause collection.
+    pub const fn with_cycle_detection(mut self, detect_cycle: bool) -> Self {
+        self.detect_cycle = Some(detect_cycle);
+        self
+    }
+
+    /// Resolves the effective value for `accumulate_source_chain`.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    #[cfg(feature = "std")]
+    pub fn resolve_accumulate_source_chain(&self) -> bool {
+        self.accumulate_source_chain
+            .unwrap_or_else(|| GlobalConfig::global().resolve_accumulate_source_chain())
+    }
+
+    /// Resolves the effective value for `accumulate_source_chain` (no_std version).
+    ///
+    /// Priority: ReportOptions > Profile default
+    #[cfg(not(feature = "std"))]
+    pub fn resolve_accumulate_source_chain(&self) -> bool {
+        self.accumulate_source_chain
+            .unwrap_or_else(|| Self::profile_default_accumulate_source_chain())
+    }
+
+    /// Resolves the effective value for `max_depth`.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    #[cfg(feature = "std")]
+    pub fn resolve_max_depth(&self) -> usize {
+        self.max_depth
+            .unwrap_or_else(|| GlobalConfig::global().resolve_max_depth())
+    }
+
+    /// Resolves the effective value for `max_depth` (no_std version).
+    ///
+    /// Priority: ReportOptions > Profile default
+    #[cfg(not(feature = "std"))]
+    pub fn resolve_max_depth(&self) -> usize {
+        self.max_depth.unwrap_or(16)
+    }
+
+    /// Resolves the effective value for `detect_cycle`.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    #[cfg(feature = "std")]
+    pub fn resolve_detect_cycle(&self) -> bool {
+        self.detect_cycle
+            .unwrap_or_else(|| GlobalConfig::global().resolve_detect_cycle())
+    }
+
+    /// Resolves the effective value for `detect_cycle` (no_std version).
+    ///
+    /// Priority: ReportOptions > Profile default
+    #[cfg(not(feature = "std"))]
+    pub fn resolve_detect_cycle(&self) -> bool {
+        self.detect_cycle
+            .unwrap_or_else(|| Self::profile_default_detect_cycle())
+    }
+
+    /// Returns a CauseCollectOptions view with resolved values for internal use.
+    #[cfg(feature = "std")]
+    pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
+        CauseCollectOptions {
+            max_depth: self.resolve_max_depth(),
+            detect_cycle: self.resolve_detect_cycle(),
+        }
+    }
+
+    /// Returns a CauseCollectOptions view with resolved values for internal use (no_std version).
+    #[cfg(not(feature = "std"))]
+    pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
+        CauseCollectOptions {
+            max_depth: self.resolve_max_depth(),
+            detect_cycle: self.resolve_detect_cycle(),
+        }
+    }
+}
+
+impl Default for ReportOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReportOptions {
+    /// Returns a static reference to the default ReportOptions.
+    /// This is useful for cases where no cold data exists.
+    pub(crate) fn default_ref() -> &'static Self {
+        static DEFAULT: ReportOptions = ReportOptions {
+            accumulate_source_chain: None,
+            max_depth: None,
+            detect_cycle: None,
+        };
+        &DEFAULT
+    }
+}
+
+/// Global configuration for Report behavior.
+///
+/// This provides application-wide defaults for [`ReportOptions`] fields.
+/// Values set here will be used when a [`Report`] doesn't have its own
+/// [`ReportOptions`] set for a particular field.
+///
+/// # Configuration Priority
+///
+/// 1. Report-level `ReportOptions` (highest priority)
+/// 2. `GlobalConfig` (this struct)
+/// 3. Profile-dependent defaults (lowest priority)
+///
+/// # Example
+///
+/// ```rust
+/// use diagweave::report::{GlobalConfig, set_global_config};
+///
+/// // Set global defaults for your application
+/// let config = GlobalConfig::new()
+///     .with_accumulate_source_chain(true)
+///     .with_max_depth(32)
+///     .with_cycle_detection(true);
+///
+/// set_global_config(config);
+/// ```
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GlobalConfig {
+    /// Default value for `accumulate_source_chain` when not set in ReportOptions.
+    pub accumulate_source_chain: bool,
+    /// Default value for `max_depth` when not set in ReportOptions.
+    pub max_depth: usize,
+    /// Default value for `detect_cycle` when not set in ReportOptions.
+    pub detect_cycle: bool,
+}
+
+#[cfg(feature = "std")]
+impl GlobalConfig {
+    /// Creates a new GlobalConfig with profile-dependent defaults.
     ///
     /// # Profile-Dependent Defaults
     ///
@@ -398,10 +563,7 @@ impl ReportOptions {
     /// | `accumulate_source_chain` | `true` | `false` |
     /// | `detect_cycle` | `true` | `false` |
     /// | `max_depth` | `16` | `16` |
-    ///
-    /// Debug builds enable full diagnostics for better development experience.
-    /// Release builds optimize for performance by disabling cycle detection.
-    pub const fn default_for_profile() -> Self {
+    pub const fn new() -> Self {
         Self {
             // In debug builds, enable source chain accumulation for better debugging
             // In release builds, disable for better performance
@@ -419,51 +581,86 @@ impl ReportOptions {
         }
     }
 
-    /// Sets whether source chains should be accumulated during `map_err()`.
+    /// Sets the default for `accumulate_source_chain`.
     pub const fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
         self.accumulate_source_chain = accumulate;
         self
     }
 
-    /// Sets the maximum depth for cause collection.
+    /// Sets the default for `max_depth`.
     pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
         self.max_depth = max_depth;
         self
     }
 
-    /// Enables or disables cycle detection during cause collection.
+    /// Sets the default for `detect_cycle`.
     pub const fn with_cycle_detection(mut self, detect_cycle: bool) -> Self {
         self.detect_cycle = detect_cycle;
         self
     }
 
-    /// Returns a CauseCollectOptions view of this struct for internal use.
-    pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
-        CauseCollectOptions {
-            max_depth: self.max_depth,
-            detect_cycle: self.detect_cycle,
-        }
+    /// Returns the `accumulate_source_chain` value.
+    pub fn resolve_accumulate_source_chain(&self) -> bool {
+        self.accumulate_source_chain
+    }
+
+    /// Returns the `max_depth` value.
+    pub fn resolve_max_depth(&self) -> usize {
+        self.max_depth
+    }
+
+    /// Returns the `detect_cycle` value.
+    pub fn resolve_detect_cycle(&self) -> bool {
+        self.detect_cycle
+    }
+
+    /// Returns the global configuration.
+    ///
+    /// If no configuration has been set, returns a default config with profile-dependent defaults.
+    pub fn global() -> &'static Self {
+        GLOBAL_CONFIG.get_or_init(|| Self::new())
+    }
+
+    fn set_global(self) -> Result<(), SetGlobalConfigError> {
+        GLOBAL_CONFIG.set(self).map_err(|_| SetGlobalConfigError)
     }
 }
 
-impl Default for ReportOptions {
+#[cfg(feature = "std")]
+impl Default for GlobalConfig {
     fn default() -> Self {
-        Self::default_for_profile()
+        Self::new()
     }
 }
 
-impl ReportOptions {
-    /// Returns a static reference to the default ReportOptions.
-    /// This is useful for cases where no cold data exists.
-    pub(crate) fn default_ref() -> &'static Self {
-        static DEFAULT: ReportOptions = ReportOptions {
-            accumulate_source_chain: false,
-            max_depth: 16,
-            detect_cycle: false,
-        };
-        &DEFAULT
-    }
+/// Error returned when global config registration fails.
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SetGlobalConfigError;
+
+/// Sets the global configuration for Report behavior.
+///
+/// This should be called once at application startup.
+/// Returns an error if called multiple times.
+///
+/// # Example
+///
+/// ```rust
+/// use diagweave::report::{GlobalConfig, set_global_config};
+///
+/// let config = GlobalConfig::new()
+///     .with_accumulate_source_chain(true)
+///     .with_max_depth(32);
+///
+/// set_global_config(config).expect("Global config already set");
+/// ```
+#[cfg(feature = "std")]
+pub fn set_global_config(config: GlobalConfig) -> Result<(), SetGlobalConfigError> {
+    GlobalConfig::set_global(config)
 }
+
+#[cfg(feature = "std")]
+static GLOBAL_CONFIG: std::sync::OnceLock<GlobalConfig> = std::sync::OnceLock::new();
 
 /// Options for collecting cause messages from an error report.
 ///

@@ -18,8 +18,7 @@ pub trait Diagnostic {
     /// This is a generic variant that allows transforming both the error type
     /// and the state type. When only adding metadata (context, notes, etc.),
     /// no explicit type annotations are needed. When transforming the error
-    /// type (e.g., via `boundary` or `map_err`), the return type must be
-    /// annotated.
+    /// type (e.g., via `map_err`), the return type must be annotated.
     ///
     /// # Example
     ///
@@ -32,7 +31,7 @@ pub trait Diagnostic {
     ///
     /// // Type annotation needed when transforming error type
     /// let err: Result<(), Report<ApiError>> = fail_auth().diag(|r| {
-    ///     r.boundary(ApiError::Unauthorized)
+    ///     r.map_err(|_| ApiError::Unauthorized)
     /// });
     /// ```
     fn diag<E2, State2>(

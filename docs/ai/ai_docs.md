@@ -339,6 +339,11 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 - `unsafe { TraceId::new_unchecked(...) }` to skip validation
 
 ### Chained Configuration Methods
+
+**API Naming Convention**:
+- `set_*` methods always replace existing values
+- `with_*` methods only set values when not already set (conditional/preserving semantics)
+
 | Method | Parameter Type | Description |
 | :--- | :--- | :--- |
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add business context key-value pairs |
@@ -361,8 +366,21 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | Add one display-cause string |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | Add multiple display-cause strings |
 | `with_diag_src_err` | `impl Error + Send + Sync + 'static` | Add one explicit error source object |
-| `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info |
-| `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata |
+| `set_stack_trace` | `StackTrace` | Manually associate existing stack trace info, replacing any existing value |
+| `with_stack_trace` | `StackTrace` | Manually associate existing stack trace info only if not already present |
+| `set_trace` | `ReportTrace` | Set trace information, replacing any existing value |
+| `with_trace` | `ReportTrace` | Set trace information only if not already present |
+| `set_trace_ids` | `(TraceId, SpanId)` | Set trace and span IDs, replacing any existing values |
+| `with_trace_ids` | `(TraceId, SpanId)` | Set trace and span IDs only if not already set |
+| `set_parent_span_id` | `ParentSpanId` | Set parent span ID, replacing any existing value |
+| `with_parent_span_id` | `ParentSpanId` | Set parent span ID only if not already set |
+| `set_trace_sampled` | `bool` | Set whether the trace is sampled, replacing any existing value |
+| `with_trace_sampled` | `bool` | Set whether the trace is sampled only if not already set |
+| `set_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata, replacing any existing value |
+| `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state only if not already set |
+| `set_trace_flags` | `impl Into<TraceFlags>` | Set trace flags, replacing any existing value |
+| `with_trace_flags` | `impl Into<TraceFlags>` | Set trace flags only if not already set |
+| `with_trace_event` | `TraceEvent` | Add a trace event to the report |
 | `push_trace_event` | `impl Into<StaticRefStr>` | Append a trace event with default fields |
 | `push_trace_event_with` | `(impl Into<StaticRefStr>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | Append a fully specified trace event |
 | `capture_stack_trace` | None | (std) Capture current stack trace (skip if already exists) |

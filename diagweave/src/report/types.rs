@@ -178,6 +178,15 @@ impl ReportMetadata {
         self
     }
 
+    /// Sets the error code only if not already set (mutable reference version).
+    ///
+    /// This method avoids cloning the entire metadata when modifying in place.
+    pub fn with_error_code_mut(&mut self, error_code: impl Into<ErrorCode>) {
+        if self.error_code.is_none() {
+            self.error_code = Some(error_code.into());
+        }
+    }
+
     /// Sets the category, replacing any existing value.
     pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
         self.category = Some(category.into());
@@ -192,6 +201,15 @@ impl ReportMetadata {
         self
     }
 
+    /// Sets the category only if not already set (mutable reference version).
+    ///
+    /// This method avoids cloning the entire metadata when modifying in place.
+    pub fn with_category_mut(&mut self, category: impl Into<StaticRefStr>) {
+        if self.category.is_none() {
+            self.category = Some(category.into());
+        }
+    }
+
     /// Sets the retryability flag, replacing any existing value.
     pub fn set_retryable(mut self, retryable: bool) -> Self {
         self.retryable = Some(retryable);
@@ -204,6 +222,15 @@ impl ReportMetadata {
             self.retryable = Some(retryable);
         }
         self
+    }
+
+    /// Sets the retryability flag only if not already set (mutable reference version).
+    ///
+    /// This method avoids cloning the entire metadata when modifying in place.
+    pub fn with_retryable_mut(&mut self, retryable: bool) {
+        if self.retryable.is_none() {
+            self.retryable = Some(retryable);
+        }
     }
 }
 
@@ -252,15 +279,31 @@ impl StackTrace {
         }
     }
 
-    /// Appends frames to the stack trace.
-    pub fn with_frames(mut self, frames: Vec<StackFrame>) -> Self {
+    /// Replaces the frames in the stack trace.
+    pub fn set_frames(mut self, frames: Vec<StackFrame>) -> Self {
         self.frames = frames.into();
         self
     }
 
-    /// Sets the raw stack trace string.
-    pub fn with_raw(mut self, raw: impl Into<StaticRefStr>) -> Self {
+    /// Appends frames to the existing stack trace frames.
+    pub fn with_frames(mut self, frames: Vec<StackFrame>) -> Self {
+        let mut existing = self.frames.to_vec();
+        existing.extend(frames);
+        self.frames = existing.into();
+        self
+    }
+
+    /// Sets the raw stack trace string, replacing any existing value.
+    pub fn set_raw(mut self, raw: impl Into<StaticRefStr>) -> Self {
         self.raw = Some(raw.into());
+        self
+    }
+
+    /// Sets the raw stack trace string only if not already set.
+    pub fn with_raw(mut self, raw: impl Into<StaticRefStr>) -> Self {
+        if self.raw.is_none() {
+            self.raw = Some(raw.into());
+        }
         self
     }
 
@@ -359,7 +402,7 @@ pub struct ReportOptions {
     /// Whether `map_err()` should automatically accumulate source error chains.
     ///
     /// When `Some(true)`, calling `map_err()` will preserve and extend the origin
-    /// source error chain, similar to the old `boundary()` behavior.
+    /// source error chain.
     ///
     /// When `Some(false)`, `map_err()` only transforms the error type without
     /// accumulating source chains.
@@ -428,67 +471,52 @@ impl ReportOptions {
     /// Resolves the effective value for `accumulate_source_chain`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[cfg(feature = "std")]
     pub fn resolve_accumulate_source_chain(&self) -> bool {
-        self.accumulate_source_chain
-            .unwrap_or_else(|| GlobalConfig::global().resolve_accumulate_source_chain())
-    }
-
-    /// Resolves the effective value for `accumulate_source_chain` (no_std version).
-    ///
-    /// Priority: ReportOptions > Profile default
-    #[cfg(not(feature = "std"))]
-    pub fn resolve_accumulate_source_chain(&self) -> bool {
-        self.accumulate_source_chain
-            .unwrap_or_else(|| Self::profile_default_accumulate_source_chain())
+        self.accumulate_source_chain.unwrap_or_else(|| {
+            #[cfg(feature = "std")]
+            {
+                GlobalConfig::global().resolve_accumulate_source_chain()
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                Self::profile_default_accumulate_source_chain()
+            }
+        })
     }
 
     /// Resolves the effective value for `max_depth`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[cfg(feature = "std")]
     pub fn resolve_max_depth(&self) -> usize {
-        self.max_depth
-            .unwrap_or_else(|| GlobalConfig::global().resolve_max_depth())
-    }
-
-    /// Resolves the effective value for `max_depth` (no_std version).
-    ///
-    /// Priority: ReportOptions > Profile default
-    #[cfg(not(feature = "std"))]
-    pub fn resolve_max_depth(&self) -> usize {
-        self.max_depth.unwrap_or(16)
+        self.max_depth.unwrap_or_else(|| {
+            #[cfg(feature = "std")]
+            {
+                GlobalConfig::global().resolve_max_depth()
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                16
+            }
+        })
     }
 
     /// Resolves the effective value for `detect_cycle`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[cfg(feature = "std")]
     pub fn resolve_detect_cycle(&self) -> bool {
-        self.detect_cycle
-            .unwrap_or_else(|| GlobalConfig::global().resolve_detect_cycle())
-    }
-
-    /// Resolves the effective value for `detect_cycle` (no_std version).
-    ///
-    /// Priority: ReportOptions > Profile default
-    #[cfg(not(feature = "std"))]
-    pub fn resolve_detect_cycle(&self) -> bool {
-        self.detect_cycle
-            .unwrap_or_else(|| Self::profile_default_detect_cycle())
+        self.detect_cycle.unwrap_or_else(|| {
+            #[cfg(feature = "std")]
+            {
+                GlobalConfig::global().resolve_detect_cycle()
+            }
+            #[cfg(not(feature = "std"))]
+            {
+                Self::profile_default_detect_cycle()
+            }
+        })
     }
 
     /// Returns a CauseCollectOptions view with resolved values for internal use.
-    #[cfg(feature = "std")]
-    pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
-        CauseCollectOptions {
-            max_depth: self.resolve_max_depth(),
-            detect_cycle: self.resolve_detect_cycle(),
-        }
-    }
-
-    /// Returns a CauseCollectOptions view with resolved values for internal use (no_std version).
-    #[cfg(not(feature = "std"))]
     pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
         CauseCollectOptions {
             max_depth: self.resolve_max_depth(),
@@ -513,6 +541,24 @@ impl ReportOptions {
             detect_cycle: None,
         };
         &DEFAULT
+    }
+
+    /// Returns the profile-dependent default for `accumulate_source_chain` (no_std version).
+    ///
+    /// In debug builds, enables source chain accumulation for better debugging.
+    /// In release builds, disables it for better performance.
+    #[cfg(not(feature = "std"))]
+    const fn profile_default_accumulate_source_chain() -> bool {
+        cfg!(debug_assertions)
+    }
+
+    /// Returns the profile-dependent default for `detect_cycle` (no_std version).
+    ///
+    /// In debug builds, enables cycle detection for safety.
+    /// In release builds, disables it for performance.
+    #[cfg(not(feature = "std"))]
+    const fn profile_default_detect_cycle() -> bool {
+        cfg!(debug_assertions)
     }
 }
 

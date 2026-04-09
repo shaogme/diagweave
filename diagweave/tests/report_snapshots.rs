@@ -72,7 +72,7 @@ fn snap_compact_basic() {
 }
 
 #[test]
-fn snap_compact_with_boundary() {
+fn snap_compact_with_map_err() {
     let _guard = init_test();
 
     let report = Report::new(AuthError::InvalidToken)

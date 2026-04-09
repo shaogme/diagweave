@@ -281,13 +281,13 @@ where
         if let Some(error) = error {
             let cold = self.ensure_cold();
             if let Some(error_code) = error.error_code {
-                cold.metadata = cold.metadata.clone().with_error_code(error_code);
+                cold.metadata.with_error_code_mut(error_code);
             }
             if let Some(category) = error.category {
-                cold.metadata = cold.metadata.clone().with_category(category);
+                cold.metadata.with_category_mut(category);
             }
             if let Some(retryable) = error.retryable {
-                cold.metadata = cold.metadata.clone().with_retryable(retryable);
+                cold.metadata.with_retryable_mut(retryable);
             }
         }
 
@@ -441,9 +441,17 @@ where
         self
     }
 
-    /// Sets the stack trace for the report.
-    pub fn with_stack_trace(mut self, stack_trace: StackTrace) -> Self {
+    /// Sets the stack trace for the report, replacing any existing value.
+    pub fn set_stack_trace(mut self, stack_trace: StackTrace) -> Self {
         self.diagnostics_mut().stack_trace = Some(stack_trace);
+        self
+    }
+
+    /// Sets the stack trace only if not already present.
+    pub fn with_stack_trace(mut self, stack_trace: StackTrace) -> Self {
+        if self.stack_trace().is_none() {
+            self.diagnostics_mut().stack_trace = Some(stack_trace);
+        }
         self
     }
 
@@ -585,7 +593,7 @@ where
     /// Maps the inner error type while preserving all diagnostic data.
     ///
     /// When source chain accumulation is enabled via [`ReportOptions::accumulate_source_chain`],
-    /// this method also accumulates the origin source error chain, similar to the old `boundary()` behavior.
+    /// this method also accumulates the origin source error chain.
     ///
     /// # Source Chain Accumulation
     ///

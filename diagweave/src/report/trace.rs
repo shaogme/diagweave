@@ -224,45 +224,131 @@ where
         self.diagnostics().and_then(|diag| diag.trace.as_ref())
     }
 
-    /// Sets the trace information for the report.
-    pub fn with_trace(mut self, trace: ReportTrace) -> Self {
+    /// Sets the trace information for the report, replacing any existing value.
+    pub fn set_trace(mut self, trace: ReportTrace) -> Self {
         self.diagnostics_mut().trace = Some(trace);
         self
     }
 
-    /// Sets the trace and span IDs for the report.
-    pub fn with_trace_ids(mut self, trace_id: TraceId, span_id: SpanId) -> Self {
+    /// Sets the trace information only if not already present.
+    pub fn with_trace(mut self, trace: ReportTrace) -> Self {
+        if self.trace().is_none() {
+            self.diagnostics_mut().trace = Some(trace);
+        }
+        self
+    }
+
+    /// Sets the trace and span IDs for the report, replacing any existing values.
+    pub fn set_trace_ids(mut self, trace_id: TraceId, span_id: SpanId) -> Self {
         let trace = self.trace_mut();
         trace.context.trace_id = Some(trace_id);
         trace.context.span_id = Some(span_id);
         self
     }
 
-    /// Sets the parent span ID for the report.
-    pub fn with_parent_span_id(mut self, parent_span_id: ParentSpanId) -> Self {
+    /// Sets the trace and span IDs only if not already set.
+    pub fn with_trace_ids(mut self, trace_id: TraceId, span_id: SpanId) -> Self {
+        let trace = self.trace();
+        let needs_trace_id = trace.is_none()
+            || trace
+                .as_ref()
+                .and_then(|t| t.context.trace_id.as_ref())
+                .is_none();
+        let needs_span_id = trace.is_none()
+            || trace
+                .as_ref()
+                .and_then(|t| t.context.span_id.as_ref())
+                .is_none();
+        if needs_trace_id {
+            self.trace_mut().context.trace_id = Some(trace_id);
+        }
+        if needs_span_id {
+            self.trace_mut().context.span_id = Some(span_id);
+        }
+        self
+    }
+
+    /// Sets the parent span ID for the report, replacing any existing value.
+    pub fn set_parent_span_id(mut self, parent_span_id: ParentSpanId) -> Self {
         self.trace_mut().context.parent_span_id = Some(parent_span_id);
         self
     }
 
-    /// Sets whether the trace is sampled.
-    pub fn with_trace_sampled(mut self, sampled: bool) -> Self {
+    /// Sets the parent span ID only if not already set.
+    pub fn with_parent_span_id(mut self, parent_span_id: ParentSpanId) -> Self {
+        if self
+            .trace()
+            .as_ref()
+            .and_then(|t| t.context.parent_span_id.as_ref())
+            .is_none()
+        {
+            self.trace_mut().context.parent_span_id = Some(parent_span_id);
+        }
+        self
+    }
+
+    /// Sets whether the trace is sampled, replacing any existing value.
+    pub fn set_trace_sampled(mut self, sampled: bool) -> Self {
         let trace = self.trace_mut();
         trace.context.sampled = Some(sampled);
         sync_flags_with_sampled(&mut trace.context);
         self
     }
 
-    /// Sets the trace state.
-    pub fn with_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
+    /// Sets whether the trace is sampled only if not already set.
+    pub fn with_trace_sampled(mut self, sampled: bool) -> Self {
+        if self
+            .trace()
+            .as_ref()
+            .and_then(|t| t.context.sampled)
+            .is_none()
+        {
+            let trace = self.trace_mut();
+            trace.context.sampled = Some(sampled);
+            sync_flags_with_sampled(&mut trace.context);
+        }
+        self
+    }
+
+    /// Sets the trace state, replacing any existing value.
+    pub fn set_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
         self.trace_mut().context.trace_state = Some(TraceState::from(trace_state.into()));
         self
     }
 
-    /// Sets the trace flags.
-    pub fn with_trace_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
+    /// Sets the trace state only if not already set.
+    pub fn with_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
+        if self
+            .trace()
+            .as_ref()
+            .and_then(|t| t.context.trace_state.as_ref())
+            .is_none()
+        {
+            self.trace_mut().context.trace_state = Some(TraceState::from(trace_state.into()));
+        }
+        self
+    }
+
+    /// Sets the trace flags, replacing any existing value.
+    pub fn set_trace_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
         let trace = self.trace_mut();
         trace.context.flags = Some(flags.into());
         sync_sampled_with_flags(&mut trace.context);
+        self
+    }
+
+    /// Sets the trace flags only if not already set.
+    pub fn with_trace_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
+        if self
+            .trace()
+            .as_ref()
+            .and_then(|t| t.context.flags.as_ref())
+            .is_none()
+        {
+            let trace = self.trace_mut();
+            trace.context.flags = Some(flags.into());
+            sync_sampled_with_flags(&mut trace.context);
+        }
         self
     }
 

@@ -339,6 +339,11 @@ let report3 = Report::new(error3).set_options(
 - `unsafe { TraceId::new_unchecked(...) }` 跳过校验
 
 ### 链式配置方法
+
+**API 命名约定**：
+- `set_*` 方法总是替换已有值
+- `with_*` 方法仅在未设置时才设置值（条件/保留语义）
+
 | 方法 | 参数类型 | 说明 |
 | :--- | :--- | :--- |
 | `with_ctx` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加业务上下文键值对 |
@@ -358,8 +363,21 @@ let report3 = Report::new(error3).set_options(
 | `with_display_cause` | `impl Display + Send + Sync + 'static` | 添加单个展示原因字符串 |
 | `with_display_causes` | `impl IntoIterator<Item = impl Display + Send + Sync + 'static>` | 批量添加展示原因字符串 |
 | `with_diag_src_err` | `impl Error + Send + Sync + 'static` | 添加单个显式错误源对象 |
-| `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息 |
-| `with_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state 用于关联元数据 |
+| `set_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息，覆盖已有值 |
+| `with_stack_trace` | `StackTrace` | 手动关联已存在的堆栈信息，仅当未设置时生效 |
+| `set_trace` | `ReportTrace` | 设置追踪信息，覆盖已有值 |
+| `with_trace` | `ReportTrace` | 设置追踪信息，仅当未设置时生效 |
+| `set_trace_ids` | `(TraceId, SpanId)` | 设置追踪和 Span ID，覆盖已有值 |
+| `with_trace_ids` | `(TraceId, SpanId)` | 设置追踪和 Span ID，仅当未设置时生效 |
+| `set_parent_span_id` | `ParentSpanId` | 设置父 Span ID，覆盖已有值 |
+| `with_parent_span_id` | `ParentSpanId` | 设置父 Span ID，仅当未设置时生效 |
+| `set_trace_sampled` | `bool` | 设置是否采样，覆盖已有值 |
+| `with_trace_sampled` | `bool` | 设置是否采样，仅当未设置时生效 |
+| `set_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state 用于关联元数据，覆盖已有值 |
+| `with_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state，仅当未设置时生效 |
+| `set_trace_flags` | `impl Into<TraceFlags>` | 设置追踪标志，覆盖已有值 |
+| `with_trace_flags` | `impl Into<TraceFlags>` | 设置追踪标志，仅当未设置时生效 |
+| `with_trace_event` | `TraceEvent` | 添加追踪事件到报告 |
 | `push_trace_event` | `impl Into<StaticRefStr>` | 追加一个默认字段的 trace 事件 |
 | `push_trace_event_with` | `(impl Into<StaticRefStr>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | 追加一个完整指定的 trace 事件 |
 | `capture_stack_trace` | 无 | (std) 捕获当前堆栈 (若已存在则跳过) |

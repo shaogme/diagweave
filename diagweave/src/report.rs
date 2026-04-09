@@ -41,7 +41,10 @@ pub use types::GlobalTraceContext;
 #[cfg(feature = "std")]
 pub use types::{GlobalConfig, SetGlobalConfigError, set_global_config};
 
-use types::{ColdData, DiagnosticBag, append_source_chain, limit_depth_source_chain};
+use types::{
+    ColdData, DiagnosticBag, append_source_chain, build_origin_source_chain,
+    limit_depth_source_chain,
+};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 pub struct Report<E, State = MissingSeverity> {
@@ -279,15 +282,19 @@ where
         } = global;
 
         if let Some(error) = error {
-            let cold = self.ensure_cold();
-            if let Some(error_code) = error.error_code {
-                cold.metadata.with_error_code_mut(error_code);
-            }
-            if let Some(category) = error.category {
-                cold.metadata.with_category_mut(category);
-            }
-            if let Some(retryable) = error.retryable {
-                cold.metadata.with_retryable_mut(retryable);
+            let has_any =
+                error.error_code.is_some() || error.category.is_some() || error.retryable.is_some();
+            if has_any {
+                let cold = self.ensure_cold();
+                if let Some(error_code) = error.error_code {
+                    cold.metadata.with_error_code_mut(error_code);
+                }
+                if let Some(category) = error.category {
+                    cold.metadata.with_category_mut(category);
+                }
+                if let Some(retryable) = error.retryable {
+                    cold.metadata.with_retryable_mut(retryable);
+                }
             }
         }
 
@@ -387,15 +394,22 @@ where
 
     /// Sets the error code for the report, replacing any existing value.
     pub fn set_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        let cold = self.ensure_cold();
-        cold.metadata = cold.metadata.clone().set_error_code(error_code);
+        self.ensure_cold().metadata.set_error_code_mut(error_code);
         self
     }
 
     /// Sets the error code only if not already set.
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        let cold = self.ensure_cold();
-        cold.metadata = cold.metadata.clone().with_error_code(error_code);
+        match self.cold.as_mut() {
+            Some(cold) => cold.metadata.with_error_code_mut(error_code),
+            None => {
+                self.cold = Some(Box::new(ColdData {
+                    metadata: ReportMetadata::default().set_error_code(error_code),
+                    bag: DiagnosticBag::default(),
+                    options: ReportOptions::new(),
+                }));
+            }
+        }
         self
     }
 
@@ -415,29 +429,43 @@ where
 
     /// Sets the category for the report, replacing any existing value.
     pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        let cold = self.ensure_cold();
-        cold.metadata = cold.metadata.clone().set_category(category);
+        self.ensure_cold().metadata.set_category_mut(category);
         self
     }
 
     /// Sets the category only if not already set.
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        let cold = self.ensure_cold();
-        cold.metadata = cold.metadata.clone().with_category(category);
+        match self.cold.as_mut() {
+            Some(cold) => cold.metadata.with_category_mut(category),
+            None => {
+                self.cold = Some(Box::new(ColdData {
+                    metadata: ReportMetadata::default().set_category(category),
+                    bag: DiagnosticBag::default(),
+                    options: ReportOptions::new(),
+                }));
+            }
+        }
         self
     }
 
     /// Sets whether the error is retryable, replacing any existing value.
     pub fn set_retryable(mut self, retryable: bool) -> Self {
-        let cold = self.ensure_cold();
-        cold.metadata = cold.metadata.clone().set_retryable(retryable);
+        self.ensure_cold().metadata.set_retryable_mut(retryable);
         self
     }
 
     /// Sets whether the error is retryable only if not already set.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
-        let cold = self.ensure_cold();
-        cold.metadata = cold.metadata.clone().with_retryable(retryable);
+        match self.cold.as_mut() {
+            Some(cold) => cold.metadata.with_retryable_mut(retryable),
+            None => {
+                self.cold = Some(Box::new(ColdData {
+                    metadata: ReportMetadata::default().set_retryable(retryable),
+                    bag: DiagnosticBag::default(),
+                    options: ReportOptions::new(),
+                }));
+            }
+        }
         self
     }
 
@@ -652,64 +680,13 @@ where
         // Check if source chain accumulation is enabled for this report
         if options.resolve_accumulate_source_chain() {
             // Build origin source chain with the old inner as the new root
-            // We use a borrowed representation (StringError) to avoid ownership issues
-
-            // First, compute the existing source chain from inner.source() or stored chain
-            let existing_source_chain = cold
-                .as_ref()
-                .and_then(|c| c.bag.origin_source_errors.clone())
-                .or_else(|| {
-                    inner.source().map(|source| {
-                        SourceErrorChain::from_source(
-                            source,
-                            CauseCollectOptions {
-                                max_depth: usize::MAX,
-                                detect_cycle: true,
-                            },
-                        )
-                    })
-                });
-
-            // Get type name for inner before moving it
-            let inner_type_name: Option<StaticRefStr> = Some(core::any::type_name::<E>().into());
-
-            // Create origin chain with old inner's info as root (using borrowed representation)
-            let origin_source_errors = SourceErrorChain::from_borrowed_error(
-                &inner,
-                inner_type_name,
-                existing_source_chain,
-                CauseTraversalState::default(),
-            );
+            let origin_source_errors = build_origin_source_chain(&inner, cold.as_deref());
 
             // Now create the outer error
             let outer = map(inner);
 
-            // Extract diagnostic data from the original cold
-            let new_cold = match cold {
-                Some(c) => {
-                    let c = *c;
-                    Some(Box::new(ColdData {
-                        metadata: c.metadata,
-                        bag: DiagnosticBag {
-                            #[cfg(feature = "trace")]
-                            trace: c.bag.trace,
-                            stack_trace: c.bag.stack_trace,
-                            context: c.bag.context,
-                            system: c.bag.system,
-                            attachments: c.bag.attachments,
-                            display_causes: c.bag.display_causes,
-                            origin_source_errors: Some(origin_source_errors),
-                            diagnostic_source_errors: c.bag.diagnostic_source_errors,
-                        },
-                        options: c.options,
-                    }))
-                }
-                None => {
-                    let mut cold_data = ColdData::new(ReportMetadata::default(), options);
-                    cold_data.bag.origin_source_errors = Some(origin_source_errors);
-                    Some(Box::new(cold_data))
-                }
-            };
+            // Build new cold data with the origin source chain
+            let new_cold = Self::build_cold_with_origin_chain(cold, origin_source_errors, options);
 
             Report {
                 inner: outer,
@@ -723,6 +700,43 @@ where
                 inner: outer,
                 severity,
                 cold,
+            }
+        }
+    }
+
+    /// Builds cold data with origin source chain for map_err operations.
+    ///
+    /// This function handles the cold data construction logic:
+    /// - If original cold exists, preserve all diagnostic data and update origin_source_errors
+    /// - If no original cold, create new cold data with just the origin source chain
+    fn build_cold_with_origin_chain(
+        cold: Option<Box<ColdData>>,
+        origin_source_errors: SourceErrorChain,
+        options: ReportOptions,
+    ) -> Option<Box<ColdData>> {
+        match cold {
+            Some(c) => {
+                let c = *c;
+                Some(Box::new(ColdData {
+                    metadata: c.metadata,
+                    bag: DiagnosticBag {
+                        #[cfg(feature = "trace")]
+                        trace: c.bag.trace,
+                        stack_trace: c.bag.stack_trace,
+                        context: c.bag.context,
+                        system: c.bag.system,
+                        attachments: c.bag.attachments,
+                        display_causes: c.bag.display_causes,
+                        origin_source_errors: Some(origin_source_errors),
+                        diagnostic_source_errors: c.bag.diagnostic_source_errors,
+                    },
+                    options: c.options,
+                }))
+            }
+            None => {
+                let mut cold_data = ColdData::new(ReportMetadata::default(), options);
+                cold_data.bag.origin_source_errors = Some(origin_source_errors);
+                Some(Box::new(cold_data))
             }
         }
     }

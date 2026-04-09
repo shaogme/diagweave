@@ -530,6 +530,52 @@ impl SourceErrorChain {
     }
 }
 
+/// Builds the origin source chain for `map_err` operations.
+///
+/// This function handles the source chain accumulation logic:
+/// 1. Gets existing source chain from cold data or builds from `error.source()`
+/// 2. Creates a new chain with the inner error as root
+///
+/// # Type Parameters
+/// - `E`: The error type that implements `Error + Send + Sync + 'static`
+///
+/// # Arguments
+/// - `inner`: Reference to the inner error being transformed
+/// - `cold`: Optional reference to cold data containing existing source chain
+///
+/// # Returns
+/// A new `SourceErrorChain` with the inner error as root
+pub(crate) fn build_origin_source_chain<E: core::error::Error + Send + Sync + 'static>(
+    inner: &E,
+    cold: Option<&super::ColdData>,
+) -> SourceErrorChain {
+    // Get existing source chain from cold data or build from error.source()
+    let existing_source_chain = cold
+        .and_then(|c| c.bag.origin_source_errors.clone())
+        .or_else(|| {
+            inner.source().map(|source| {
+                SourceErrorChain::from_source(
+                    source,
+                    super::super::CauseCollectOptions {
+                        max_depth: usize::MAX,
+                        detect_cycle: true,
+                    },
+                )
+            })
+        });
+
+    // Get type name for inner error
+    let inner_type_name: Option<ref_str::StaticRefStr> = Some(core::any::type_name::<E>().into());
+
+    // Build new chain with inner as root
+    SourceErrorChain::from_borrowed_error(
+        inner,
+        inner_type_name,
+        existing_source_chain,
+        super::super::CauseTraversalState::default(),
+    )
+}
+
 #[cfg(feature = "json")]
 #[derive(serde::Serialize)]
 struct DisplayCauseChainSerdeHelper {

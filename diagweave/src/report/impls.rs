@@ -6,6 +6,30 @@ use crate::report::SourceErrorChain;
 
 use super::{Report, SeverityState};
 
+/// Macro to write a field with separator handling.
+/// Writes ", " before the field if idx > 0, then increments idx.
+macro_rules! write_field {
+    ($f:expr, $idx:expr, $name:expr, $val:expr) => {{
+        if $idx > 0 {
+            write!($f, ", ")?;
+        }
+        write!($f, "{}={}", $name, $val)?;
+        $idx += 1;
+    }};
+}
+
+/// Macro to write raw content with separator handling.
+/// Writes ", " before the content if idx > 0, then increments idx.
+macro_rules! write_raw {
+    ($f:expr, $idx:expr, $($arg:tt)*) => {{
+        if $idx > 0 {
+            write!($f, ", ")?;
+        }
+        write!($f, $($arg)*)?;
+        $idx += 1;
+    }};
+}
+
 impl<E, State> Debug for Report<E, State>
 where
     E: Debug,
@@ -15,37 +39,37 @@ where
         #[cfg(debug_assertions)]
         {
             writeln!(f, "Report:")?;
-            writeln!(f, "  - error: {:?}", self.inner())?;
-            writeln!(f, "  - metadata: {:?}", self.metadata())?;
+            writeln!(f, " - error: {:?}", self.inner())?;
+            writeln!(f, " - metadata: {:?}", self.metadata())?;
             if let Some(diag) = self.diagnostics() {
-                writeln!(f, "  - attachments:")?;
+                writeln!(f, " - attachments:")?;
                 if diag.attachments.is_empty() {
-                    writeln!(f, "    - (none)")?;
+                    writeln!(f, " - (none)")?;
                 } else {
                     for attachment in &diag.attachments {
-                        writeln!(f, "    - {:?}", attachment)?;
+                        writeln!(f, " - {:?}", attachment)?;
                     }
                 }
                 #[cfg(feature = "trace")]
-                writeln!(f, "  - trace: {:?}", diag.trace)?;
+                writeln!(f, " - trace: {:?}", diag.trace)?;
                 let display_causes = diag
                     .display_causes
                     .as_ref()
                     .map(|v| v.items.as_slice())
                     .unwrap_or(&[]);
                 if display_causes.is_empty() {
-                    writeln!(f, "  - display_causes: (none)")?;
+                    writeln!(f, " - display_causes: (none)")?;
                 } else {
-                    writeln!(f, "  - display_causes:")?;
+                    writeln!(f, " - display_causes:")?;
                     for cause in display_causes {
-                        writeln!(f, "    - {}", cause)?;
+                        writeln!(f, " - {}", cause)?;
                     }
                 }
             } else {
-                writeln!(f, "  - attachments: (none)")?;
+                writeln!(f, " - attachments: (none)")?;
                 #[cfg(feature = "trace")]
-                writeln!(f, "  - trace: (none)")?;
-                writeln!(f, "  - display_causes: (none)")?;
+                writeln!(f, " - trace: (none)")?;
+                writeln!(f, " - display_causes: (none)")?;
             }
             Ok(())
         }
@@ -105,95 +129,71 @@ where
 {
     fn fmt_metadata_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
         let metadata = self.metadata();
-        let mut write_field = |name: &str, val: &dyn Display| -> fmt::Result {
-            if *idx > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{name}={val}")?;
-            *idx += 1;
-            Ok(())
-        };
         if let Some(code) = metadata.error_code() {
-            write_field("code", code)?;
+            write_field!(f, *idx, "code", code);
         }
         if let Some(sev) = self.severity() {
-            write_field("severity", &sev)?;
+            write_field!(f, *idx, "severity", &sev);
         }
         if let Some(cat) = metadata.category() {
-            write_field("category", &cat)?;
+            write_field!(f, *idx, "category", &cat);
         }
         if let Some(ret) = metadata.retryable() {
-            write_field("retryable", &ret)?;
+            write_field!(f, *idx, "retryable", &ret);
         }
         Ok(())
     }
 
     fn fmt_diag_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
-        if let Some(diag) = self.diagnostics() {
-            #[cfg(feature = "trace")]
-            {
-                let mut write_field = |name: &str, val: &dyn Display| -> fmt::Result {
-                    if *idx > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{name}={val}")?;
-                    *idx += 1;
-                    Ok(())
-                };
+        let Some(diag) = self.diagnostics() else {
+            return Ok(());
+        };
 
-                if let Some(trace) = diag.trace.as_ref() {
-                    if let Some(tid) = &trace.context.trace_id {
-                        write_field("trace_id", &tid.as_ref())?;
-                    }
-                    if let Some(sid) = &trace.context.span_id {
-                        write_field("span_id", &sid.as_ref())?;
-                    }
-                }
+        #[cfg(feature = "trace")]
+        if let Some(trace) = diag.trace.as_ref() {
+            if let Some(tid) = &trace.context.trace_id {
+                write_field!(f, *idx, "trace_id", tid.as_ref());
             }
-
-            if diag.stack_trace.is_some() {
-                if *idx > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "stack_trace=present")?;
-                *idx += 1;
-            }
-
-            for (key, value) in diag.context.sorted_entries() {
-                if *idx > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{key}={value}")?;
-                *idx += 1;
-            }
-            for (section_name, section) in diag.system.sections() {
-                for (key, value) in section.sorted_entries() {
-                    if *idx > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "system.{section_name}.{key}={value}")?;
-                    *idx += 1;
-                }
-            }
-
-            for attachment in &diag.attachments {
-                if *idx > 0 {
-                    write!(f, ", ")?;
-                }
-                match attachment {
-                    Attachment::Note { message } => write!(f, "{message}")?,
-                    Attachment::Payload {
-                        name,
-                        value,
-                        media_type,
-                    } => match media_type {
-                        Some(mt) => write!(f, "{name}={value} ({mt})")?,
-                        None => write!(f, "{name}={value}")?,
-                    },
-                }
-                *idx += 1;
+            if let Some(sid) = &trace.context.span_id {
+                write_field!(f, *idx, "span_id", sid.as_ref());
             }
         }
+
+        if diag.stack_trace.is_some() {
+            write_field!(f, *idx, "stack_trace", "present");
+        }
+
+        for (key, value) in diag.context.sorted_entries() {
+            write_field!(f, *idx, key, value);
+        }
+
+        for (section_name, section) in diag.system.sections() {
+            for (key, value) in section.sorted_entries() {
+                write_field!(
+                    f,
+                    *idx,
+                    format_args!("system.{}.{}", section_name, key),
+                    value
+                );
+            }
+        }
+
+        for attachment in &diag.attachments {
+            match attachment {
+                Attachment::Note { message } => {
+                    write_raw!(f, *idx, "{}", message);
+                }
+                Attachment::Payload {
+                    name,
+                    value,
+                    media_type,
+                } => match media_type {
+                    Some(mt) => write_raw!(f, *idx, "{}={} ({})", name, value, mt),
+                    None => write_raw!(f, *idx, "{}={}", name, value),
+                },
+            }
+        }
+
         Ok(())
     }
 }

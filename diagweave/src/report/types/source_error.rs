@@ -6,7 +6,7 @@ use super::*;
 use crate::utils::FastSet;
 pub use traversal::{ReportSourceErrorIter, SourceErrorChainEntries};
 use util::is_report_wrapper_type;
-pub(crate) use util::{append_source_chain, limit_depth_source_chain};
+pub(crate) use util::{append_source_chain, build_origin_source_chain, limit_depth_source_chain};
 
 pub(crate) type SourceNodeId = usize;
 

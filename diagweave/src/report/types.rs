@@ -170,6 +170,13 @@ impl ReportMetadata {
         self
     }
 
+    /// Sets the error code, replacing any existing value (mutable reference version).
+    ///
+    /// This method avoids cloning the entire metadata when modifying in place.
+    pub fn set_error_code_mut(&mut self, error_code: impl Into<ErrorCode>) {
+        self.error_code = Some(error_code.into());
+    }
+
     /// Sets the error code only if not already set.
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
         if self.error_code.is_none() {
@@ -193,6 +200,13 @@ impl ReportMetadata {
         self
     }
 
+    /// Sets the category, replacing any existing value (mutable reference version).
+    ///
+    /// This method avoids cloning the entire metadata when modifying in place.
+    pub fn set_category_mut(&mut self, category: impl Into<StaticRefStr>) {
+        self.category = Some(category.into());
+    }
+
     /// Sets the category only if not already set.
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
         if self.category.is_none() {
@@ -214,6 +228,13 @@ impl ReportMetadata {
     pub fn set_retryable(mut self, retryable: bool) -> Self {
         self.retryable = Some(retryable);
         self
+    }
+
+    /// Sets the retryability flag, replacing any existing value (mutable reference version).
+    ///
+    /// This method avoids cloning the entire metadata when modifying in place.
+    pub fn set_retryable_mut(&mut self, retryable: bool) {
+        self.retryable = Some(retryable);
     }
 
     /// Sets the retryability flag only if not already set.

@@ -18,8 +18,8 @@ use crate::report::SourceErrorChain;
 #[cfg(any(feature = "trace", feature = "otel"))]
 use crate::report::StackFrame;
 use crate::report::{
-    Attachment, CauseCollectOptions, CauseTraversalState, ContextMap, ErrorCode, HasSeverity,
-    MissingSeverity, Report, Severity, SeverityState, StackTrace, SystemContext,
+    Attachment, CauseTraversalState, ContextMap, ErrorCode, HasSeverity, MissingSeverity, Report,
+    Severity, SeverityState, StackTrace, SystemContext,
 };
 #[cfg(feature = "trace")]
 use crate::report::{ReportTrace, TraceContext, TraceEvent};
@@ -243,7 +243,7 @@ where
         let metadata = self.metadata();
         let (context_count, system_count, attachment_count) = count_attachments(self);
         let display_causes_state = self
-            .visit_causes_ext(CauseCollectOptions::default(), |_| Ok(()))
+            .visit_causes_ext(self.options().as_cause_options(), |_| Ok(()))
             .unwrap_or_default();
         DiagnosticIr {
             #[cfg(feature = "json")]
@@ -266,8 +266,8 @@ where
             attachments: self.attachments(),
             display_causes: self.display_causes(),
             display_causes_state,
-            origin_source_errors: self.origin_src_err_view(CauseCollectOptions::default()),
-            diagnostic_source_errors: self.diag_src_err_view(CauseCollectOptions::default()),
+            origin_source_errors: self.origin_src_err_view(self.options().as_cause_options()),
+            diagnostic_source_errors: self.diag_src_err_view(self.options().as_cause_options()),
             context_count,
             system_count,
             attachment_count,

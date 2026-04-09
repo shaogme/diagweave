@@ -7,7 +7,7 @@ where
 {
     /// Iterates origin source errors using default collection options.
     pub fn iter_origin_sources(&self) -> ReportSourceErrorIter<'_> {
-        self.iter_origin_src_ext(CauseCollectOptions::default())
+        self.iter_origin_src_ext(self.options().as_cause_options())
     }
 
     /// Iterates origin source errors using custom collection options.
@@ -17,7 +17,7 @@ where
 
     /// Iterates diagnostic source errors using default collection options.
     pub fn iter_diag_sources(&self) -> ReportSourceErrorIter<'_> {
-        self.iter_diag_srcs_ext(CauseCollectOptions::default())
+        self.iter_diag_srcs_ext(self.options().as_cause_options())
     }
 
     /// Iterates diagnostic source errors using custom collection options.

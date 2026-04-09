@@ -162,21 +162,23 @@ Hot path strings such as `category`, `trace_state`, trace event names, and stack
 `map_err()` is now the recommended entry point for error type transformation; whether it continues to accumulate the origin `source` chain is controlled by `ReportOptions`.
 
 ### Declaration and Definition
-```rust
-use diagweave::report::ReportOptions;
 
-struct ColdData {
-    metadata: ReportMetadata,
-    bag: DiagnosticBag,
-}
+The `Report` struct is a high-level diagnostic container with lazy allocation for auxiliary data. All three fields are **private** and cannot be directly accessed from outside the module.
 
+```text
 pub struct Report<E, State = MissingSeverity> {
-    inner: E,
-    severity: State,
-    cold: Option<Box<ColdData>>,
-    options: ReportOptions,
+    inner: E,                              // private - wrapped error value
+    severity: State,                       // private - typestate for severity
+    cold: Option<Box<ColdData>>,           // private - lazily allocated storage
 }
 ```
+
+**Key Points:**
+- `inner`: The wrapped error value (private)
+- `severity`: Typestate pattern for compile-time severity tracking (private)
+- `cold`: Lazily allocated storage for all optional diagnostic data (private)
+- `ReportOptions` is stored inside `ColdData`, which is only allocated when needed
+- Access to fields is provided through methods like `inner()`, `severity()`, `options()`, etc.
 
 ### Core Construction and Conversion
 | Method Declaration | Description |
@@ -211,10 +213,58 @@ pub struct Report<E, State = MissingSeverity> {
 
 ### `ReportOptions`
 
-`ReportOptions` controls whether `map_err()` automatically accumulates the origin source chain for an individual `Report`. The default depends on the build profile: `true` in debug builds, `false` in release builds. For stable behavior, explicitly call `set_accumulate_source_chain(true/false)` or use `set_options(ReportOptions::new(...))`.
+`ReportOptions` controls error source chain accumulation and cause collection behavior for an individual `Report`. All defaults are profile-dependent to provide better debugging experience during development while optimizing for performance in production.
 
-Currently only one core switch is provided:
-- `accumulate_source_chain`: when enabled, `map_err()` preserves and extends the origin `source` chain; when disabled, it only transforms the error type without touching the source chain.
+#### Profile-Dependent Defaults
+
+| Option | Debug Build | Release Build |
+|--------|-------------|---------------|
+| `accumulate_source_chain` | `true` | `false` |
+| `detect_cycle` | `true` | `false` |
+| `max_depth` | `16` | `16` |
+
+#### Configuration Options
+
+- `accumulate_source_chain`: When `true`, `map_err()` preserves and extends the origin `source` chain; when `false`, it only transforms the error type without touching the source chain.
+- `max_depth`: Maximum depth of causes to collect during source error traversal. Higher values provide more complete error context but may impact performance for very deep error chains.
+- `detect_cycle`: When `true`, the error chain traversal will track visited errors and mark cycles when detected. When `false`, cycle detection is skipped for better performance.
+
+#### Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `ReportOptions::new(accumulate: bool)` | Creates options with specified accumulation setting |
+| `ReportOptions::default_for_profile()` | Returns profile-dependent defaults |
+| `.with_accumulate_source_chain(bool)` | Sets source chain accumulation |
+| `.with_max_depth(usize)` | Sets cause collection depth limit |
+| `.with_cycle_detection(bool)` | Enables/disables cycle detection |
+
+#### Example Usage
+
+```rust
+use diagweave::prelude::*;
+use diagweave::report::ReportOptions;
+
+// Use profile-dependent defaults
+let error = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+let report = Report::new(error);
+
+// Configure for performance-critical paths
+let error2 = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+let report2 = Report::new(error2).set_options(
+    ReportOptions::default_for_profile()
+        .with_max_depth(8)
+        .with_cycle_detection(false)
+);
+
+// Enable full diagnostics for debugging
+let error3 = std::io::Error::new(std::io::ErrorKind::Other, "test error");
+let report3 = Report::new(error3).set_options(
+    ReportOptions::new(true)
+        .with_max_depth(32)
+        .with_cycle_detection(true)
+);
+```
 
 ### `ErrorCode` Design and Conversions
 - Internal model:

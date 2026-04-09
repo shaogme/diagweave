@@ -45,7 +45,6 @@ pub struct Report<E, State = MissingSeverity> {
     inner: E,
     severity: State,
     cold: Option<Box<ColdData>>,
-    options: ReportOptions,
 }
 
 impl<E> Report<E, MissingSeverity> {
@@ -56,14 +55,12 @@ impl<E> Report<E, MissingSeverity> {
             inner,
             severity: MissingSeverity,
             cold: None,
-            options: ReportOptions::default(),
         };
         #[cfg(not(feature = "std"))]
         let report = Self {
             inner,
             severity: MissingSeverity,
             cold: None,
-            options: ReportOptions::default(),
         };
         #[cfg(feature = "std")]
         report.apply_global_context();
@@ -176,7 +173,7 @@ where
     where
         E: Error + 'static,
     {
-        self.origin_src_err_view(CauseCollectOptions::default())
+        self.origin_src_err_view(self.options().as_cause_options())
             .map(|chain| chain.iter_entries_origin().collect::<Vec<_>>())
             .unwrap_or_default()
             .into_iter()
@@ -379,6 +376,7 @@ where
             self.cold = Some(Box::new(ColdData {
                 metadata,
                 bag: DiagnosticBag::default(),
+                options: ReportOptions::default_for_profile(),
             }));
         }
         self
@@ -404,13 +402,11 @@ where
             inner,
             severity: _,
             cold,
-            options,
         } = self;
         Report {
             inner,
             severity: HasSeverity::new(severity),
             cold,
-            options,
         }
     }
 
@@ -533,7 +529,7 @@ where
     /// let report = report.set_options(ReportOptions::new(false));
     /// ```
     pub fn set_options(mut self, options: ReportOptions) -> Self {
-        self.options = options;
+        self.ensure_cold().options = options;
         self
     }
 
@@ -550,13 +546,19 @@ where
     /// let report = report.set_accumulate_source_chain(true);
     /// ```
     pub fn set_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        self.options = ReportOptions::new(accumulate);
+        let cold = self.ensure_cold();
+        cold.options = ReportOptions::new(accumulate)
+            .with_max_depth(cold.options.max_depth)
+            .with_cycle_detection(cold.options.detect_cycle);
         self
     }
 
     /// Returns the current report options.
     pub fn options(&self) -> &ReportOptions {
-        &self.options
+        match self.cold.as_deref() {
+            Some(cold) => &cold.options,
+            None => ReportOptions::default_ref(),
+        }
     }
 
     /// Maps the inner error type while preserving all diagnostic data.
@@ -595,8 +597,10 @@ where
             inner,
             severity,
             cold,
-            options,
         } = self;
+
+        // Get options from cold data or use defaults
+        let options = cold.as_ref().map(|c| c.options).unwrap_or_default();
 
         // Check if source chain accumulation is enabled for this report
         if options.accumulate_source_chain {
@@ -650,10 +654,11 @@ where
                             origin_source_errors: Some(origin_source_errors),
                             diagnostic_source_errors: c.bag.diagnostic_source_errors,
                         },
+                        options: c.options,
                     }))
                 }
                 None => {
-                    let mut cold_data = ColdData::new(ReportMetadata::default());
+                    let mut cold_data = ColdData::new(ReportMetadata::default(), options);
                     cold_data.bag.origin_source_errors = Some(origin_source_errors);
                     Some(Box::new(cold_data))
                 }
@@ -663,7 +668,6 @@ where
                 inner: outer,
                 severity,
                 cold: new_cold,
-                options,
             }
         } else {
             // Simple transformation without source chain accumulation
@@ -672,7 +676,6 @@ where
                 inner: outer,
                 severity,
                 cold,
-                options,
             }
         }
     }
@@ -683,7 +686,7 @@ where
         F: FnMut(&dyn Display) -> fmt::Result,
         E: Error + 'static,
     {
-        self.visit_causes_ext(CauseCollectOptions::default(), visit)
+        self.visit_causes_ext(self.options().as_cause_options(), visit)
     }
 
     /// Visits display causes using custom collection options.
@@ -722,7 +725,7 @@ where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
         E: Error + 'static,
     {
-        self.visit_origin_src_ext(CauseCollectOptions::default(), visit)
+        self.visit_origin_src_ext(self.options().as_cause_options(), visit)
     }
 
     /// Visits origin source errors using custom collection options.
@@ -748,7 +751,7 @@ where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
         E: Error + 'static,
     {
-        self.visit_diag_srcs_ext(CauseCollectOptions::default(), visit)
+        self.visit_diag_srcs_ext(self.options().as_cause_options(), visit)
     }
 
     /// Visits diagnostic source errors using custom collection options.

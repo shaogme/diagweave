@@ -64,21 +64,33 @@ impl PartialEq for DiagnosticBag {
     }
 }
 
-/// Cold data storage for Report - contains metadata and diagnostic bag.
+/// Cold data storage for Report - contains metadata, diagnostic bag, and options.
 /// This struct is used to reduce Report's size by combining
-/// metadata and DiagnosticBag into a single boxed structure.
-#[derive(Debug, Default, Clone, PartialEq)]
+/// metadata, DiagnosticBag, and ReportOptions into a single boxed structure.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ColdData {
     pub(crate) metadata: ReportMetadata,
     pub(crate) bag: DiagnosticBag,
+    pub(crate) options: ReportOptions,
 }
 
 impl ColdData {
-    /// Creates a new ColdData with the given metadata and empty diagnostic bag.
-    pub(crate) fn new(metadata: ReportMetadata) -> Self {
+    /// Creates a new ColdData with the given metadata, options, and empty diagnostic bag.
+    pub(crate) fn new(metadata: ReportMetadata, options: ReportOptions) -> Self {
         Self {
             metadata,
             bag: DiagnosticBag::default(),
+            options,
+        }
+    }
+}
+
+impl Default for ColdData {
+    fn default() -> Self {
+        Self {
+            metadata: ReportMetadata::default(),
+            bag: DiagnosticBag::default(),
+            options: ReportOptions::default_for_profile(),
         }
     }
 }

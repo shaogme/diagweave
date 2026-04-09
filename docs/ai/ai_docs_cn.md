@@ -162,21 +162,23 @@ enum FileError {
 `map_err()` 是当前推荐的错误类型转换入口；其是否继续累积原生 `source` 链由 `ReportOptions` 控制。
 
 ### 声明定义
-```rust
-use diagweave::report::ReportOptions;
 
-struct ColdData {
-    metadata: ReportMetadata,
-    bag: DiagnosticBag,
-}
+`Report` 结构体是一个高级诊断容器，对辅助数据采用延迟分配策略。所有三个字段都是**私有的**，无法从模块外部直接访问。
 
+```text
 pub struct Report<E, State = MissingSeverity> {
-    inner: E,
-    severity: State,
-    cold: Option<Box<ColdData>>,
-    options: ReportOptions,
+    inner: E,                              // 私有 - 被包装的错误值
+    severity: State,                       // 私有 - 严重性类型状态
+    cold: Option<Box<ColdData>>,           // 私有 - 延迟分配的存储
 }
 ```
+
+**关键点：**
+- `inner`：被包装的错误值（私有）
+- `severity`：类型状态模式，用于编译时严重性跟踪（私有）
+- `cold`：延迟分配的存储，用于所有可选诊断数据（私有）
+- `ReportOptions` 存储在 `ColdData` 内部，仅在需要时分配
+- 字段访问通过方法提供，如 `inner()`、`severity()`、`options()` 等
 
 ### 核心构造与转换
 | 方法声明 | 说明 |
@@ -211,10 +213,58 @@ pub struct Report<E, State = MissingSeverity> {
 
 ### `ReportOptions`
 
-`ReportOptions` 用于控制单个 `Report` 在调用 `map_err()` 时是否自动累积 origin source chain。默认值按构建配置决定：debug 构建为 `true`，release 构建为 `false`。如果需要固定行为，建议显式调用 `set_accumulate_source_chain(true/false)`，或者使用 `set_options(ReportOptions::new(...))` 一次性设置完整选项。
+`ReportOptions` 用于控制单个 `Report` 的错误源链累积行为和原因收集行为。所有默认值根据构建配置决定，以在开发期间提供更好的调试体验，同时在生产环境中优化性能。
 
-当前只提供一个核心开关：
+#### 配置文件相关的默认值
+
+| 选项 | Debug 构建 | Release 构建 |
+|------|------------|--------------|
+| `accumulate_source_chain` | `true` | `false` |
+| `detect_cycle` | `true` | `false` |
+| `max_depth` | `16` | `16` |
+
+#### 配置选项说明
+
 - `accumulate_source_chain`：启用后，`map_err()` 会保留并延伸原生 `source` 链；关闭后仅转换错误类型，不改动 source 链。
+- `max_depth`：原因收集时的最大深度限制。较高的值提供更完整的错误上下文，但对于非常深的错误链可能影响性能。
+- `detect_cycle`：启用后，错误链遍历将跟踪已访问的错误并在检测到循环时标记。关闭后跳过循环检测以获得更好的性能。
+
+#### 构建方法
+
+| 方法 | 说明 |
+|------|------|
+| `ReportOptions::new(accumulate: bool)` | 使用指定的累积设置创建选项 |
+| `ReportOptions::default_for_profile()` | 返回配置文件相关的默认值 |
+| `.with_accumulate_source_chain(bool)` | 设置源链累积行为 |
+| `.with_max_depth(usize)` | 设置原因收集深度限制 |
+| `.with_cycle_detection(bool)` | 启用/禁用循环检测 |
+
+#### 使用示例
+
+```rust
+use diagweave::prelude::*;
+use diagweave::report::ReportOptions;
+
+// 使用配置文件相关的默认值
+let error = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
+let report = Report::new(error);
+
+// 为性能关键路径配置
+let error2 = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
+let report2 = Report::new(error2).set_options(
+    ReportOptions::default_for_profile()
+        .with_max_depth(8)
+        .with_cycle_detection(false)
+);
+
+// 启用完整诊断用于调试
+let error3 = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
+let report3 = Report::new(error3).set_options(
+    ReportOptions::new(true)
+        .with_max_depth(32)
+        .with_cycle_detection(true)
+);
+```
 
 ### `ErrorCode` 设计与转换规则
 - 内部模型：

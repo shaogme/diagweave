@@ -117,6 +117,8 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E,
     metadata: ReportMetadata<State>,
     report: ReportOptions,
+    #[cfg(feature = "trace")]
+    trace: ReportTrace,
     cold: Option<Box<ColdData>>,
 }
 
@@ -228,12 +230,16 @@ impl<E> Report<E, MissingSeverity> {
             inner,
             metadata,
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         } = self;
         Report {
             inner,
             metadata: metadata.set_severity(severity),
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         }
     }
@@ -265,12 +271,16 @@ impl<E> Report<E, HasSeverity> {
             inner,
             metadata,
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         } = self;
         Report {
             inner,
             metadata: metadata.replace_severity(severity),
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         }
     }

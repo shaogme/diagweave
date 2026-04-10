@@ -71,9 +71,9 @@ impl<'a> PreparedTracingEmission<'a> {
         let report_level = severity_to_prepared_level(ir.metadata.required_severity());
         let trace_event_levels = ir
             .trace
-            .map(|trace| {
-                trace
-                    .events
+            .events()
+            .map(|events| {
+                events
                     .iter()
                     .map(|trace_event| {
                         trace_level_to_prepared(trace_event.level).unwrap_or(report_level)
@@ -111,11 +111,7 @@ impl<'a> PreparedTracingEmission<'a> {
 
     /// Iterates over resolved trace events paired with their final tracing levels.
     pub fn trace_events(&self) -> impl Iterator<Item = PreparedTraceEvent<'_>> + '_ {
-        let events = self
-            .ir
-            .trace
-            .map(|trace| trace.events.as_slice())
-            .unwrap_or(&[]);
+        let events = self.ir.trace.events().unwrap_or(&[]);
         events
             .iter()
             .enumerate()

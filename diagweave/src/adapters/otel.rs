@@ -284,13 +284,16 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         {
             let trace_id = self
                 .trace
-                .and_then(|trace| trace.context.trace_id.as_ref().map(|v| v.as_ref().into()));
+                .context()
+                .and_then(|ctx| ctx.trace_id.as_ref().map(|v| v.as_ref().into()));
             let span_id = self
                 .trace
-                .and_then(|trace| trace.context.span_id.as_ref().map(|v| v.as_ref().into()));
+                .context()
+                .and_then(|ctx| ctx.span_id.as_ref().map(|v| v.as_ref().into()));
             let trace_flags = self
                 .trace
-                .and_then(|trace| trace.context.flags.map(|flags| flags.bits()));
+                .context()
+                .and_then(|ctx| ctx.flags.map(|flags| flags.bits()));
             (trace_id, span_id, trace_flags)
         }
         #[cfg(not(feature = "trace"))]
@@ -301,16 +304,16 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
 
     #[cfg(feature = "trace")]
     fn otel_trace_corr(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
-        let Some(trace) = self.trace else {
+        let Some(context) = self.trace.context() else {
             return;
         };
-        if let Some(parent_span_id) = trace.context.parent_span_id.as_ref() {
+        if let Some(parent_span_id) = context.parent_span_id.as_ref() {
             attributes.push(OtelAttribute {
                 key: "trace.parent_span_id".into(),
                 value: OtelValue::String(parent_span_id.as_ref().into()),
             });
         }
-        if let Some(trace_state) = trace.context.trace_state.as_ref() {
+        if let Some(trace_state) = context.trace_state.as_ref() {
             attributes.push(OtelAttribute {
                 key: "trace.state".into(),
                 value: OtelValue::String(trace_state.as_str().into()),
@@ -385,12 +388,12 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
 
     #[cfg(feature = "trace")]
     fn otel_trace_ev(&'a self, records: &mut Vec<OtelEvent<'a>>) {
-        let trace = match self.trace {
-            Some(t) => t,
-            None => return,
+        let Some(events) = self.trace.events() else {
+            return;
         };
+        let context = self.trace.context();
         let fallback_level = self.metadata.required_severity();
-        for trace_event in trace.events.iter() {
+        for trace_event in events.iter() {
             let (severity_text, severity_number) = match trace_event.level {
                 Some(level) => {
                     let severity_text = trace_event_level_ref(level);
@@ -410,17 +413,19 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                     value: OtelValue::from(&attr.value),
                 })
                 .collect::<Vec<_>>();
-            if let Some(parent_span_id) = trace.context.parent_span_id.as_ref() {
-                attributes.push(OtelAttribute {
-                    key: "trace.parent_span_id".into(),
-                    value: OtelValue::String(parent_span_id.as_ref().into()),
-                });
-            }
-            if let Some(trace_state) = trace.context.trace_state.as_ref() {
-                attributes.push(OtelAttribute {
-                    key: "trace.state".into(),
-                    value: OtelValue::String(trace_state.as_str().into()),
-                });
+            if let Some(ctx) = context {
+                if let Some(parent_span_id) = ctx.parent_span_id.as_ref() {
+                    attributes.push(OtelAttribute {
+                        key: "trace.parent_span_id".into(),
+                        value: OtelValue::String(parent_span_id.as_ref().into()),
+                    });
+                }
+                if let Some(trace_state) = ctx.trace_state.as_ref() {
+                    attributes.push(OtelAttribute {
+                        key: "trace.state".into(),
+                        value: OtelValue::String(trace_state.as_str().into()),
+                    });
+                }
             }
             records.push(OtelEvent {
                 name: trace_event.name.clone().into(),
@@ -429,9 +434,9 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 observed_timestamp_unix_nano: None,
                 severity_text,
                 severity_number,
-                trace_id: trace.context.trace_id.as_ref().map(|v| v.as_ref().into()),
-                span_id: trace.context.span_id.as_ref().map(|v| v.as_ref().into()),
-                trace_flags: trace.context.flags.map(|flags| flags.bits()),
+                trace_id: context.and_then(|ctx| ctx.trace_id.as_ref().map(|v| v.as_ref().into())),
+                span_id: context.and_then(|ctx| ctx.span_id.as_ref().map(|v| v.as_ref().into())),
+                trace_flags: context.and_then(|ctx| ctx.flags.map(|flags| flags.bits())),
                 attributes,
             });
         }

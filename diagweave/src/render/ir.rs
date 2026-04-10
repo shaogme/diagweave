@@ -172,7 +172,7 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub error: DiagnosticIrError<'a>,
     pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
-    pub trace: Option<&'a ReportTrace>,
+    pub trace: &'a ReportTrace,
     pub context: &'a ContextMap,
     pub system: &'a ContextMap,
     pub attachments: &'a [Attachment],
@@ -366,12 +366,28 @@ pub(crate) fn build_trace_value(
 ) -> AttachmentValue {
     let mut trace_obj = FastMap::new();
     trace_obj.insert("error".to_string(), build_error_value(error));
-    trace_obj.insert("context".to_string(), build_trace_ctx_value(&trace.context));
+    trace_obj.insert(
+        "context".to_string(),
+        build_trace_ctx_value_opt(trace.context()),
+    );
     trace_obj.insert(
         "events".to_string(),
-        AttachmentValue::Array(trace.events.iter().map(build_trace_event_value).collect()),
+        AttachmentValue::Array(
+            trace
+                .events()
+                .map(|e| e.iter().map(build_trace_event_value).collect())
+                .unwrap_or_default(),
+        ),
     );
     AttachmentValue::Object(trace_obj)
+}
+
+#[cfg(feature = "trace")]
+fn build_trace_ctx_value_opt(context: Option<&TraceContext>) -> AttachmentValue {
+    match context {
+        Some(ctx) => build_trace_ctx_value(ctx),
+        None => AttachmentValue::Object(FastMap::new()),
+    }
 }
 
 #[cfg(feature = "trace")]

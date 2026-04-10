@@ -21,8 +21,6 @@ pub struct SourceErrorEntry {
 
 #[derive(Debug, Default)]
 pub(crate) struct DiagnosticBag {
-    #[cfg(feature = "trace")]
-    pub(crate) trace: Option<ReportTrace>,
     pub(crate) stack_trace: Option<StackTrace>,
     pub(crate) context: ContextMap,
     pub(crate) system: ContextMap,
@@ -40,10 +38,6 @@ impl DiagnosticBag {
 
 impl PartialEq for DiagnosticBag {
     fn eq(&self, other: &Self) -> bool {
-        #[cfg(feature = "trace")]
-        if self.trace != other.trace {
-            return false;
-        }
         self.stack_trace == other.stack_trace
             && self.context == other.context
             && self.system == other.system

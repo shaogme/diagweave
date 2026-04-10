@@ -211,14 +211,15 @@ where
         }
 
         #[cfg(feature = "trace")]
-        if let Some(trace) = global.trace {
-            let report_trace = cold.bag.trace.get_or_insert_with(ReportTrace::default);
-            report_trace.context.trace_id = trace.trace_id;
-            report_trace.context.span_id = trace.span_id;
-            report_trace.context.parent_span_id = trace.parent_span_id;
-            report_trace.context.sampled = trace.sampled;
-            report_trace.context.trace_state = trace.trace_state;
-            report_trace.context.flags = trace.flags;
+        if let Some(global_trace) = global.trace {
+            let trace = core::mem::take(&mut self.trace);
+            self.trace = trace
+                .set_trace_id_opt(global_trace.trace_id)
+                .set_span_id_opt(global_trace.span_id)
+                .set_parent_span_id_opt(global_trace.parent_span_id)
+                .set_sampled_opt(global_trace.sampled)
+                .set_trace_state_opt(global_trace.trace_state)
+                .set_flags_opt(global_trace.flags);
         }
     }
 }
@@ -259,6 +260,8 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             inner,
             metadata: ReportMetadata::new(),
             report: ReportOptions::new(),
+            #[cfg(feature = "trace")]
+            trace: ReportTrace::default(),
             cold: None,
         };
         #[cfg(not(feature = "std"))]
@@ -266,6 +269,8 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             inner,
             metadata: ReportMetadata::new(),
             report: ReportOptions::new(),
+            #[cfg(feature = "trace")]
+            trace: ReportTrace::default(),
             cold: None,
         };
         #[cfg(feature = "std")]
@@ -298,12 +303,16 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             inner,
             metadata,
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         } = self;
         Report {
             inner,
             metadata: metadata.set_severity(severity),
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         }
     }

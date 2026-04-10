@@ -410,11 +410,12 @@ where
     E: Error + Display + 'static,
     State: SeverityState,
 {
-    let Some(trace) = report.trace() else {
+    let trace = report.trace();
+    if trace.is_empty() {
         // When trace is absent, write empty object to ensure valid JSON
         f.write_str("{}")?;
         return Ok(());
-    };
+    }
     write_trace_section_value(f, pretty, depth, &build_trace_section_value(trace), options)
 }
 

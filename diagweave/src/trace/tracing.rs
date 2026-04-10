@@ -44,13 +44,13 @@ impl TracingExporterTrait for TracingExporter {
             },
         );
 
-        if let Some(trace) = ir.trace {
+        if !ir.trace.is_empty() {
             for prepared_event in emission.trace_events() {
                 emit_trace_event(
                     prepared_level_to_tracing(prepared_event.level()),
                     prepared_event.index(),
                     prepared_event.event(),
-                    Some(trace),
+                    &ir.trace,
                 );
             }
         }
@@ -81,16 +81,16 @@ macro_rules! report_event {
             error_required_severity = ?$ir.metadata.required_severity(),
             error_category = ?$ir.metadata.category(),
             error_retryable = ?$ir.metadata.retryable(),
-            trace_id = ?$ir.trace.as_ref().and_then(|t| t.context.trace_id.as_ref()),
-            span_id = ?$ir.trace.as_ref().and_then(|t| t.context.span_id.as_ref()),
-            parent_span_id = ?$ir.trace.as_ref().and_then(|t| t.context.parent_span_id.as_ref()),
-            trace_sampled = ?$ir.trace.as_ref().and_then(|t| t.context.sampled),
-            trace_state = ?$ir.trace.as_ref().and_then(|t| t.context.trace_state.as_ref()),
-            trace_flags = ?$ir.trace.as_ref().and_then(|t| t.context.flags),
+            trace_id = ?$ir.trace.context().and_then(|t| t.trace_id.as_ref()),
+            span_id = ?$ir.trace.context().and_then(|t| t.span_id.as_ref()),
+            parent_span_id = ?$ir.trace.context().and_then(|t| t.parent_span_id.as_ref()),
+            trace_sampled = ?$ir.trace.context().and_then(|t| t.sampled),
+            trace_state = ?$ir.trace.context().and_then(|t| t.trace_state.as_ref()),
+            trace_flags = ?$ir.trace.context().and_then(|t| t.flags),
             report_context_count = $ir.context_count,
             report_system_count = $ir.system_count,
             report_attachment_count = $ir.attachment_count,
-            trace_event_count = $ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0),
+            trace_event_count = $ir.trace.events().map(|e| e.len()).unwrap_or(0),
             report_context = ?$context,
             report_system = ?$system,
             report_attachments = ?$attachments,
@@ -149,18 +149,18 @@ macro_rules! trace_event {
             trace_event_level = ?$event.level,
             trace_event_timestamp_unix_nano = ?$event.timestamp_unix_nano,
             trace_event_attributes = ?$event.attributes,
-            trace_id = ?$trace.and_then(|t| t.context.trace_id.as_ref()),
-            span_id = ?$trace.and_then(|t| t.context.span_id.as_ref()),
-            parent_span_id = ?$trace.and_then(|t| t.context.parent_span_id.as_ref()),
-            trace_sampled = ?$trace.and_then(|t| t.context.sampled),
-            trace_state = ?$trace.and_then(|t| t.context.trace_state.as_ref()),
-            trace_flags = ?$trace.and_then(|t| t.context.flags),
+            trace_id = ?$trace.context().and_then(|t| t.trace_id.as_ref()),
+            span_id = ?$trace.context().and_then(|t| t.span_id.as_ref()),
+            parent_span_id = ?$trace.context().and_then(|t| t.parent_span_id.as_ref()),
+            trace_sampled = ?$trace.context().and_then(|t| t.sampled),
+            trace_state = ?$trace.context().and_then(|t| t.trace_state.as_ref()),
+            trace_flags = ?$trace.context().and_then(|t| t.flags),
             "diagweave trace event"
         )
     };
 }
 
-fn emit_trace_event(level: Level, idx: usize, event: &TraceEvent, trace: Option<&ReportTrace>) {
+fn emit_trace_event(level: Level, idx: usize, event: &TraceEvent, trace: &ReportTrace) {
     match level {
         Level::TRACE => trace_event!(Level::TRACE, idx, event, trace),
         Level::DEBUG => trace_event!(Level::DEBUG, idx, event, trace),

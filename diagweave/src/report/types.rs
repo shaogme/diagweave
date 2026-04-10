@@ -19,9 +19,6 @@ use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
-#[cfg(feature = "trace")]
-use super::trace::ReportTrace;
-
 pub use attachment::*;
 pub use config::*;
 pub use context::*;

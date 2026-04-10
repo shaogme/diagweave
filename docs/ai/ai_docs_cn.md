@@ -163,13 +163,15 @@ enum FileError {
 
 ### 声明定义
 
-`Report` 结构体是一个高级诊断容器，对辅助数据采用延迟分配策略。所有四个字段都是**私有的**，无法从模块外部直接访问。
+`Report` 结构体是一个高级诊断容器，对辅助数据采用延迟分配策略。所有字段都是**私有的**，无法从模块外部直接访问。
 
 ```text
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E, // 私有 - 被包装的错误值
     metadata: ReportMetadata<State>, // 私有 - 包含严重性的元数据
     report: ReportOptions, // 私有 - 按报告粒度的配置（内部采用延迟分配）
+    #[cfg(feature = "trace")]
+    trace: ReportTrace, // 私有 - 追踪上下文和事件（内部采用延迟分配）
     cold: Option<Box<ColdData>>, // 私有 - 延迟分配的存储
 }
 ```
@@ -178,6 +180,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 - `inner`：被包装的错误值（私有）
 - `metadata`：包含严重性类型状态和可选的 error_code/category/retryable（私有）
 - `report`：按报告粒度的配置，用于控制源链累积和原因收集行为（私有）
+- `trace`：追踪上下文和事件（私有，仅 `trace` feature 下可用）。内部使用 `Option<Box<ReportTraceInner>>` 实现延迟分配
 - `cold`：延迟分配的存储，用于诊断包（附件、展示原因、源错误）（私有）
 - `ReportOptions` 内部采用延迟分配（`Option<Box<ReportOptionsInner>>`），仅在显式设置选项时才分配堆内存
 - 字段访问通过方法提供，如 `inner()`、`severity()`、`options()` 等
@@ -195,7 +198,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `report.category()` | 读取元数据分类 (`Option<&str>`) |
 | `report.retryable()` | 读取元数据重试标记 (`Option<bool>`) |
 | `report.stack_trace()` | 获取关联的堆栈信息 (`Option<&StackTrace>`) |
-| `report.trace()` | 获取关联的追踪信息 (`Option<&ReportTrace>`) |
+| `report.trace()` | 获取关联的追踪信息 (`&ReportTrace`)。始终返回引用，使用 `trace.is_empty()` 检查是否有追踪数据 |
 | `report.visit_causes(visit)` | 使用默认选项流式遍历展示原因 |
 | `report.visit_causes_ext(options, visit)` | 使用自定义选项流式遍历展示原因 |
 | `report.visit_origin_sources(visit)` | 使用默认选项流式遍历原生传播链 |
@@ -586,7 +589,7 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub error: DiagnosticIrError<'a>,
     pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
-    pub trace: Option<&'a ReportTrace>,
+    pub trace: &'a ReportTrace,
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,

@@ -170,6 +170,8 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E, // private - wrapped error value
     metadata: ReportMetadata<State>, // private - metadata including severity
     report: ReportOptions, // private - per-report configuration (lazy allocation internally)
+    #[cfg(feature = "trace")]
+    trace: ReportTrace, // private - trace context and events (lazy allocation internally)
     cold: Option<Box<ColdData>>, // private - lazily allocated storage
 }
 ```
@@ -178,6 +180,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 - `inner`: The wrapped error value (private)
 - `metadata`: Contains severity typestate and optional error code/category/retryable (private)
 - `report`: Per-report configuration for source chain accumulation and cause collection behavior (private)
+- `trace`: Trace context and events (private, only with `trace` feature). Uses lazy allocation via `Option<Box<ReportTraceInner>>` internally
 - `cold`: Lazily allocated storage for diagnostic bag (attachments, display causes, source errors) (private)
 - `ReportOptions` uses lazy allocation internally (`Option<Box<ReportOptionsInner>>`), only allocating when options are explicitly set
 - Access to fields is provided through methods like `inner()`, `severity()`, `options()`, etc.
@@ -195,7 +198,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `report.category()` | Reads metadata category (`Option<&str>`) |
 | `report.retryable()` | Reads metadata retryability (`Option<bool>`) |
 | `report.stack_trace()` | Gets associated stack trace info (`Option<&StackTrace>`) |
-| `report.trace()` | Gets associated trace information (`Option<&ReportTrace>`) |
+| `report.trace()` | Gets associated trace information (`&ReportTrace`). Always returns a reference; use `trace.is_empty()` to check if trace data is present |
 | `report.visit_causes(visit)` | Streams display causes with default options |
 | `report.visit_causes_ext(options, visit)` | Streams display causes with custom options |
 | `report.visit_origin_sources(visit)` | Streams origin source errors with default options |
@@ -588,7 +591,7 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub error: DiagnosticIrError<'a>,
     pub metadata: DiagnosticIrMetadata<'a, State>,
     #[cfg(feature = "trace")]
-    pub trace: Option<&'a ReportTrace>,
+    pub trace: &'a ReportTrace,
     pub attachments: &'a [Attachment],
     pub display_causes: &'a [Arc<dyn Display + Send + Sync + 'static>],
     pub display_causes_state: CauseTraversalState,

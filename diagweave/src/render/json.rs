@@ -57,9 +57,7 @@ where
         })?;
     }
     #[cfg(feature = "trace")]
-    if options.show_trace_section
-        && (options.show_empty_sections || report.trace().is_some_and(|trace| !trace.is_empty()))
-    {
+    if options.show_trace_section && (options.show_empty_sections || !report.trace().is_empty()) {
         write_object_field(f, pretty, 0, &mut first, "trace", |f| {
             report::write_trace_object(f, pretty, 1, report, options)
         })?;

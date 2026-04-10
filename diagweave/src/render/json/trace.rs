@@ -43,8 +43,25 @@ pub(super) struct TraceAttributeValue<'a> {
 
 pub(super) fn build_trace_section_value(trace: &ReportTrace) -> TraceSectionValue<'_> {
     TraceSectionValue {
-        context: build_trace_ctx_value(&trace.context),
-        events: trace.events.iter().map(build_trace_evt_value).collect(),
+        context: build_trace_ctx_value_opt(trace.context()),
+        events: trace
+            .events()
+            .map(|e| e.iter().map(build_trace_evt_value).collect())
+            .unwrap_or_default(),
+    }
+}
+
+fn build_trace_ctx_value_opt(context: Option<&TraceContext>) -> TraceContextValue<'_> {
+    match context {
+        Some(ctx) => build_trace_ctx_value(ctx),
+        None => TraceContextValue {
+            trace_id: None,
+            span_id: None,
+            parent_span_id: None,
+            sampled: None,
+            trace_state: None,
+            flags: None,
+        },
     }
 }
 

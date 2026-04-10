@@ -92,6 +92,8 @@ where
             inner,
             metadata,
             report,
+            #[cfg(feature = "trace")]
+            trace,
             cold,
         } = self;
 
@@ -110,6 +112,8 @@ where
                 inner: outer,
                 metadata,
                 report,
+                #[cfg(feature = "trace")]
+                trace,
                 cold: new_cold,
             }
         } else {
@@ -119,6 +123,8 @@ where
                 inner: outer,
                 metadata,
                 report,
+                #[cfg(feature = "trace")]
+                trace,
                 cold,
             }
         }
@@ -147,8 +153,6 @@ where
                 let c = *c;
                 Some(Box::new(ColdData {
                     bag: DiagnosticBag {
-                        #[cfg(feature = "trace")]
-                        trace: c.bag.trace,
                         stack_trace: c.bag.stack_trace,
                         context: c.bag.context,
                         system: c.bag.system,

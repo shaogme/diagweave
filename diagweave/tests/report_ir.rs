@@ -442,7 +442,7 @@ fn tracing_exporter_trait_receives_prepared_emission() {
             self.stack_trace_present
                 .set(ir.metadata.stack_trace().is_some());
             self.trace_events
-                .set(ir.trace.as_ref().map(|t| t.events.len()).unwrap_or(0));
+                .set(ir.trace.events().map(|e| e.len()).unwrap_or(0));
             stats
         }
     }

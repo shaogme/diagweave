@@ -78,14 +78,10 @@ where
 
     #[cfg(feature = "trace")]
     fn tracing_trace(&self, fields: &mut Vec<TracingField<'_>>) {
-        let trace = match self.trace {
-            Some(t) => t,
-            None => return,
-        };
-        if trace.is_empty() {
+        if self.trace.is_empty() {
             return;
         }
-        let trace_value = build_trace_value(trace, &self.error);
+        let trace_value = build_trace_value(&self.trace, &self.error);
         fields.push(TracingField {
             key: "trace".into(),
             value: trace_value,

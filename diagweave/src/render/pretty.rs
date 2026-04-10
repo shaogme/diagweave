@@ -171,14 +171,7 @@ fn render_trace_section<State>(
 where
     State: SeverityState,
 {
-    let Some(trace) = report.trace() else {
-        if options.show_trace_section && options.show_empty_sections {
-            writeln!(f, "Trace:")?;
-            write_indent(f, options.pretty_indent)?;
-            writeln!(f, "- (none)")?;
-        }
-        return Ok(());
-    };
+    let trace = report.trace();
 
     if options.show_trace_section && (options.show_empty_sections || !trace.is_empty()) {
         writeln!(f, "Trace:")?;
@@ -186,48 +179,52 @@ where
             write_indent(f, options.pretty_indent)?;
             writeln!(f, "- (none)")?;
         } else {
-            if let Some(trace_id) = &trace.context.trace_id {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- trace_id: {}", trace_id.as_ref())?;
-            }
-            if let Some(span_id) = &trace.context.span_id {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- span_id: {}", span_id.as_ref())?;
-            }
-            if let Some(parent_span_id) = &trace.context.parent_span_id {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- parent_span_id: {}", parent_span_id.as_ref())?;
-            }
-            if let Some(sampled) = trace.context.sampled {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- sampled: {sampled}")?;
-            }
-            if let Some(trace_state) = &trace.context.trace_state {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- trace_state: {trace_state}")?;
-            }
-            if let Some(flags) = trace.context.flags {
-                write_indent(f, options.pretty_indent)?;
-                writeln!(f, "- flags: {flags}")?;
-            }
-            for (idx, event) in trace.events.iter().enumerate() {
-                write_indent(f, options.pretty_indent)?;
-                if let Some(level) = &event.level {
-                    writeln!(f, "- event[{idx}]: {} (level: {})", event.name, level)?;
-                } else {
-                    writeln!(f, "- event[{idx}]: {}", event.name)?;
+            if let Some(context) = trace.context() {
+                if let Some(trace_id) = &context.trace_id {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- trace_id: {}", trace_id.as_ref())?;
                 }
-                if options.show_trace_event_details {
-                    if let Some(timestamp) = event.timestamp_unix_nano {
-                        write_indent(f, options.pretty_indent)?;
-                        writeln!(f, "  - timestamp: {timestamp}")?;
+                if let Some(span_id) = &context.span_id {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- span_id: {}", span_id.as_ref())?;
+                }
+                if let Some(parent_span_id) = &context.parent_span_id {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- parent_span_id: {}", parent_span_id.as_ref())?;
+                }
+                if let Some(sampled) = context.sampled {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- sampled: {sampled}")?;
+                }
+                if let Some(trace_state) = &context.trace_state {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- trace_state: {trace_state}")?;
+                }
+                if let Some(flags) = context.flags {
+                    write_indent(f, options.pretty_indent)?;
+                    writeln!(f, "- flags: {flags}")?;
+                }
+            }
+            if let Some(events) = trace.events() {
+                for (idx, event) in events.iter().enumerate() {
+                    write_indent(f, options.pretty_indent)?;
+                    if let Some(level) = &event.level {
+                        writeln!(f, "- event[{idx}]: {} (level: {})", event.name, level)?;
+                    } else {
+                        writeln!(f, "- event[{idx}]: {}", event.name)?;
                     }
-                    if !event.attributes.is_empty() {
-                        write_indent(f, options.pretty_indent)?;
-                        writeln!(f, "  - attributes:")?;
-                        for attr in &event.attributes {
+                    if options.show_trace_event_details {
+                        if let Some(timestamp) = event.timestamp_unix_nano {
                             write_indent(f, options.pretty_indent)?;
-                            writeln!(f, "    - {}: {}", attr.key, attr.value)?;
+                            writeln!(f, "  - timestamp: {timestamp}")?;
+                        }
+                        if !event.attributes.is_empty() {
+                            write_indent(f, options.pretty_indent)?;
+                            writeln!(f, "  - attributes:")?;
+                            for attr in &event.attributes {
+                                write_indent(f, options.pretty_indent)?;
+                                writeln!(f, "    - {}: {}", attr.key, attr.value)?;
+                            }
                         }
                     }
                 }

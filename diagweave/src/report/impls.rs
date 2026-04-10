@@ -51,7 +51,7 @@ where
                     }
                 }
                 #[cfg(feature = "trace")]
-                writeln!(f, " - trace: {:?}", diag.trace)?;
+                writeln!(f, " - trace: {:?}", self.trace())?;
                 let display_causes = diag
                     .display_causes
                     .as_ref()
@@ -103,7 +103,7 @@ where
                 || {
                     #[cfg(feature = "trace")]
                     {
-                        diag.trace.as_ref().is_some_and(|trace| !trace.is_empty())
+                        !self.trace().is_empty()
                     }
                     #[cfg(not(feature = "trace"))]
                     {
@@ -150,12 +150,15 @@ where
         };
 
         #[cfg(feature = "trace")]
-        if let Some(trace) = diag.trace.as_ref() {
-            if let Some(tid) = &trace.context.trace_id {
-                write_field!(f, *idx, "trace_id", tid.as_ref());
-            }
-            if let Some(sid) = &trace.context.span_id {
-                write_field!(f, *idx, "span_id", sid.as_ref());
+        {
+            let trace = self.trace();
+            if let Some(context) = trace.context() {
+                if let Some(tid) = &context.trace_id {
+                    write_field!(f, *idx, "trace_id", tid.as_ref());
+                }
+                if let Some(sid) = &context.span_id {
+                    write_field!(f, *idx, "span_id", sid.as_ref());
+                }
             }
         }
 

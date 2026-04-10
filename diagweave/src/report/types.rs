@@ -118,62 +118,108 @@ impl<'de> serde::Deserialize<'de> for HasSeverity {
     }
 }
 
+/// Inner metadata structure containing the actual metadata fields.
+/// This is boxed inside ReportMetadata to enable lazy allocation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-/// Report metadata carried alongside a diagnostic.
-///
-/// Contains optional error code, category, and retryable flag.
-/// Severity is stored separately in the Report typestate.
-pub struct ReportMetadata {
+pub(crate) struct MetadataInner {
     error_code: Option<ErrorCode>,
     category: Option<StaticRefStr>,
     retryable: Option<bool>,
 }
 
-impl Default for ReportMetadata {
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+/// Report metadata carried alongside a diagnostic.
+///
+/// Contains severity state and optional error code, category, and retryable flag.
+/// Uses lazy allocation via `Option<Box<MetadataInner>>` for the inner metadata to minimize overhead when empty.
+/// The `State` generic parameter tracks the severity typestate.
+pub struct ReportMetadata<State: SeverityState> {
+    severity: State,
+    #[cfg_attr(feature = "json", serde(flatten))]
+    inner: Option<alloc::boxed::Box<MetadataInner>>,
+}
+
+impl<State: SeverityState> ReportMetadata<State> {
+    /// Returns a reference to the severity state.
+    pub fn severity(&self) -> Option<Severity> {
+        self.severity.severity()
+    }
+
+    /// Returns the severity state.
+    pub fn severity_state(&self) -> State {
+        self.severity
+    }
+
+    /// Ensures the inner metadata is allocated, creating it if necessary.
+    fn ensure_inner(&mut self) -> &mut MetadataInner {
+        self.inner.get_or_insert_with(|| {
+            alloc::boxed::Box::new(MetadataInner {
+                error_code: None,
+                category: None,
+                retryable: None,
+            })
+        })
+    }
+
+    /// Returns the error code, if present.
+    pub fn error_code(&self) -> Option<&ErrorCode> {
+        self.inner.as_ref()?.error_code.as_ref()
+    }
+
+    /// Returns the category, if present.
+    pub fn category(&self) -> Option<&str> {
+        self.inner.as_ref()?.category.as_deref()
+    }
+
+    /// Returns whether the metadata marks the diagnostic as retryable, if present.
+    pub fn retryable(&self) -> Option<bool> {
+        self.inner.as_ref()?.retryable
+    }
+}
+
+impl ReportMetadata<MissingSeverity> {
+    /// Creates a new ReportMetadata with all fields set to None (lazy, not allocated yet).
+    pub fn new() -> Self {
+        Self {
+            severity: MissingSeverity,
+            inner: None,
+        }
+    }
+
+    /// Sets the severity, transitioning to `HasSeverity` typestate.
+    pub fn set_severity(self, severity: Severity) -> ReportMetadata<HasSeverity> {
+        ReportMetadata {
+            severity: HasSeverity::new(severity),
+            inner: self.inner,
+        }
+    }
+}
+
+impl Default for ReportMetadata<MissingSeverity> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ReportMetadata {
-    pub const fn new() -> Self {
-        Self {
-            error_code: None,
-            category: None,
-            retryable: None,
-        }
+impl ReportMetadata<HasSeverity> {
+    /// Replaces the severity with a new value.
+    pub fn replace_severity(mut self, severity: Severity) -> Self {
+        self.severity = HasSeverity::new(severity);
+        self
     }
 
-    /// Returns a static reference to a default ReportMetadata.
-    /// This is useful for cases where no cold data exists.
-    pub(crate) fn default_ref() -> &'static Self {
-        static DEFAULT: ReportMetadata = ReportMetadata {
-            error_code: None,
-            category: None,
-            retryable: None,
-        };
-        &DEFAULT
+    /// Sets the severity to a new value (alias for `replace_severity`).
+    pub fn set_severity(self, severity: Severity) -> Self {
+        self.replace_severity(severity)
     }
+}
 
-    /// Returns the error code, if present.
-    pub fn error_code(&self) -> Option<&ErrorCode> {
-        self.error_code.as_ref()
-    }
-
-    /// Returns the category, if present.
-    pub fn category(&self) -> Option<&str> {
-        self.category.as_deref()
-    }
-
-    /// Returns whether the metadata marks the diagnostic as retryable, if present.
-    pub fn retryable(&self) -> Option<bool> {
-        self.retryable
-    }
-
+impl<State: SeverityState> ReportMetadata<State> {
     /// Sets the error code, replacing any existing value.
     pub fn set_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        self.error_code = Some(error_code.into());
+        self.ensure_inner().error_code = Some(error_code.into());
         self
     }
 
@@ -181,13 +227,13 @@ impl ReportMetadata {
     ///
     /// This method avoids cloning the entire metadata when modifying in place.
     pub fn set_error_code_mut(&mut self, error_code: impl Into<ErrorCode>) {
-        self.error_code = Some(error_code.into());
+        self.ensure_inner().error_code = Some(error_code.into());
     }
 
     /// Sets the error code only if not already set.
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        if self.error_code.is_none() {
-            self.error_code = Some(error_code.into());
+        if self.error_code().is_none() {
+            self.ensure_inner().error_code = Some(error_code.into());
         }
         self
     }
@@ -196,14 +242,14 @@ impl ReportMetadata {
     ///
     /// This method avoids cloning the entire metadata when modifying in place.
     pub fn with_error_code_mut(&mut self, error_code: impl Into<ErrorCode>) {
-        if self.error_code.is_none() {
-            self.error_code = Some(error_code.into());
+        if self.error_code().is_none() {
+            self.ensure_inner().error_code = Some(error_code.into());
         }
     }
 
     /// Sets the category, replacing any existing value.
     pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        self.category = Some(category.into());
+        self.ensure_inner().category = Some(category.into());
         self
     }
 
@@ -211,13 +257,13 @@ impl ReportMetadata {
     ///
     /// This method avoids cloning the entire metadata when modifying in place.
     pub fn set_category_mut(&mut self, category: impl Into<StaticRefStr>) {
-        self.category = Some(category.into());
+        self.ensure_inner().category = Some(category.into());
     }
 
     /// Sets the category only if not already set.
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        if self.category.is_none() {
-            self.category = Some(category.into());
+        if self.category().is_none() {
+            self.ensure_inner().category = Some(category.into());
         }
         self
     }
@@ -226,14 +272,14 @@ impl ReportMetadata {
     ///
     /// This method avoids cloning the entire metadata when modifying in place.
     pub fn with_category_mut(&mut self, category: impl Into<StaticRefStr>) {
-        if self.category.is_none() {
-            self.category = Some(category.into());
+        if self.category().is_none() {
+            self.ensure_inner().category = Some(category.into());
         }
     }
 
     /// Sets the retryability flag, replacing any existing value.
     pub fn set_retryable(mut self, retryable: bool) -> Self {
-        self.retryable = Some(retryable);
+        self.ensure_inner().retryable = Some(retryable);
         self
     }
 
@@ -241,13 +287,13 @@ impl ReportMetadata {
     ///
     /// This method avoids cloning the entire metadata when modifying in place.
     pub fn set_retryable_mut(&mut self, retryable: bool) {
-        self.retryable = Some(retryable);
+        self.ensure_inner().retryable = Some(retryable);
     }
 
     /// Sets the retryability flag only if not already set.
     pub fn with_retryable(mut self, retryable: bool) -> Self {
-        if self.retryable.is_none() {
-            self.retryable = Some(retryable);
+        if self.retryable().is_none() {
+            self.ensure_inner().retryable = Some(retryable);
         }
         self
     }
@@ -256,8 +302,8 @@ impl ReportMetadata {
     ///
     /// This method avoids cloning the entire metadata when modifying in place.
     pub fn with_retryable_mut(&mut self, retryable: bool) {
-        if self.retryable.is_none() {
-            self.retryable = Some(retryable);
+        if self.retryable().is_none() {
+            self.ensure_inner().retryable = Some(retryable);
         }
     }
 }

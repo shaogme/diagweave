@@ -166,16 +166,16 @@ enum FileError {
 `Report` 结构体是一个高级诊断容器，对辅助数据采用延迟分配策略。所有三个字段都是**私有的**，无法从模块外部直接访问。
 
 ```text
-pub struct Report<E, State = MissingSeverity> {
-    inner: E,                              // 私有 - 被包装的错误值
-    severity: State,                       // 私有 - 严重性类型状态
-    cold: Option<Box<ColdData>>,           // 私有 - 延迟分配的存储
+pub struct Report<E, State: SeverityState = MissingSeverity> {
+    inner: E, // 私有 - 被包装的错误值
+    metadata: ReportMetadata<State>, // 私有 - 包含严重性的元数据
+    cold: Option<Box<ColdData>>, // 私有 - 延迟分配的存储
 }
 ```
 
 **关键点：**
 - `inner`：被包装的错误值（私有）
-- `severity`：类型状态模式，用于编译时严重性跟踪（私有）
+- `metadata`：包含严重性类型状态和可选的 error_code/category/retryable（私有）
 - `cold`：延迟分配的存储，用于所有可选诊断数据（私有）
 - `ReportOptions` 存储在 `ColdData` 内部，仅在需要时分配
 - 字段访问通过方法提供，如 `inner()`、`severity()`、`options()` 等
@@ -209,7 +209,7 @@ pub struct Report<E, State = MissingSeverity> {
 | `report.set_accumulate_source_chain(accumulate: bool)` | 快速设置 `map_err()` 的原生 `source` 链累积行为 |
 | `report.map_err(map: FnOnce(E) -> Outer)` | 映射内部错误类型并保留诊断信息；当启用 source 链累积时，会把旧的内层错误接到新错误的 `source` 链上 |
 
-`ReportMetadata` 现在将内部字段完全私有化。读取请使用 `error_code()`、`category()`、`retryable()` 等接口。Severity 直接存储在 `Report` 的类型状态中，而非 `ReportMetadata` 内。写入式组合请使用 `with_error_code(...)`、`set_severity(...)` 等 builder 方法。
+`ReportMetadata<State>` 现在包含严重性类型状态和可选元数据字段。严重性作为直接字段存储（不包装在 Option 或 Box 中），而 error_code/category/retryable 存储在内部的 `Option<Box<MetadataInner>>` 中以实现延迟分配。读取请使用 `error_code()`、`category()`、`retryable()`、`severity()` 等接口。写入式组合请使用 `with_error_code(...)`、`set_severity(...)` 等 builder 方法。
 
 ### `ReportOptions` 和 `GlobalConfig`
 

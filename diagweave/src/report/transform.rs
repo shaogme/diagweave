@@ -7,9 +7,7 @@ use alloc::boxed::Box;
 use core::error::Error;
 
 use super::types::build_origin_source_chain;
-use super::{
-    ColdData, DiagnosticBag, Report, ReportMetadata, ReportOptions, SeverityState, SourceErrorChain,
-};
+use super::{ColdData, DiagnosticBag, Report, ReportOptions, SeverityState, SourceErrorChain};
 
 impl<E, State> Report<E, State>
 where
@@ -92,7 +90,7 @@ where
     {
         let Self {
             inner,
-            severity,
+            metadata,
             cold,
         } = self;
 
@@ -112,7 +110,7 @@ where
 
             Report {
                 inner: outer,
-                severity,
+                metadata,
                 cold: new_cold,
             }
         } else {
@@ -120,7 +118,7 @@ where
             let outer = map(inner);
             Report {
                 inner: outer,
-                severity,
+                metadata,
                 cold,
             }
         }
@@ -150,7 +148,6 @@ where
             Some(c) => {
                 let c = *c;
                 Some(Box::new(ColdData {
-                    metadata: c.metadata,
                     bag: DiagnosticBag {
                         #[cfg(feature = "trace")]
                         trace: c.bag.trace,
@@ -166,7 +163,7 @@ where
                 }))
             }
             None => {
-                let mut cold_data = ColdData::new(ReportMetadata::default(), options);
+                let mut cold_data = ColdData::new(options);
                 cold_data.bag.origin_source_errors = Some(origin_source_errors);
                 Some(Box::new(cold_data))
             }

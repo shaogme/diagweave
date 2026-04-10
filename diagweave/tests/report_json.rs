@@ -141,7 +141,8 @@ fn report_metadata_requires_explicit_severity_typestate_for_deserialization() {
     })
     .to_string();
 
-    let metadata: ReportMetadata =
+    // When severity is present in JSON, it deserializes to HasSeverity typestate
+    let metadata: ReportMetadata<HasSeverity> =
         serde_json::from_str(&json).expect("metadata should deserialize");
 
     assert_eq!(
@@ -150,6 +151,7 @@ fn report_metadata_requires_explicit_severity_typestate_for_deserialization() {
     );
     assert_eq!(metadata.category(), Some("auth"));
     assert_eq!(metadata.retryable(), Some(false));
+    assert_eq!(metadata.severity(), Some(Severity::Error));
 }
 
 #[cfg(feature = "json")]

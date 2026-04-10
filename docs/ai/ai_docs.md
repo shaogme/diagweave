@@ -166,16 +166,16 @@ Hot path strings such as `category`, `trace_state`, trace event names, and stack
 The `Report` struct is a high-level diagnostic container with lazy allocation for auxiliary data. All three fields are **private** and cannot be directly accessed from outside the module.
 
 ```text
-pub struct Report<E, State = MissingSeverity> {
-    inner: E,                              // private - wrapped error value
-    severity: State,                       // private - typestate for severity
-    cold: Option<Box<ColdData>>,           // private - lazily allocated storage
+pub struct Report<E, State: SeverityState = MissingSeverity> {
+    inner: E, // private - wrapped error value
+    metadata: ReportMetadata<State>, // private - metadata including severity
+    cold: Option<Box<ColdData>>, // private - lazily allocated storage
 }
 ```
 
 **Key Points:**
 - `inner`: The wrapped error value (private)
-- `severity`: Typestate pattern for compile-time severity tracking (private)
+- `metadata`: Contains severity typestate and optional error code/category/retryable (private)
 - `cold`: Lazily allocated storage for all optional diagnostic data (private)
 - `ReportOptions` is stored inside `ColdData`, which is only allocated when needed
 - Access to fields is provided through methods like `inner()`, `severity()`, `options()`, etc.
@@ -209,7 +209,7 @@ pub struct Report<E, State = MissingSeverity> {
 | `report.set_accumulate_source_chain(accumulate: bool)` | Quick toggle for `map_err()` origin `source` chain accumulation |
 | `report.map_err(map: FnOnce(E) -> Outer)`| Maps internal error type while preserving diagnostics; when source chain accumulation is enabled, the old inner error is attached to the new error's `source` chain |
 
-`ReportMetadata` now keeps its internal fields private. Read access goes through methods like `error_code()`, `category()`, and `retryable()`. Severity is stored directly in the `Report` typestate, not in `ReportMetadata`. Composition uses builder methods such as `with_error_code(...)` and `set_severity(...)`.
+`ReportMetadata<State>` now contains severity typestate and optional metadata fields. The severity is stored as a direct field (not wrapped in Option or Box), while error_code/category/retryable are stored in an inner `Option<Box<MetadataInner>>` for lazy allocation. Read access goes through methods like `error_code()`, `category()`, `retryable()`, and `severity()`. Composition uses builder methods such as `with_error_code(...)` and `set_severity(...)`.
 
 ### `ReportOptions` and `GlobalConfig`
 

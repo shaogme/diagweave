@@ -12,7 +12,7 @@ use alloc::boxed::Box;
 #[cfg(feature = "trace")]
 use super::trace::ReportTrace;
 use super::types::GlobalContext;
-use super::{Report, SeverityState};
+use super::{Report, ReportMetadata, SeverityState};
 
 /// Context injector type alias for global context providers.
 ///
@@ -184,20 +184,23 @@ where
         }
 
         // Now we know we need ColdData, allocate it
-        let cold = self.ensure_cold();
+        self.ensure_cold();
 
+        // Handle error metadata
         if let Some(error) = global.error {
             if let Some(error_code) = error.error_code {
-                cold.metadata.with_error_code_mut(error_code);
+                self.metadata.with_error_code_mut(error_code);
             }
             if let Some(category) = error.category {
-                cold.metadata.with_category_mut(category);
+                self.metadata.with_category_mut(category);
             }
             if let Some(retryable) = error.retryable {
-                cold.metadata.with_retryable_mut(retryable);
+                self.metadata.with_retryable_mut(retryable);
             }
         }
 
+        // Handle system and context
+        let cold = self.cold.as_mut().unwrap();
         if !global.system.is_empty() {
             cold.bag.system = global.system;
         }
@@ -254,13 +257,13 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         #[cfg(feature = "std")]
         let mut report = Self {
             inner,
-            severity: crate::report::MissingSeverity,
+            metadata: ReportMetadata::new(),
             cold: None,
         };
         #[cfg(not(feature = "std"))]
         let report = Self {
             inner,
-            severity: crate::report::MissingSeverity,
+            metadata: ReportMetadata::new(),
             cold: None,
         };
         #[cfg(feature = "std")]
@@ -291,12 +294,12 @@ impl<E> Report<E, crate::report::MissingSeverity> {
     pub fn with_severity(self, severity: super::Severity) -> Report<E, super::HasSeverity> {
         let Self {
             inner,
-            severity: _,
+            metadata,
             cold,
         } = self;
         Report {
             inner,
-            severity: super::HasSeverity::new(severity),
+            metadata: metadata.set_severity(severity),
             cold,
         }
     }

@@ -4,7 +4,6 @@
 //! configuring Report instances. These methods follow the builder pattern,
 //! consuming `self` and returning a modified `Self`.
 
-use alloc::boxed::Box;
 use alloc::sync::Arc;
 use core::error::Error;
 use core::fmt::Display;
@@ -14,7 +13,7 @@ use super::types::{
     Attachment, AttachmentValue, ContextMap, ContextValue, DisplayCauseChain, ErrorCode,
     SourceErrorChain, StackTrace, append_source_chain,
 };
-use super::{ColdData, DiagnosticBag, Report, ReportMetadata, ReportOptions, SeverityState};
+use super::{Report, ReportMetadata, ReportOptions, SeverityState};
 
 impl<E, State> Report<E, State>
 where
@@ -224,16 +223,8 @@ where
     ///
     /// let report = Report::new(MyError).with_metadata(metadata);
     /// ```
-    pub fn with_metadata(mut self, metadata: ReportMetadata) -> Self {
-        if let Some(cold) = self.cold.as_mut() {
-            cold.metadata = metadata;
-        } else {
-            self.cold = Some(Box::new(ColdData {
-                metadata,
-                bag: DiagnosticBag::default(),
-                options: ReportOptions::new(),
-            }));
-        }
+    pub fn with_metadata(mut self, metadata: ReportMetadata<State>) -> Self {
+        self.metadata = metadata;
         self
     }
 
@@ -255,7 +246,7 @@ where
     /// let report = Report::new(MyError).set_error_code("PAYMENT_FAILED");
     /// ```
     pub fn set_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        self.ensure_cold().metadata.set_error_code_mut(error_code);
+        self.metadata.set_error_code_mut(error_code);
         self
     }
 
@@ -282,16 +273,7 @@ where
     /// assert_eq!(report.error_code().unwrap().to_string(), "ERR-001".to_string());
     /// ```
     pub fn with_error_code(mut self, error_code: impl Into<ErrorCode>) -> Self {
-        match self.cold.as_mut() {
-            Some(cold) => cold.metadata.with_error_code_mut(error_code),
-            None => {
-                self.cold = Some(Box::new(ColdData {
-                    metadata: ReportMetadata::default().set_error_code(error_code),
-                    bag: DiagnosticBag::default(),
-                    options: ReportOptions::new(),
-                }));
-            }
-        }
+        self.metadata.with_error_code_mut(error_code);
         self
     }
 
@@ -313,7 +295,7 @@ where
     /// let report = Report::new(MyError).set_category("payment");
     /// ```
     pub fn set_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        self.ensure_cold().metadata.set_category_mut(category);
+        self.metadata.set_category_mut(category);
         self
     }
 
@@ -338,16 +320,7 @@ where
     /// assert_eq!(report.category(), Some("payment"));
     /// ```
     pub fn with_category(mut self, category: impl Into<StaticRefStr>) -> Self {
-        match self.cold.as_mut() {
-            Some(cold) => cold.metadata.with_category_mut(category),
-            None => {
-                self.cold = Some(Box::new(ColdData {
-                    metadata: ReportMetadata::default().set_category(category),
-                    bag: DiagnosticBag::default(),
-                    options: ReportOptions::new(),
-                }));
-            }
-        }
+        self.metadata.with_category_mut(category);
         self
     }
 
@@ -369,7 +342,7 @@ where
     /// let report = Report::new(MyError).set_retryable(true);
     /// ```
     pub fn set_retryable(mut self, retryable: bool) -> Self {
-        self.ensure_cold().metadata.set_retryable_mut(retryable);
+        self.metadata.set_retryable_mut(retryable);
         self
     }
 
@@ -394,16 +367,7 @@ where
     /// assert_eq!(report.retryable(), Some(true));
     /// ```
     pub fn with_retryable(mut self, retryable: bool) -> Self {
-        match self.cold.as_mut() {
-            Some(cold) => cold.metadata.with_retryable_mut(retryable),
-            None => {
-                self.cold = Some(Box::new(ColdData {
-                    metadata: ReportMetadata::default().set_retryable(retryable),
-                    bag: DiagnosticBag::default(),
-                    options: ReportOptions::new(),
-                }));
-            }
-        }
+        self.metadata.with_retryable_mut(retryable);
         self
     }
 

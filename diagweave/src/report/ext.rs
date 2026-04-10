@@ -126,7 +126,7 @@ where
     fn report_attachments(&self) -> Option<&[Attachment]>;
 
     /// Returns the report's metadata on the error path, or `None`.
-    fn report_metadata(&self) -> Option<&ReportMetadata>;
+    fn report_metadata(&self) -> Option<&ReportMetadata<State>>;
 
     /// Returns the report's error code on the error path, or `None`.
     fn report_error_code(&self) -> Option<&ErrorCode>;
@@ -153,7 +153,7 @@ where
         self.report_ref().map(Report::attachments)
     }
 
-    fn report_metadata(&self) -> Option<&ReportMetadata> {
+    fn report_metadata(&self) -> Option<&ReportMetadata<State>> {
         self.report_ref().map(Report::metadata)
     }
 

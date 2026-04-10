@@ -346,11 +346,8 @@ where
     ///     .set_error_code("ERR-001");
     /// let metadata = report.metadata();
     /// ```
-    pub fn metadata(&self) -> &ReportMetadata {
-        match self.cold.as_deref() {
-            Some(cold) => &cold.metadata,
-            None => ReportMetadata::default_ref(),
-        }
+    pub fn metadata(&self) -> &ReportMetadata<State> {
+        self.metadata_ref()
     }
 
     /// Returns the error code from report metadata, if present.
@@ -370,7 +367,7 @@ where
     /// assert_eq!(report.error_code().unwrap().to_string(), "ERR-001".to_string());
     /// ```
     pub fn error_code(&self) -> Option<&super::ErrorCode> {
-        self.cold.as_deref().and_then(|c| c.metadata.error_code())
+        self.metadata.error_code()
     }
 
     /// Returns the severity from report typestate.
@@ -390,12 +387,12 @@ where
     /// assert_eq!(report.severity(), Some(Severity::Error));
     /// ```
     pub fn severity(&self) -> Option<super::Severity> {
-        self.severity.severity()
+        self.metadata.severity()
     }
 
     /// Returns the severity state from report typestate.
     pub(crate) fn severity_state(&self) -> State {
-        self.severity
+        self.metadata.severity_state()
     }
 
     /// Returns the category from report metadata, if present.
@@ -415,7 +412,7 @@ where
     /// assert_eq!(report.category(), Some("payment"));
     /// ```
     pub fn category(&self) -> Option<&str> {
-        self.cold.as_deref().and_then(|c| c.metadata.category())
+        self.metadata.category()
     }
 
     /// Returns whether the report is marked retryable, if present.
@@ -435,7 +432,7 @@ where
     /// assert_eq!(report.retryable(), Some(true));
     /// ```
     pub fn retryable(&self) -> Option<bool> {
-        self.cold.as_deref().and_then(|c| c.metadata.retryable())
+        self.metadata.retryable()
     }
 
     /// Returns the stack trace associated with the report, if any.

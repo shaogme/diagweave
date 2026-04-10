@@ -113,9 +113,9 @@ use types::{ColdData, DiagnosticBag, append_source_chain, limit_depth_source_cha
 /// // Set severity to get HasSeverity typestate
 /// let report = report.set_severity(Severity::Error);
 /// ```
-pub struct Report<E, State = MissingSeverity> {
+pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E,
-    severity: State,
+    metadata: ReportMetadata<State>,
     cold: Option<Box<ColdData>>,
 }
 
@@ -137,6 +137,11 @@ where
     /// Returns a mutable reference to the diagnostics bag.
     fn diagnostics_mut(&mut self) -> &mut DiagnosticBag {
         &mut self.ensure_cold().bag
+    }
+
+    /// Returns a reference to the metadata.
+    fn metadata_ref(&self) -> &ReportMetadata<State> {
+        &self.metadata
     }
 }
 
@@ -220,12 +225,12 @@ impl<E> Report<E, MissingSeverity> {
     pub fn set_severity(self, severity: Severity) -> Report<E, HasSeverity> {
         let Self {
             inner,
-            severity: _,
+            metadata,
             cold,
         } = self;
         Report {
             inner,
-            severity: HasSeverity::new(severity),
+            metadata: metadata.set_severity(severity),
             cold,
         }
     }
@@ -255,12 +260,12 @@ impl<E> Report<E, HasSeverity> {
     pub fn replace_severity(self, severity: Severity) -> Report<E, HasSeverity> {
         let Self {
             inner,
-            severity: _,
+            metadata,
             cold,
         } = self;
         Report {
             inner,
-            severity: HasSeverity::new(severity),
+            metadata: metadata.replace_severity(severity),
             cold,
         }
     }

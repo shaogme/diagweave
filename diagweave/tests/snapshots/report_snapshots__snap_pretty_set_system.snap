@@ -1,0 +1,26 @@
+---
+source: diagweave/tests/report_snapshots.rs
+expression: output
+---
+Error:
+  - message: api unauthorized
+  - type: report_snapshots::report_common::ApiError
+Governance:
+  - (none)
+Trace:
+  - (none)
+Stack Trace:
+  - (none)
+System:
+  - host: prod-web-01
+  - region: us-east-1
+Context:
+  - (none)
+Attachments:
+  - (none)
+Display Causes:
+  - (none)
+Origin Source Errors:
+  - (none)
+Diagnostic Source Errors:
+  - (none)

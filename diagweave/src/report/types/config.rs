@@ -25,7 +25,6 @@ impl ProfileDefaults {
     ///
     /// In debug builds, returns `true` to enable source chain accumulation for better debugging.
     /// In release builds, returns `false` for better performance.
-    #[inline]
     pub const fn accumulate_source_chain() -> bool {
         cfg!(debug_assertions)
     }
@@ -34,7 +33,6 @@ impl ProfileDefaults {
     ///
     /// In debug builds, returns `true` to enable cycle detection for safety.
     /// In release builds, returns `false` for performance.
-    #[inline]
     pub const fn detect_cycle() -> bool {
         cfg!(debug_assertions)
     }
@@ -42,7 +40,6 @@ impl ProfileDefaults {
     /// Returns the default value for `max_depth`.
     ///
     /// This value is consistent across all build profiles.
-    #[inline]
     pub const fn max_depth() -> usize {
         16
     }
@@ -76,13 +73,11 @@ pub struct ResolvedValue<T> {
 
 impl<T> ResolvedValue<T> {
     /// Creates a new resolved value with the given value and source.
-    #[inline]
     pub const fn new(value: T, source: ConfigSource) -> Self {
         Self { value, source }
     }
 
     /// Returns the resolved value.
-    #[inline]
     pub fn into_value(self) -> T {
         self.value
     }
@@ -123,11 +118,11 @@ impl<T: fmt::Display> fmt::Display for ResolvedValue<T> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GlobalConfig {
     /// Default value for `accumulate_source_chain` when not set in ReportOptions.
-    pub accumulate_source_chain: bool,
+    accumulate_source_chain: bool,
     /// Default value for `max_depth` when not set in ReportOptions.
-    pub max_depth: usize,
+    max_depth: usize,
     /// Default value for `detect_cycle` when not set in ReportOptions.
-    pub detect_cycle: bool,
+    detect_cycle: bool,
 }
 
 #[cfg(feature = "std")]
@@ -141,7 +136,6 @@ impl GlobalConfig {
     /// | `accumulate_source_chain` | `true` | `false` |
     /// | `detect_cycle` | `true` | `false` |
     /// | `max_depth` | `16` | `16` |
-    #[inline]
     pub const fn new() -> Self {
         Self {
             accumulate_source_chain: ProfileDefaults::accumulate_source_chain(),
@@ -151,66 +145,59 @@ impl GlobalConfig {
     }
 
     /// Sets the default for `accumulate_source_chain`.
-    #[inline]
     pub const fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
         self.accumulate_source_chain = accumulate;
         self
     }
 
     /// Sets the default for `max_depth`.
-    #[inline]
     pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
         self.max_depth = max_depth;
         self
     }
 
     /// Sets the default for `detect_cycle`.
-    #[inline]
     pub const fn with_cycle_detection(mut self, detect_cycle: bool) -> Self {
         self.detect_cycle = detect_cycle;
         self
     }
 
     /// Resolves the `accumulate_source_chain` value with source tracking.
-    #[inline]
-    pub fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
+    #[cfg(feature = "std")]
+    fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
         ResolvedValue::new(self.accumulate_source_chain, ConfigSource::Global)
     }
 
     /// Resolves the `max_depth` value with source tracking.
-    #[inline]
-    pub fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
+    #[cfg(feature = "std")]
+    fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
         ResolvedValue::new(self.max_depth, ConfigSource::Global)
     }
 
     /// Resolves the `detect_cycle` value with source tracking.
-    #[inline]
-    pub fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
+    #[cfg(feature = "std")]
+    fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
         ResolvedValue::new(self.detect_cycle, ConfigSource::Global)
     }
 
     /// Returns the `accumulate_source_chain` value.
-    #[inline]
-    pub fn resolve_accumulate_source_chain(&self) -> bool {
+    pub fn accumulate_source_chain(&self) -> bool {
         self.accumulate_source_chain
     }
 
     /// Returns the `max_depth` value.
-    #[inline]
-    pub fn resolve_max_depth(&self) -> usize {
+    pub fn max_depth(&self) -> usize {
         self.max_depth
     }
 
     /// Returns the `detect_cycle` value.
-    #[inline]
-    pub fn resolve_detect_cycle(&self) -> bool {
+    pub fn detect_cycle(&self) -> bool {
         self.detect_cycle
     }
 
     /// Returns the global configuration.
     ///
     /// If no configuration has been set, returns a default config with profile-dependent defaults.
-    #[inline]
     pub fn global() -> &'static Self {
         GLOBAL_CONFIG.get_or_init(|| Self::new())
     }
@@ -222,7 +209,6 @@ impl GlobalConfig {
 
 #[cfg(feature = "std")]
 impl Default for GlobalConfig {
-    #[inline]
     fn default() -> Self {
         Self::new()
     }
@@ -267,10 +253,152 @@ pub fn set_global_config(config: GlobalConfig) -> Result<(), SetGlobalConfigErro
 #[cfg(feature = "std")]
 static GLOBAL_CONFIG: OnceLock<GlobalConfig> = OnceLock::new();
 
+/// Inner configuration for error source chain accumulation and cause collection behavior.
+///
+/// This is the internal structure containing the actual configuration fields.
+/// It is boxed inside [`ReportOptions`] to enable lazy allocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ReportOptionsInner {
+    /// Whether `map_err()` should automatically accumulate source error chains.
+    ///
+    /// When `Some(true)`, calling `map_err()` will preserve and extend the origin
+    /// source error chain.
+    ///
+    /// When `Some(false)`, `map_err()` only transforms the error type without
+    /// accumulating source chains.
+    ///
+    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
+    ///
+    /// **Default**: `None` (inherits from global config or profile default).
+    accumulate_source_chain: Option<bool>,
+
+    /// Maximum depth of causes to collect during source error traversal.
+    ///
+    /// This limits how deep the error chain will be traversed when collecting
+    /// source errors. A higher value provides more complete error context but
+    /// may impact performance for very deep error chains.
+    ///
+    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
+    ///
+    /// **Default**: `None` (inherits from global config or `16`).
+    max_depth: Option<usize>,
+
+    /// Whether to detect cycles in the cause chain during traversal.
+    ///
+    /// When `Some(true)`, the error chain traversal will track visited errors and
+    /// mark cycles when detected. This is useful for debugging but adds
+    /// overhead from maintaining a visited set.
+    ///
+    /// When `Some(false)`, cycle detection is skipped for better performance.
+    /// Use this in release builds when error chains are trusted to be acyclic.
+    ///
+    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
+    ///
+    /// **Default**: `None` (inherits from global config or profile default).
+    detect_cycle: Option<bool>,
+}
+
+impl ReportOptionsInner {
+    /// Creates new report options with all fields unset (None).
+    ///
+    /// All values will be inherited from [`GlobalConfig`] or profile defaults.
+    pub(crate) const fn new() -> Self {
+        Self {
+            accumulate_source_chain: None,
+            max_depth: None,
+            detect_cycle: None,
+        }
+    }
+
+    /// Resolves the effective value for `accumulate_source_chain` with source tracking.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    pub(crate) fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
+        if let Some(value) = self.accumulate_source_chain {
+            return ResolvedValue::new(value, ConfigSource::Report);
+        }
+        #[cfg(feature = "std")]
+        {
+            GlobalConfig::global().resolve_accumulate_source_chain_with_source()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            ResolvedValue::new(
+                ProfileDefaults::accumulate_source_chain(),
+                ConfigSource::Profile,
+            )
+        }
+    }
+
+    /// Resolves the effective value for `max_depth` with source tracking.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    pub(crate) fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
+        if let Some(value) = self.max_depth {
+            return ResolvedValue::new(value, ConfigSource::Report);
+        }
+        #[cfg(feature = "std")]
+        {
+            GlobalConfig::global().resolve_max_depth_with_source()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile)
+        }
+    }
+
+    /// Resolves the effective value for `detect_cycle` with source tracking.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    pub(crate) fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
+        if let Some(value) = self.detect_cycle {
+            return ResolvedValue::new(value, ConfigSource::Report);
+        }
+        #[cfg(feature = "std")]
+        {
+            GlobalConfig::global().resolve_detect_cycle_with_source()
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile)
+        }
+    }
+
+    /// Resolves the effective value for `max_depth`.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    pub(crate) fn max_depth(&self) -> usize {
+        self.resolve_max_depth_with_source().value
+    }
+
+    /// Resolves the effective value for `detect_cycle`.
+    ///
+    /// Priority: ReportOptions > GlobalConfig > Profile default
+    pub(crate) fn detect_cycle(&self) -> bool {
+        self.resolve_detect_cycle_with_source().value
+    }
+
+    /// Returns a CauseCollectOptions view with resolved values for internal use.
+    pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
+        CauseCollectOptions {
+            max_depth: self.max_depth(),
+            detect_cycle: self.detect_cycle(),
+        }
+    }
+}
+
+impl Default for ReportOptionsInner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Per-report configuration for error source chain accumulation and cause collection behavior.
 ///
 /// This controls whether [`Report::map_err()`] automatically accumulates the source error chain
 /// when transforming error types, as well as options for cause collection depth and cycle detection.
+///
+/// Uses lazy allocation via `Option<Box<ReportOptionsInner>>` to minimize overhead when empty.
 ///
 /// # Configuration Priority
 ///
@@ -314,142 +442,106 @@ static GLOBAL_CONFIG: OnceLock<GlobalConfig> = OnceLock::new();
 /// // Disable cycle detection for performance-critical paths
 /// let _report = _report.set_options(ReportOptions::new().with_cycle_detection(false));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportOptions {
-    /// Whether `map_err()` should automatically accumulate source error chains.
-    ///
-    /// When `Some(true)`, calling `map_err()` will preserve and extend the origin
-    /// source error chain.
-    ///
-    /// When `Some(false)`, `map_err()` only transforms the error type without
-    /// accumulating source chains.
-    ///
-    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
-    ///
-    /// **Default**: `None` (inherits from global config or profile default).
-    pub accumulate_source_chain: Option<bool>,
-
-    /// Maximum depth of causes to collect during source error traversal.
-    ///
-    /// This limits how deep the error chain will be traversed when collecting
-    /// source errors. A higher value provides more complete error context but
-    /// may impact performance for very deep error chains.
-    ///
-    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
-    ///
-    /// **Default**: `None` (inherits from global config or `16`).
-    pub max_depth: Option<usize>,
-
-    /// Whether to detect cycles in the cause chain during traversal.
-    ///
-    /// When `Some(true)`, the error chain traversal will track visited errors and
-    /// mark cycles when detected. This is useful for debugging but adds
-    /// overhead from maintaining a visited set.
-    ///
-    /// When `Some(false)`, cycle detection is skipped for better performance.
-    /// Use this in release builds when error chains are trusted to be acyclic.
-    ///
-    /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
-    ///
-    /// **Default**: `None` (inherits from global config or profile default).
-    pub detect_cycle: Option<bool>,
+    inner: Option<alloc::boxed::Box<ReportOptionsInner>>,
 }
 
 impl ReportOptions {
     /// Creates new report options with all fields unset (None).
     ///
     /// All values will be inherited from [`GlobalConfig`] or profile defaults.
-    #[inline]
     pub const fn new() -> Self {
-        Self {
-            accumulate_source_chain: None,
-            max_depth: None,
-            detect_cycle: None,
-        }
+        Self { inner: None }
+    }
+
+    /// Ensures the inner options are allocated, creating it if necessary.
+    fn ensure_inner(&mut self) -> &mut ReportOptionsInner {
+        self.inner
+            .get_or_insert_with(|| alloc::boxed::Box::new(ReportOptionsInner::new()))
     }
 
     /// Sets whether source chains should be accumulated during `map_err()`.
-    #[inline]
-    pub const fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        self.accumulate_source_chain = Some(accumulate);
+    pub fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
+        self.ensure_inner().accumulate_source_chain = Some(accumulate);
         self
     }
 
     /// Sets the maximum depth for cause collection.
-    #[inline]
-    pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
-        self.max_depth = Some(max_depth);
+    pub fn with_max_depth(mut self, max_depth: usize) -> Self {
+        self.ensure_inner().max_depth = Some(max_depth);
         self
     }
 
     /// Enables or disables cycle detection during cause collection.
-    #[inline]
-    pub const fn with_cycle_detection(mut self, detect_cycle: bool) -> Self {
-        self.detect_cycle = Some(detect_cycle);
+    pub fn with_cycle_detection(mut self, detect_cycle: bool) -> Self {
+        self.ensure_inner().detect_cycle = Some(detect_cycle);
         self
     }
 
     /// Resolves the effective value for `accumulate_source_chain` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[inline]
     pub fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
-        if let Some(value) = self.accumulate_source_chain {
-            return ResolvedValue::new(value, ConfigSource::Report);
-        }
-        #[cfg(feature = "std")]
-        {
-            GlobalConfig::global().resolve_accumulate_source_chain_with_source()
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            ResolvedValue::new(
-                ProfileDefaults::accumulate_source_chain(),
-                ConfigSource::Profile,
-            )
+        match self.inner.as_ref() {
+            Some(inner) => inner.resolve_accumulate_source_chain_with_source(),
+            None => {
+                #[cfg(feature = "std")]
+                {
+                    GlobalConfig::global().resolve_accumulate_source_chain_with_source()
+                }
+                #[cfg(not(feature = "std"))]
+                {
+                    ResolvedValue::new(
+                        ProfileDefaults::accumulate_source_chain(),
+                        ConfigSource::Profile,
+                    )
+                }
+            }
         }
     }
 
     /// Resolves the effective value for `max_depth` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[inline]
     pub fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
-        if let Some(value) = self.max_depth {
-            return ResolvedValue::new(value, ConfigSource::Report);
-        }
-        #[cfg(feature = "std")]
-        {
-            GlobalConfig::global().resolve_max_depth_with_source()
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile)
+        match self.inner.as_ref() {
+            Some(inner) => inner.resolve_max_depth_with_source(),
+            None => {
+                #[cfg(feature = "std")]
+                {
+                    GlobalConfig::global().resolve_max_depth_with_source()
+                }
+                #[cfg(not(feature = "std"))]
+                {
+                    ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile)
+                }
+            }
         }
     }
 
     /// Resolves the effective value for `detect_cycle` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[inline]
     pub fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
-        if let Some(value) = self.detect_cycle {
-            return ResolvedValue::new(value, ConfigSource::Report);
-        }
-        #[cfg(feature = "std")]
-        {
-            GlobalConfig::global().resolve_detect_cycle_with_source()
-        }
-        #[cfg(not(feature = "std"))]
-        {
-            ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile)
+        match self.inner.as_ref() {
+            Some(inner) => inner.resolve_detect_cycle_with_source(),
+            None => {
+                #[cfg(feature = "std")]
+                {
+                    GlobalConfig::global().resolve_detect_cycle_with_source()
+                }
+                #[cfg(not(feature = "std"))]
+                {
+                    ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile)
+                }
+            }
         }
     }
 
     /// Resolves the effective value for `accumulate_source_chain`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[inline]
     pub fn resolve_accumulate_source_chain(&self) -> bool {
         self.resolve_accumulate_source_chain_with_source().value
     }
@@ -457,7 +549,6 @@ impl ReportOptions {
     /// Resolves the effective value for `max_depth`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[inline]
     pub fn resolve_max_depth(&self) -> usize {
         self.resolve_max_depth_with_source().value
     }
@@ -465,34 +556,52 @@ impl ReportOptions {
     /// Resolves the effective value for `detect_cycle`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    #[inline]
     pub fn resolve_detect_cycle(&self) -> bool {
         self.resolve_detect_cycle_with_source().value
     }
 
     /// Returns a CauseCollectOptions view with resolved values for internal use.
-    #[inline]
     pub(crate) fn as_cause_options(&self) -> CauseCollectOptions {
-        CauseCollectOptions {
-            max_depth: self.resolve_max_depth(),
-            detect_cycle: self.resolve_detect_cycle(),
+        match self.inner.as_ref() {
+            Some(inner) => inner.as_cause_options(),
+            None => CauseCollectOptions::new(),
         }
     }
 
-    /// Returns a static reference to the default ReportOptions.
-    /// This is useful for cases where no cold data exists.
-    pub(crate) const fn default_ref() -> &'static Self {
-        static DEFAULT: ReportOptions = ReportOptions {
-            accumulate_source_chain: None,
-            max_depth: None,
-            detect_cycle: None,
-        };
-        &DEFAULT
+    /// Returns whether the options have been explicitly set.
+    ///
+    /// When `true`, at least one option was configured via builder methods.
+    /// When `false`, all values are inherited from [`GlobalConfig`] or profile defaults.
+    pub fn is_set(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// Returns the `accumulate_source_chain` value if explicitly set.
+    ///
+    /// Returns `None` if the value is inherited from [`GlobalConfig`] or profile defaults.
+    /// Use [`accumulate_source_chain`](Self::accumulate_source_chain) to get the effective value.
+    pub fn accumulate_source_chain(&self) -> Option<bool> {
+        self.inner.as_ref()?.accumulate_source_chain
+    }
+
+    /// Returns the `max_depth` value if explicitly set.
+    ///
+    /// Returns `None` if the value is inherited from [`GlobalConfig`] or profile defaults.
+    /// Use [`max_depth`](Self::max_depth) to get the effective value.
+    pub fn max_depth(&self) -> Option<usize> {
+        self.inner.as_ref()?.max_depth
+    }
+
+    /// Returns the `detect_cycle` value if explicitly set.
+    ///
+    /// Returns `None` if the value is inherited from [`GlobalConfig`] or profile defaults.
+    /// Use [`detect_cycle`](Self::detect_cycle) to get the effective value.
+    pub fn detect_cycle(&self) -> Option<bool> {
+        self.inner.as_ref()?.detect_cycle
     }
 }
 
 impl Default for ReportOptions {
-    #[inline]
     fn default() -> Self {
         Self::new()
     }

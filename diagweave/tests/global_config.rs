@@ -12,18 +12,18 @@ use report_common::*;
 #[test]
 fn report_options_new_creates_unset_fields() {
     let opts = ReportOptions::new();
-    assert!(opts.accumulate_source_chain.is_none());
-    assert!(opts.max_depth.is_none());
-    assert!(opts.detect_cycle.is_none());
+    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.max_depth().is_none());
+    assert!(opts.detect_cycle().is_none());
 }
 
 /// Test that ReportOptions::default() creates options with all fields unset.
 #[test]
 fn report_options_default_creates_unset_fields() {
     let opts = ReportOptions::default();
-    assert!(opts.accumulate_source_chain.is_none());
-    assert!(opts.max_depth.is_none());
-    assert!(opts.detect_cycle.is_none());
+    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.max_depth().is_none());
+    assert!(opts.detect_cycle().is_none());
 }
 
 /// Test that ReportOptions builder methods set values correctly.
@@ -34,9 +34,9 @@ fn report_options_builder_sets_values() {
         .with_max_depth(32)
         .with_cycle_detection(false);
 
-    assert_eq!(opts.accumulate_source_chain, Some(true));
-    assert_eq!(opts.max_depth, Some(32));
-    assert_eq!(opts.detect_cycle, Some(false));
+    assert_eq!(opts.accumulate_source_chain(), Some(true));
+    assert_eq!(opts.max_depth(), Some(32));
+    assert_eq!(opts.detect_cycle(), Some(false));
 }
 
 /// Test that resolve methods return GlobalConfig values when nothing is set.
@@ -73,15 +73,15 @@ fn global_config_new_has_profile_defaults() {
     // Check profile-dependent defaults
     #[cfg(debug_assertions)]
     {
-        assert!(config.accumulate_source_chain);
-        assert!(config.detect_cycle);
+        assert!(config.accumulate_source_chain());
+        assert!(config.detect_cycle());
     }
     #[cfg(not(debug_assertions))]
     {
         assert!(!config.accumulate_source_chain);
         assert!(!config.detect_cycle);
     }
-    assert_eq!(config.max_depth, 16);
+    assert_eq!(config.max_depth(), 16);
 }
 
 /// Test that GlobalConfig builder methods set values correctly.
@@ -92,9 +92,9 @@ fn global_config_builder_sets_values() {
         .with_max_depth(32)
         .with_cycle_detection(false);
 
-    assert!(config.accumulate_source_chain);
-    assert_eq!(config.max_depth, 32);
-    assert!(!config.detect_cycle);
+    assert!(config.accumulate_source_chain());
+    assert_eq!(config.max_depth(), 32);
+    assert!(!config.detect_cycle());
 }
 
 /// Test that GlobalConfig resolve methods return the configured values.
@@ -105,9 +105,9 @@ fn global_config_resolve_returns_configured_values() {
         .with_max_depth(50)
         .with_cycle_detection(false);
 
-    assert!(config.resolve_accumulate_source_chain());
-    assert_eq!(config.resolve_max_depth(), 50);
-    assert!(!config.resolve_detect_cycle());
+    assert!(config.accumulate_source_chain());
+    assert_eq!(config.max_depth(), 50);
+    assert!(!config.detect_cycle());
 }
 
 /// Test that Report uses ReportOptions when explicitly set.
@@ -123,9 +123,9 @@ fn report_uses_explicit_report_options() {
     );
 
     let opts = report.options();
-    assert_eq!(opts.accumulate_source_chain, Some(true));
-    assert_eq!(opts.max_depth, Some(8));
-    assert_eq!(opts.detect_cycle, Some(false));
+    assert_eq!(opts.accumulate_source_chain(), Some(true));
+    assert_eq!(opts.max_depth(), Some(8));
+    assert_eq!(opts.detect_cycle(), Some(false));
 
     // Verify resolved values
     assert!(report.options().resolve_accumulate_source_chain());
@@ -142,9 +142,9 @@ fn report_returns_default_options_when_not_set() {
     let opts = report.options();
 
     // All fields should be None (unset)
-    assert!(opts.accumulate_source_chain.is_none());
-    assert!(opts.max_depth.is_none());
-    assert!(opts.detect_cycle.is_none());
+    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.max_depth().is_none());
+    assert!(opts.detect_cycle().is_none());
 
     // Resolved values come from GlobalConfig
     // We just verify the methods work without asserting specific values
@@ -162,7 +162,7 @@ fn report_set_accumulate_source_chain_works() {
     let report = Report::new(AuthError::InvalidToken).set_accumulate_source_chain(true);
     let opts = report.options();
 
-    assert_eq!(opts.accumulate_source_chain, Some(true));
+    assert_eq!(opts.accumulate_source_chain(), Some(true));
     assert!(opts.resolve_accumulate_source_chain());
 }
 
@@ -195,9 +195,9 @@ fn partial_configuration_works() {
     // Only set max_depth, leave others unset
     let opts = ReportOptions::new().with_max_depth(20);
 
-    assert!(opts.accumulate_source_chain.is_none());
-    assert_eq!(opts.max_depth, Some(20));
-    assert!(opts.detect_cycle.is_none());
+    assert!(opts.accumulate_source_chain().is_none());
+    assert_eq!(opts.max_depth(), Some(20));
+    assert!(opts.detect_cycle().is_none());
 
     // max_depth should use the set value
     assert_eq!(opts.resolve_max_depth(), 20);

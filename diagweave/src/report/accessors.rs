@@ -476,10 +476,7 @@ where
     /// let options = report.options();
     /// ```
     pub fn options(&self) -> &ReportOptions {
-        match self.cold.as_deref() {
-            Some(cold) => &cold.options,
-            None => ReportOptions::default_ref(),
-        }
+        &self.report
     }
 
     /// Visits display causes using default collection options.

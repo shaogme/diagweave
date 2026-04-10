@@ -616,7 +616,7 @@ where
     /// let _report = report.set_options(ReportOptions::new().with_accumulate_source_chain(false));
     /// ```
     pub fn set_options(mut self, options: ReportOptions) -> Self {
-        self.ensure_cold().options = options;
+        self.report = options;
         self
     }
 
@@ -641,11 +641,7 @@ where
     /// let _report = report.set_accumulate_source_chain(true);
     /// ```
     pub fn set_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        let cold = self.ensure_cold();
-        cold.options = ReportOptions::new()
-            .with_accumulate_source_chain(accumulate)
-            .with_max_depth(cold.options.max_depth.unwrap_or(16))
-            .with_cycle_detection(cold.options.detect_cycle.unwrap_or(false));
+        self.report = self.report.with_accumulate_source_chain(accumulate);
         self
     }
 }

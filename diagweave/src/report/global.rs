@@ -12,7 +12,7 @@ use alloc::boxed::Box;
 #[cfg(feature = "trace")]
 use super::trace::ReportTrace;
 use super::types::GlobalContext;
-use super::{Report, ReportMetadata, SeverityState};
+use super::{Report, ReportMetadata, ReportOptions, SeverityState};
 
 /// Context injector type alias for global context providers.
 ///
@@ -258,12 +258,14 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         let mut report = Self {
             inner,
             metadata: ReportMetadata::new(),
+            report: ReportOptions::new(),
             cold: None,
         };
         #[cfg(not(feature = "std"))]
         let report = Self {
             inner,
             metadata: ReportMetadata::new(),
+            report: ReportOptions::new(),
             cold: None,
         };
         #[cfg(feature = "std")]
@@ -295,11 +297,13 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         let Self {
             inner,
             metadata,
+            report,
             cold,
         } = self;
         Report {
             inner,
             metadata: metadata.set_severity(severity),
+            report,
             cold,
         }
     }

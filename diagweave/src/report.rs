@@ -116,6 +116,7 @@ use types::{ColdData, DiagnosticBag, append_source_chain, limit_depth_source_cha
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E,
     metadata: ReportMetadata<State>,
+    report: ReportOptions,
     cold: Option<Box<ColdData>>,
 }
 
@@ -226,11 +227,13 @@ impl<E> Report<E, MissingSeverity> {
         let Self {
             inner,
             metadata,
+            report,
             cold,
         } = self;
         Report {
             inner,
             metadata: metadata.set_severity(severity),
+            report,
             cold,
         }
     }
@@ -261,11 +264,13 @@ impl<E> Report<E, HasSeverity> {
         let Self {
             inner,
             metadata,
+            report,
             cold,
         } = self;
         Report {
             inner,
             metadata: metadata.replace_severity(severity),
+            report,
             cold,
         }
     }

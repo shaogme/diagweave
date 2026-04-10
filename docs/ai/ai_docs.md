@@ -163,12 +163,13 @@ Hot path strings such as `category`, `trace_state`, trace event names, and stack
 
 ### Declaration and Definition
 
-The `Report` struct is a high-level diagnostic container with lazy allocation for auxiliary data. All three fields are **private** and cannot be directly accessed from outside the module.
+The `Report` struct is a high-level diagnostic container with lazy allocation for auxiliary data. All four fields are **private** and cannot be directly accessed from outside the module.
 
 ```text
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E, // private - wrapped error value
     metadata: ReportMetadata<State>, // private - metadata including severity
+    report: ReportOptions, // private - per-report configuration (lazy allocation internally)
     cold: Option<Box<ColdData>>, // private - lazily allocated storage
 }
 ```
@@ -176,8 +177,9 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 **Key Points:**
 - `inner`: The wrapped error value (private)
 - `metadata`: Contains severity typestate and optional error code/category/retryable (private)
-- `cold`: Lazily allocated storage for all optional diagnostic data (private)
-- `ReportOptions` is stored inside `ColdData`, which is only allocated when needed
+- `report`: Per-report configuration for source chain accumulation and cause collection behavior (private)
+- `cold`: Lazily allocated storage for diagnostic bag (attachments, display causes, source errors) (private)
+- `ReportOptions` uses lazy allocation internally (`Option<Box<ReportOptionsInner>>`), only allocating when options are explicitly set
 - Access to fields is provided through methods like `inner()`, `severity()`, `options()`, etc.
 
 ### Core Construction and Conversion
@@ -213,7 +215,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 ### `ReportOptions` and `GlobalConfig`
 
-`ReportOptions` controls error source chain accumulation and cause collection behavior for an individual `Report`. All fields are `Option<T>` type, and configuration values are resolved with the following priority:
+`ReportOptions` controls error source chain accumulation and cause collection behavior for an individual `Report`. It uses lazy allocation internally (`Option<Box<ReportOptionsInner>>`), only allocating heap memory when options are explicitly set. Configuration values are resolved with the following priority:
 
 **Configuration Priority**: ReportOptions > GlobalConfig > Profile defaults
 
@@ -227,16 +229,16 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 #### Configuration Options
 
-- `accumulate_source_chain`: When `Some(true)`, `map_err()` preserves and extends the origin `source` chain; when `Some(false)`, it only transforms the error type without touching the source chain. When `None`, inherits from `GlobalConfig` or profile defaults.
-- `max_depth`: Maximum depth of causes to collect during source error traversal. Higher values provide more complete error context but may impact performance for very deep error chains. When `None`, inherits from `GlobalConfig` or defaults to 16.
-- `detect_cycle`: When `Some(true)`, the error chain traversal will track visited errors and mark cycles when detected. When `Some(false)`, cycle detection is skipped for better performance. When `None`, inherits from `GlobalConfig` or profile defaults.
+- `accumulate_source_chain`: When set, `map_err()` preserves and extends the origin `source` chain; when not set, inherits from `GlobalConfig` or profile defaults.
+- `max_depth`: Maximum depth of causes to collect during source error traversal. Higher values provide more complete error context but may impact performance for very deep error chains. When not set, inherits from `GlobalConfig` or defaults to 16.
+- `detect_cycle`: When set, the error chain traversal will track visited errors and mark cycles when detected. When not set, inherits from `GlobalConfig` or profile defaults.
 
 #### Builder Methods
 
 | Method | Description |
 |--------|-------------|
-| `ReportOptions::new()` | Creates options with all fields as `None` (inherits from GlobalConfig or defaults) |
-| `.with_accumulate_source_chain(bool)` | Sets source chain accumulation (wraps in `Some(...)`) |
+| `ReportOptions::new()` | Creates options with lazy allocation (no heap allocation until an option is set) |
+| `.with_accumulate_source_chain(bool)` | Sets source chain accumulation (allocates inner storage if needed) |
 | `.with_max_depth(usize)` | Sets cause collection depth limit |
 | `.with_cycle_detection(bool)` | Enables/disables cycle detection |
 
@@ -247,10 +249,20 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `.resolve_accumulate_source_chain()` | Resolves the actual accumulation setting (Priority: ReportOptions > GlobalConfig > Profile default) |
 | `.resolve_max_depth()` | Resolves the actual depth limit |
 | `.resolve_detect_cycle()` | Resolves the actual cycle detection setting |
+| `.resolve_*_with_source()` | Resolves value with source tracking (returns `ResolvedValue<T>`) |
+
+#### Accessor Methods
+
+| Method | Description |
+|--------|-------------|
+| `.is_set()` | Returns `true` if any option was explicitly configured |
+| `.accumulate_source_chain()` | Returns `Option<bool>` - the explicitly set value or `None` if inherited |
+| `.max_depth()` | Returns `Option<usize>` - the explicitly set value or `None` if inherited |
+| `.detect_cycle()` | Returns `Option<bool>` - the explicitly set value or `None` if inherited |
 
 #### `GlobalConfig` Global Configuration
 
-`GlobalConfig` provides application-level default configuration. When `ReportOptions` fields are `None`, values are inherited from `GlobalConfig`.
+`GlobalConfig` provides application-level default configuration. When `ReportOptions` fields are not set, values are inherited from `GlobalConfig`. All fields are private and accessed through methods.
 
 | Method | Description |
 |--------|-------------|
@@ -258,6 +270,9 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `.with_accumulate_source_chain(bool)` | Sets default accumulation behavior |
 | `.with_max_depth(usize)` | Sets default depth limit |
 | `.with_cycle_detection(bool)` | Sets default cycle detection |
+| `.accumulate_source_chain()` | Returns the configured accumulation default |
+| `.max_depth()` | Returns the configured depth default |
+| `.detect_cycle()` | Returns the configured cycle detection default |
 | `set_global_config(config)` | Sets global config (can only be called once) |
 
 #### Example Usage

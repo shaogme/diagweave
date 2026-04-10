@@ -163,12 +163,13 @@ enum FileError {
 
 ### 声明定义
 
-`Report` 结构体是一个高级诊断容器，对辅助数据采用延迟分配策略。所有三个字段都是**私有的**，无法从模块外部直接访问。
+`Report` 结构体是一个高级诊断容器，对辅助数据采用延迟分配策略。所有四个字段都是**私有的**，无法从模块外部直接访问。
 
 ```text
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E, // 私有 - 被包装的错误值
     metadata: ReportMetadata<State>, // 私有 - 包含严重性的元数据
+    report: ReportOptions, // 私有 - 按报告粒度的配置（内部采用延迟分配）
     cold: Option<Box<ColdData>>, // 私有 - 延迟分配的存储
 }
 ```
@@ -176,8 +177,9 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 **关键点：**
 - `inner`：被包装的错误值（私有）
 - `metadata`：包含严重性类型状态和可选的 error_code/category/retryable（私有）
-- `cold`：延迟分配的存储，用于所有可选诊断数据（私有）
-- `ReportOptions` 存储在 `ColdData` 内部，仅在需要时分配
+- `report`：按报告粒度的配置，用于控制源链累积和原因收集行为（私有）
+- `cold`：延迟分配的存储，用于诊断包（附件、展示原因、源错误）（私有）
+- `ReportOptions` 内部采用延迟分配（`Option<Box<ReportOptionsInner>>`），仅在显式设置选项时才分配堆内存
 - 字段访问通过方法提供，如 `inner()`、`severity()`、`options()` 等
 
 ### 核心构造与转换
@@ -213,7 +215,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 ### `ReportOptions` 和 `GlobalConfig`
 
-`ReportOptions` 用于控制单个 `Report` 的错误源链累积行为和原因收集行为。所有字段都是 `Option<T>` 类型，配置值通过以下优先级解析：
+`ReportOptions` 用于控制单个 `Report` 的错误源链累积行为和原因收集行为。内部采用延迟分配策略（`Option<Box<ReportOptionsInner>>`），仅在显式设置选项时才分配堆内存。配置值通过以下优先级解析：
 
 **配置优先级**：ReportOptions > GlobalConfig > Profile defaults
 
@@ -227,16 +229,16 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 #### 配置选项说明
 
-- `accumulate_source_chain`：当为 `Some(true)` 时，`map_err()` 会保留并延伸原生 `source` 链；为 `Some(false)` 时仅转换错误类型，不改动 source 链。为 `None` 时从 `GlobalConfig` 或 profile 默认值继承。
-- `max_depth`：原因收集时的最大深度限制。较高的值提供更完整的错误上下文，但对于非常深的错误链可能影响性能。为 `None` 时从 `GlobalConfig` 或默认值 16 继承。
-- `detect_cycle`：当为 `Some(true)` 时，错误链遍历将跟踪已访问的错误并在检测到循环时标记。为 `Some(false)` 时跳过循环检测以获得更好的性能。为 `None` 时从 `GlobalConfig` 或 profile 默认值继承。
+- `accumulate_source_chain`：设置后，`map_err()` 会保留并延伸原生 `source` 链；未设置时从 `GlobalConfig` 或 profile 默认值继承。
+- `max_depth`：原因收集时的最大深度限制。较高的值提供更完整的错误上下文，但对于非常深的错误链可能影响性能。未设置时从 `GlobalConfig` 或默认值 16 继承。
+- `detect_cycle`：设置后，错误链遍历将跟踪已访问的错误并在检测到循环时标记。未设置时从 `GlobalConfig` 或 profile 默认值继承。
 
 #### 构建方法
 
 | 方法 | 说明 |
 |------|------|
-| `ReportOptions::new()` | 创建所有字段为 `None` 的选项（从 GlobalConfig 或默认值继承） |
-| `.with_accumulate_source_chain(bool)` | 设置源链累积行为（包装为 `Some(...)`） |
+| `ReportOptions::new()` | 创建延迟分配的选项（在设置任何选项前不会分配堆内存） |
+| `.with_accumulate_source_chain(bool)` | 设置源链累积行为（如需要会分配内部存储） |
 | `.with_max_depth(usize)` | 设置原因收集深度限制 |
 | `.with_cycle_detection(bool)` | 启用/禁用循环检测 |
 
@@ -247,10 +249,20 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `.resolve_accumulate_source_chain()` | 解析实际使用的累积设置（优先级：ReportOptions > GlobalConfig > Profile default） |
 | `.resolve_max_depth()` | 解析实际使用的深度限制 |
 | `.resolve_detect_cycle()` | 解析实际使用的循环检测设置 |
+| `.resolve_*_with_source()` | 解析值并返回来源追踪（返回 `ResolvedValue<T>`） |
+
+#### 访问方法
+
+| 方法 | 说明 |
+|------|------|
+| `.is_set()` | 返回 `true` 表示至少有一个选项被显式配置 |
+| `.accumulate_source_chain()` | 返回 `Option<bool>` - 显式设置的值，若继承则返回 `None` |
+| `.max_depth()` | 返回 `Option<usize>` - 显式设置的值，若继承则返回 `None` |
+| `.detect_cycle()` | 返回 `Option<bool>` - 显式设置的值，若继承则返回 `None` |
 
 #### `GlobalConfig` 全局配置
 
-`GlobalConfig` 提供应用级别的配置默认值。当 `ReportOptions` 的字段为 `None` 时，会从 `GlobalConfig` 继承值。
+`GlobalConfig` 提供应用级别的配置默认值。当 `ReportOptions` 的字段未设置时，会从 `GlobalConfig` 继承值。所有字段都是私有的，通过方法访问。
 
 | 方法 | 说明 |
 |------|------|
@@ -258,6 +270,9 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `.with_accumulate_source_chain(bool)` | 设置默认累积行为 |
 | `.with_max_depth(usize)` | 设置默认深度限制 |
 | `.with_cycle_detection(bool)` | 设置默认循环检测 |
+| `.accumulate_source_chain()` | 返回配置的累积默认值 |
+| `.max_depth()` | 返回配置的深度默认值 |
+| `.detect_cycle()` | 返回配置的循环检测默认值 |
 | `set_global_config(config)` | 设置全局配置（仅可调用一次） |
 
 #### 使用示例

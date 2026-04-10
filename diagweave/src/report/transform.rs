@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 use core::error::Error;
 
 use super::types::build_origin_source_chain;
-use super::{ColdData, DiagnosticBag, Report, ReportOptions, SeverityState, SourceErrorChain};
+use super::{ColdData, DiagnosticBag, Report, SeverityState, SourceErrorChain};
 
 impl<E, State> Report<E, State>
 where
@@ -91,14 +91,12 @@ where
         let Self {
             inner,
             metadata,
+            report,
             cold,
         } = self;
 
-        // Get options from cold data or use defaults
-        let options = cold.as_ref().map(|c| c.options).unwrap_or_default();
-
         // Check if source chain accumulation is enabled for this report
-        if options.resolve_accumulate_source_chain() {
+        if report.resolve_accumulate_source_chain() {
             // Build origin source chain with the old inner as the new root
             let origin_source_errors = build_origin_source_chain(&inner, cold.as_deref());
 
@@ -106,11 +104,12 @@ where
             let outer = map(inner);
 
             // Build new cold data with the origin source chain
-            let new_cold = Self::build_cold_with_origin_chain(cold, origin_source_errors, options);
+            let new_cold = Self::build_cold_with_origin_chain(cold, origin_source_errors);
 
             Report {
                 inner: outer,
                 metadata,
+                report,
                 cold: new_cold,
             }
         } else {
@@ -119,6 +118,7 @@ where
             Report {
                 inner: outer,
                 metadata,
+                report,
                 cold,
             }
         }
@@ -134,7 +134,6 @@ where
     ///
     /// - `cold`: The original cold data, if any
     /// - `origin_source_errors`: The source chain to attach to the new report
-    /// - `options`: The report options to preserve
     ///
     /// # Returns
     ///
@@ -142,7 +141,6 @@ where
     fn build_cold_with_origin_chain(
         cold: Option<Box<ColdData>>,
         origin_source_errors: SourceErrorChain,
-        options: ReportOptions,
     ) -> Option<Box<ColdData>> {
         match cold {
             Some(c) => {
@@ -159,11 +157,10 @@ where
                         origin_source_errors: Some(origin_source_errors),
                         diagnostic_source_errors: c.bag.diagnostic_source_errors,
                     },
-                    options: c.options,
                 }))
             }
             None => {
-                let mut cold_data = ColdData::new(options);
+                let mut cold_data = ColdData::default();
                 cold_data.bag.origin_source_errors = Some(origin_source_errors);
                 Some(Box::new(cold_data))
             }

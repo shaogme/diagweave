@@ -41,35 +41,28 @@ where
             writeln!(f, "Report:")?;
             writeln!(f, " - error: {:?}", self.inner())?;
             writeln!(f, " - metadata: {:?}", self.metadata())?;
-            if let Some(diag) = self.diagnostics() {
-                writeln!(f, " - attachments:")?;
-                if diag.attachments.is_empty() {
-                    writeln!(f, " - (none)")?;
-                } else {
-                    for attachment in &diag.attachments {
-                        writeln!(f, " - {:?}", attachment)?;
-                    }
-                }
-                #[cfg(feature = "trace")]
-                writeln!(f, " - trace: {:?}", self.trace())?;
-                let display_causes = diag
-                    .display_causes
-                    .as_ref()
-                    .map(|v| v.items.as_slice())
-                    .unwrap_or(&[]);
-                if display_causes.is_empty() {
-                    writeln!(f, " - display_causes: (none)")?;
-                } else {
-                    writeln!(f, " - display_causes:")?;
-                    for cause in display_causes {
-                        writeln!(f, " - {}", cause)?;
-                    }
-                }
+            let diag = self.diagnostics();
+            writeln!(f, " - attachments:")?;
+            if diag.attachments().is_empty() {
+                writeln!(f, " - (none)")?;
             } else {
-                writeln!(f, " - attachments: (none)")?;
-                #[cfg(feature = "trace")]
-                writeln!(f, " - trace: (none)")?;
+                for attachment in diag.attachments() {
+                    writeln!(f, " - {:?}", attachment)?;
+                }
+            }
+            #[cfg(feature = "trace")]
+            writeln!(f, " - trace: {:?}", self.trace())?;
+            let display_causes = diag
+                .display_causes()
+                .map(|v| v.items.as_slice())
+                .unwrap_or(&[]);
+            if display_causes.is_empty() {
                 writeln!(f, " - display_causes: (none)")?;
+            } else {
+                writeln!(f, " - display_causes:")?;
+                for cause in display_causes {
+                    writeln!(f, " - {}", cause)?;
+                }
             }
             Ok(())
         }
@@ -77,7 +70,7 @@ where
         {
             f.debug_struct("Report")
                 .field("inner", self.inner())
-                .field("cold", &self.cold)
+                .field("bag", &self.bag)
                 .finish()
         }
     }
@@ -95,22 +88,21 @@ where
             || self.severity().is_some()
             || metadata.category().is_some()
             || metadata.retryable().is_some();
-        let has_diagnostics = self.diagnostics().is_some_and(|diag| {
-            diag.stack_trace.is_some()
-                || !diag.context.is_empty()
-                || !diag.system.is_empty()
-                || !diag.attachments.is_empty()
-                || {
-                    #[cfg(feature = "trace")]
-                    {
-                        !self.trace().is_empty()
-                    }
-                    #[cfg(not(feature = "trace"))]
-                    {
-                        false
-                    }
+        let diag = self.diagnostics();
+        let has_diagnostics = diag.stack_trace().is_some()
+            || !diag.context().is_empty()
+            || !diag.system().is_empty()
+            || !diag.attachments().is_empty()
+            || {
+                #[cfg(feature = "trace")]
+                {
+                    !self.trace().is_empty()
                 }
-        });
+                #[cfg(not(feature = "trace"))]
+                {
+                    false
+                }
+            };
         if !has_diagnostics && !has_metadata {
             return Ok(());
         }
@@ -145,9 +137,7 @@ where
     }
 
     fn fmt_diag_fields(&self, f: &mut Formatter<'_>, idx: &mut usize) -> fmt::Result {
-        let Some(diag) = self.diagnostics() else {
-            return Ok(());
-        };
+        let diag = self.diagnostics();
 
         #[cfg(feature = "trace")]
         {
@@ -162,19 +152,19 @@ where
             }
         }
 
-        if diag.stack_trace.is_some() {
+        if diag.stack_trace().is_some() {
             write_field!(f, *idx, "stack_trace", "present");
         }
 
-        for (key, value) in diag.context.sorted_entries() {
+        for (key, value) in diag.context().sorted_entries() {
             write_field!(f, *idx, key, value);
         }
 
-        for (key, value) in diag.system.sorted_entries() {
+        for (key, value) in diag.system().sorted_entries() {
             write_field!(f, *idx, format_args!("system.{}", key), value);
         }
 
-        for attachment in &diag.attachments {
+        for attachment in diag.attachments() {
             match attachment {
                 Attachment::Note { message } => {
                     write_raw!(f, *idx, "{}", message);
@@ -201,11 +191,8 @@ where
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
-            .and_then(|diag| {
-                diag.origin_source_errors
-                    .as_ref()
-                    .and_then(SourceErrorChain::first_error)
-            })
+            .origin_source_errors()
+            .and_then(SourceErrorChain::first_error)
             .or_else(|| self.inner().source())
     }
 }

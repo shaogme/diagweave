@@ -85,10 +85,7 @@ where
     /// assert!(!attachments.is_empty());
     /// ```
     pub fn attachments(&self) -> &[Attachment] {
-        match self.diagnostics() {
-            Some(diag) => &diag.attachments,
-            None => &[],
-        }
+        self.diagnostics().attachments()
     }
 
     /// Returns context key-value pairs associated with the report.
@@ -111,10 +108,7 @@ where
     /// assert!(context.contains_key("user_id"));
     /// ```
     pub fn context(&self) -> &ContextMap {
-        match self.diagnostics() {
-            Some(diag) => &diag.context,
-            None => ContextMap::default_ref(),
-        }
+        self.diagnostics().context()
     }
 
     /// Returns system context associated with the report.
@@ -137,10 +131,7 @@ where
     /// assert!(system.contains_key("hostname"));
     /// ```
     pub fn system(&self) -> &ContextMap {
-        match self.diagnostics() {
-            Some(diag) => &diag.system,
-            None => ContextMap::default_ref(),
-        }
+        self.diagnostics().system()
     }
 
     /// Visits attachments in insertion order without building intermediate allocations.
@@ -179,10 +170,7 @@ where
     where
         F: FnMut(AttachmentVisit<'_>) -> fmt::Result,
     {
-        let Some(diag) = self.diagnostics() else {
-            return Ok(());
-        };
-        for attachment in &diag.attachments {
+        for attachment in self.diagnostics().attachments() {
             match attachment {
                 Attachment::Note { message } => {
                     visit(AttachmentVisit::Note {
@@ -226,21 +214,16 @@ where
     /// assert!(!causes.is_empty());
     /// ```
     pub fn display_causes(&self) -> &[Arc<dyn Display + Send + Sync + 'static>] {
-        match self.diagnostics() {
-            Some(diag) => diag
-                .display_causes
-                .as_ref()
-                .map(|v| v.items.as_slice())
-                .unwrap_or(&[]),
-            None => &[],
-        }
+        self.diagnostics()
+            .display_causes()
+            .map(|v| v.items.as_slice())
+            .unwrap_or(&[])
     }
 
     /// Returns the display-cause chain associated with the report, if any.
     #[cfg(feature = "json")]
     pub(crate) fn display_causes_chain(&self) -> Option<&DisplayCauseChain> {
-        self.diagnostics()
-            .and_then(|diag| diag.display_causes.as_ref())
+        self.diagnostics().display_causes()
     }
 
     /// Returns source errors from the origin chain associated with the report.
@@ -308,7 +291,7 @@ where
         E: Error + 'static,
     {
         self.diagnostics()
-            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
+            .diagnostic_source_errors()
             .map(SourceErrorChain::iter_entries)
             .into_iter()
             .flatten()
@@ -317,15 +300,13 @@ where
     /// Returns the origin source-error chain associated with the report, if any.
     #[cfg(feature = "json")]
     pub(crate) fn origin_src_err_chain(&self) -> Option<&SourceErrorChain> {
-        self.diagnostics()
-            .and_then(|diag| diag.origin_source_errors.as_ref())
+        self.diagnostics().origin_source_errors()
     }
 
     /// Returns the diagnostic source-error chain associated with the report, if any.
     #[cfg(feature = "json")]
     pub(crate) fn diag_src_err_chain(&self) -> Option<&SourceErrorChain> {
-        self.diagnostics()
-            .and_then(|diag| diag.diagnostic_source_errors.as_ref())
+        self.diagnostics().diagnostic_source_errors()
     }
 
     /// Returns the metadata associated with the report.
@@ -453,8 +434,7 @@ where
     /// assert!(stack.is_some());
     /// ```
     pub fn stack_trace(&self) -> Option<&StackTrace> {
-        self.diagnostics()
-            .and_then(|diag| diag.stack_trace.as_ref())
+        self.diagnostics().stack_trace()
     }
 
     /// Returns the current report options.
@@ -548,10 +528,8 @@ where
         E: Error + 'static,
     {
         let mut state = CauseTraversalState::default();
-        let Some(diag) = self.diagnostics() else {
-            return Ok(state);
-        };
-        let Some(display_causes) = diag.display_causes.as_ref() else {
+        let diag = self.diagnostics();
+        let Some(display_causes) = diag.display_causes() else {
             return Ok(state);
         };
         state.truncated |= display_causes.truncated;

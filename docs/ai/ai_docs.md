@@ -172,7 +172,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
     report: ReportOptions, // private - per-report configuration (lazy allocation internally)
     #[cfg(feature = "trace")]
     trace: ReportTrace, // private - trace context and events (lazy allocation internally)
-    cold: Option<Box<ColdData>>, // private - lazily allocated storage
+    bag: DiagnosticBag, // private - lazily allocated diagnostic bag
 }
 ```
 
@@ -181,7 +181,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 - `metadata`: Contains severity typestate and optional error code/category/retryable (private)
 - `report`: Per-report configuration for source chain accumulation and cause collection behavior (private)
 - `trace`: Trace context and events (private, only with `trace` feature). Uses lazy allocation via `Option<Box<ReportTraceInner>>` internally
-- `cold`: Lazily allocated storage for diagnostic bag (attachments, display causes, source errors) (private)
+- `bag`: Lazily allocated diagnostic bag for attachments, display causes, source errors, context, and system context (private). Uses `Option<Box<DiagnosticBagInner>>` internally for lazy allocation
 - `ReportOptions` uses lazy allocation internally (`Option<Box<ReportOptionsInner>>`), only allocating when options are explicitly set
 - Access to fields is provided through methods like `inner()`, `severity()`, `options()`, etc.
 

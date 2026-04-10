@@ -47,7 +47,6 @@ mod transform;
 #[path = "report/types.rs"]
 mod types;
 
-use alloc::boxed::Box;
 use core::error::Error;
 
 pub use ext::{Diagnostic, InspectReportExt, ResultReportExt};
@@ -76,7 +75,7 @@ pub use global::register_global_injector;
 #[cfg(feature = "std")]
 pub use types::{GlobalConfig, SetGlobalConfigError, set_global_config};
 
-use types::{ColdData, DiagnosticBag, append_source_chain, limit_depth_source_chain};
+use types::{DiagnosticBag, append_source_chain, limit_depth_source_chain};
 
 /// A high-level diagnostic report that wraps an error with rich metadata and context.
 ///
@@ -119,27 +118,21 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
     report: ReportOptions,
     #[cfg(feature = "trace")]
     trace: ReportTrace,
-    cold: Option<Box<ColdData>>,
+    bag: DiagnosticBag,
 }
 
 impl<E, State> Report<E, State>
 where
     State: SeverityState,
 {
-    /// Returns a reference to the internal diagnostics bag.
-    fn diagnostics(&self) -> Option<&DiagnosticBag> {
-        self.cold.as_deref().map(|cold| &cold.bag)
-    }
-
-    /// Ensures cold data is allocated, creating it if necessary.
-    fn ensure_cold(&mut self) -> &mut ColdData {
-        self.cold
-            .get_or_insert_with(|| Box::new(ColdData::default()))
+    /// Returns a reference to the diagnostics bag.
+    fn diagnostics(&self) -> &DiagnosticBag {
+        &self.bag
     }
 
     /// Returns a mutable reference to the diagnostics bag.
     fn diagnostics_mut(&mut self) -> &mut DiagnosticBag {
-        &mut self.ensure_cold().bag
+        &mut self.bag
     }
 
     /// Returns a reference to the metadata.
@@ -183,12 +176,7 @@ where
         &self,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
-        self.source_errors_view(
-            self.diagnostics()
-                .and_then(|diag| diag.origin_source_errors.as_ref()),
-            true,
-            options,
-        )
+        self.source_errors_view(self.diagnostics().origin_source_errors(), true, options)
     }
 
     /// Returns the diagnostic source error chain view for rendering.
@@ -197,8 +185,7 @@ where
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
         self.source_errors_view(
-            self.diagnostics()
-                .and_then(|diag| diag.diagnostic_source_errors.as_ref()),
+            self.diagnostics().diagnostic_source_errors(),
             false,
             options,
         )
@@ -232,7 +219,7 @@ impl<E> Report<E, MissingSeverity> {
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         } = self;
         Report {
             inner,
@@ -240,7 +227,7 @@ impl<E> Report<E, MissingSeverity> {
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         }
     }
 }
@@ -273,7 +260,7 @@ impl<E> Report<E, HasSeverity> {
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         } = self;
         Report {
             inner,
@@ -281,7 +268,7 @@ impl<E> Report<E, HasSeverity> {
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         }
     }
 

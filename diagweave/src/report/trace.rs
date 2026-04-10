@@ -141,7 +141,8 @@ impl ReportTrace {
 
     /// Ensures the inner trace data is allocated, creating it if necessary.
     fn ensure_inner(&mut self) -> &mut ReportTraceInner {
-        self.inner.get_or_insert_with(|| Box::new(ReportTraceInner::default()))
+        self.inner
+            .get_or_insert_with(|| Box::new(ReportTraceInner::default()))
     }
 
     /// Returns a mutable reference to the trace context, if any.
@@ -205,7 +206,11 @@ impl ReportTrace {
 
     /// Sets the parent span ID only if not already set.
     pub fn with_parent_span_id(mut self, parent_span_id: ParentSpanId) -> Self {
-        if self.context().and_then(|c| c.parent_span_id.as_ref()).is_none() {
+        if self
+            .context()
+            .and_then(|c| c.parent_span_id.as_ref())
+            .is_none()
+        {
             self.ensure_inner().context.parent_span_id = Some(parent_span_id);
         }
         self
@@ -237,7 +242,11 @@ impl ReportTrace {
 
     /// Sets the trace state only if not already set.
     pub fn with_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
-        if self.context().and_then(|c| c.trace_state.as_ref()).is_none() {
+        if self
+            .context()
+            .and_then(|c| c.trace_state.as_ref())
+            .is_none()
+        {
             self.ensure_inner().context.trace_state = Some(TraceState::from(trace_state.into()));
         }
         self
@@ -284,7 +293,11 @@ impl ReportTrace {
     /// Sets the parent span ID from an Option, only if not already set.
     pub fn set_parent_span_id_opt(mut self, parent_span_id: Option<ParentSpanId>) -> Self {
         if let Some(psid) = parent_span_id {
-            if self.context().and_then(|c| c.parent_span_id.as_ref()).is_none() {
+            if self
+                .context()
+                .and_then(|c| c.parent_span_id.as_ref())
+                .is_none()
+            {
                 self.ensure_inner().context.parent_span_id = Some(psid);
             }
         }
@@ -306,7 +319,11 @@ impl ReportTrace {
     /// Sets the trace state from an Option, only if not already set.
     pub fn set_trace_state_opt(mut self, trace_state: Option<TraceState>) -> Self {
         if let Some(ts) = trace_state {
-            if self.context().and_then(|c| c.trace_state.as_ref()).is_none() {
+            if self
+                .context()
+                .and_then(|c| c.trace_state.as_ref())
+                .is_none()
+            {
                 self.ensure_inner().context.trace_state = Some(ts);
             }
         }
@@ -545,12 +562,7 @@ where
 
     /// Sets whether the trace is sampled only if not already set.
     pub fn with_trace_sampled(mut self, sampled: bool) -> Self {
-        if self
-            .trace()
-            .context()
-            .and_then(|c| c.sampled)
-            .is_none()
-        {
+        if self.trace().context().and_then(|c| c.sampled).is_none() {
             let inner = self.trace_mut().ensure_inner();
             inner.context.sampled = Some(sampled);
             sync_flags_with_sampled(&mut inner.context);
@@ -560,7 +572,8 @@ where
 
     /// Sets the trace state, replacing any existing value.
     pub fn set_trace_state(mut self, trace_state: impl Into<StaticRefStr>) -> Self {
-        self.trace_mut().ensure_inner().context.trace_state = Some(TraceState::from(trace_state.into()));
+        self.trace_mut().ensure_inner().context.trace_state =
+            Some(TraceState::from(trace_state.into()));
         self
     }
 
@@ -572,7 +585,8 @@ where
             .and_then(|c| c.trace_state.as_ref())
             .is_none()
         {
-            self.trace_mut().ensure_inner().context.trace_state = Some(TraceState::from(trace_state.into()));
+            self.trace_mut().ensure_inner().context.trace_state =
+                Some(TraceState::from(trace_state.into()));
         }
         self
     }

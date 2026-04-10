@@ -3,11 +3,10 @@
 //! This module contains the `map_err` method and related functionality
 //! for transforming the inner error type while preserving diagnostic data.
 
-use alloc::boxed::Box;
 use core::error::Error;
 
 use super::types::build_origin_source_chain;
-use super::{ColdData, DiagnosticBag, Report, SeverityState, SourceErrorChain};
+use super::{Report, SeverityState};
 
 impl<E, State> Report<E, State>
 where
@@ -94,19 +93,19 @@ where
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         } = self;
 
         // Check if source chain accumulation is enabled for this report
         if report.resolve_accumulate_source_chain() {
             // Build origin source chain with the old inner as the new root
-            let origin_source_errors = build_origin_source_chain(&inner, cold.as_deref());
+            let origin_source_errors = build_origin_source_chain(&inner, bag.inner());
 
             // Now create the outer error
             let outer = map(inner);
 
-            // Build new cold data with the origin source chain
-            let new_cold = Self::build_cold_with_origin_chain(cold, origin_source_errors);
+            // Build new bag with the origin source chain using the helper method
+            let new_bag = bag.with_origin_source_chain(origin_source_errors);
 
             Report {
                 inner: outer,
@@ -114,7 +113,7 @@ where
                 report,
                 #[cfg(feature = "trace")]
                 trace,
-                cold: new_cold,
+                bag: new_bag,
             }
         } else {
             // Simple transformation without source chain accumulation
@@ -125,48 +124,7 @@ where
                 report,
                 #[cfg(feature = "trace")]
                 trace,
-                cold,
-            }
-        }
-    }
-
-    /// Builds cold data with origin source chain for map_err operations.
-    ///
-    /// This function handles the cold data construction logic:
-    /// - If original cold exists, preserve all diagnostic data and update origin_source_errors
-    /// - If no original cold, create new cold data with just the origin source chain
-    ///
-    /// # Parameters
-    ///
-    /// - `cold`: The original cold data, if any
-    /// - `origin_source_errors`: The source chain to attach to the new report
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(Box<ColdData>)` with the constructed cold data.
-    fn build_cold_with_origin_chain(
-        cold: Option<Box<ColdData>>,
-        origin_source_errors: SourceErrorChain,
-    ) -> Option<Box<ColdData>> {
-        match cold {
-            Some(c) => {
-                let c = *c;
-                Some(Box::new(ColdData {
-                    bag: DiagnosticBag {
-                        stack_trace: c.bag.stack_trace,
-                        context: c.bag.context,
-                        system: c.bag.system,
-                        attachments: c.bag.attachments,
-                        display_causes: c.bag.display_causes,
-                        origin_source_errors: Some(origin_source_errors),
-                        diagnostic_source_errors: c.bag.diagnostic_source_errors,
-                    },
-                }))
-            }
-            None => {
-                let mut cold_data = ColdData::default();
-                cold_data.bag.origin_source_errors = Some(origin_source_errors);
-                Some(Box::new(cold_data))
+                bag,
             }
         }
     }

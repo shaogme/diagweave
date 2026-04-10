@@ -541,17 +541,17 @@ impl SourceErrorChain {
 ///
 /// # Arguments
 /// - `inner`: Reference to the inner error being transformed
-/// - `cold`: Optional reference to cold data containing existing source chain
+/// - `bag_inner`: Optional reference to diagnostic bag inner containing existing source chain
 ///
 /// # Returns
 /// A new `SourceErrorChain` with the inner error as root
 pub(crate) fn build_origin_source_chain<E: core::error::Error + Send + Sync + 'static>(
     inner: &E,
-    cold: Option<&super::ColdData>,
+    bag_inner: Option<&super::DiagnosticBagInner>,
 ) -> SourceErrorChain {
-    // Get existing source chain from cold data or build from error.source()
-    let existing_source_chain = cold
-        .and_then(|c| c.bag.origin_source_errors.clone())
+    // Get existing source chain from bag inner or build from error.source()
+    let existing_source_chain = bag_inner
+        .and_then(|b| b.origin_source_errors.clone())
         .or_else(|| {
             inner.source().map(|source| {
                 SourceErrorChain::from_source(

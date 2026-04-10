@@ -44,7 +44,7 @@ where
         key: impl Into<StaticRefStr>,
         value: impl Into<ContextValue>,
     ) -> Self {
-        self.diagnostics_mut().context.insert(key, value.into());
+        self.diagnostics_mut().insert_context(key, value);
         self
     }
 
@@ -72,7 +72,7 @@ where
         key: impl Into<StaticRefStr>,
         value: impl Into<ContextValue>,
     ) -> Self {
-        self.diagnostics_mut().system.insert(key, value.into());
+        self.diagnostics_mut().insert_system(key, value);
         self
     }
 
@@ -100,7 +100,7 @@ where
     /// let report = Report::new(MyError).set_system(system);
     /// ```
     pub fn set_system(mut self, system: ContextMap) -> Self {
-        self.diagnostics_mut().system = system;
+        *self.diagnostics_mut().system_mut() = system;
         self
     }
 
@@ -128,7 +128,7 @@ where
     /// let report = Report::new(MyError).set_ctx(ctx);
     /// ```
     pub fn set_ctx(mut self, ctx: ContextMap) -> Self {
-        self.diagnostics_mut().context = ctx;
+        *self.diagnostics_mut().context_mut() = ctx;
         self
     }
 
@@ -154,8 +154,7 @@ where
     /// ```
     pub fn attach_printable(mut self, message: impl Display + Send + Sync + 'static) -> Self {
         self.diagnostics_mut()
-            .attachments
-            .push(Attachment::note(message));
+            .add_attachment(Attachment::note(message));
         self
     }
 
@@ -185,7 +184,7 @@ where
         value: impl Into<AttachmentValue>,
         media_type: Option<impl Into<StaticRefStr>>,
     ) -> Self {
-        self.diagnostics_mut().attachments.push(Attachment::payload(
+        self.diagnostics_mut().add_attachment(Attachment::payload(
             name,
             value,
             media_type.map(|m| m.into()),
@@ -391,7 +390,7 @@ where
     /// let report = Report::new(MyError).set_stack_trace(stack_trace);
     /// ```
     pub fn set_stack_trace(mut self, stack_trace: StackTrace) -> Self {
-        self.diagnostics_mut().stack_trace = Some(stack_trace);
+        self.diagnostics_mut().set_stack_trace(stack_trace);
         self
     }
 
@@ -415,7 +414,7 @@ where
     /// ```
     pub fn with_stack_trace(mut self, stack_trace: StackTrace) -> Self {
         if self.stack_trace().is_none() {
-            self.diagnostics_mut().stack_trace = Some(stack_trace);
+            self.diagnostics_mut().set_stack_trace(stack_trace);
         }
         self
     }
@@ -425,7 +424,7 @@ where
     /// This can be useful when you want to remove potentially sensitive
     /// stack information before serializing or logging.
     pub fn clear_stack_trace(mut self) -> Self {
-        self.diagnostics_mut().stack_trace = None;
+        *self.diagnostics_mut().stack_trace_mut() = None;
         self
     }
 
@@ -449,7 +448,8 @@ where
     #[cfg(feature = "std")]
     pub fn capture_stack_trace(mut self) -> Self {
         if self.stack_trace().is_none() {
-            self.diagnostics_mut().stack_trace = Some(StackTrace::capture_raw());
+            self.diagnostics_mut()
+                .set_stack_trace(StackTrace::capture_raw());
         }
         self
     }
@@ -473,7 +473,8 @@ where
     /// ```
     #[cfg(feature = "std")]
     pub fn force_capture_stack(mut self) -> Self {
-        self.diagnostics_mut().stack_trace = Some(StackTrace::capture_raw());
+        self.diagnostics_mut()
+            .set_stack_trace(StackTrace::capture_raw());
         self
     }
 
@@ -499,7 +500,7 @@ where
     /// ```
     pub fn with_display_cause(mut self, cause: impl Display + Send + Sync + 'static) -> Self {
         self.diagnostics_mut()
-            .display_causes
+            .display_causes_mut()
             .get_or_insert_with(DisplayCauseChain::default)
             .items
             .push(Arc::new(cause) as Arc<dyn Display + Send + Sync + 'static>);
@@ -511,7 +512,7 @@ where
     /// This method completely replaces any existing display causes with
     /// the provided chain.
     pub fn set_display_causes(mut self, display_causes: DisplayCauseChain) -> Self {
-        self.diagnostics_mut().display_causes = Some(display_causes);
+        self.diagnostics_mut().set_display_causes(display_causes);
         self
     }
 
@@ -542,7 +543,7 @@ where
         T: Display + Send + Sync + 'static,
     {
         self.diagnostics_mut()
-            .display_causes
+            .display_causes_mut()
             .get_or_insert_with(DisplayCauseChain::default)
             .items
             .extend(
@@ -579,7 +580,7 @@ where
     pub fn with_diag_src_err(mut self, err: impl Error + Send + Sync + 'static) -> Self {
         let existing = self
             .diagnostics_mut()
-            .diagnostic_source_errors
+            .diagnostic_source_errors_mut()
             .get_or_insert_with(SourceErrorChain::default);
         append_source_chain(existing, SourceErrorChain::from_error(err));
         self
@@ -590,7 +591,8 @@ where
     /// This method completely replaces any existing diagnostic source
     /// errors with the provided chain.
     pub fn set_diag_src_errs(mut self, source_errors: SourceErrorChain) -> Self {
-        self.diagnostics_mut().diagnostic_source_errors = Some(source_errors);
+        self.diagnostics_mut()
+            .set_diagnostic_source_errors(source_errors);
         self
     }
 

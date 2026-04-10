@@ -183,9 +183,6 @@ where
             return;
         }
 
-        // Now we know we need ColdData, allocate it
-        self.ensure_cold();
-
         // Handle error metadata
         if let Some(error) = global.error {
             if let Some(error_code) = error.error_code {
@@ -200,13 +197,12 @@ where
         }
 
         // Handle system and context
-        let cold = self.cold.as_mut().unwrap();
         if !global.system.is_empty() {
-            cold.bag.system = global.system;
+            *self.bag.system_mut() = global.system;
         }
         if !global.context.is_empty() {
             for (key, value) in &global.context {
-                cold.bag.context.insert(key.clone(), value.clone());
+                self.bag.insert_context(key.clone(), value.clone());
             }
         }
 
@@ -262,7 +258,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             report: ReportOptions::new(),
             #[cfg(feature = "trace")]
             trace: ReportTrace::default(),
-            cold: None,
+            bag: super::DiagnosticBag::new(),
         };
         #[cfg(not(feature = "std"))]
         let report = Self {
@@ -271,7 +267,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             report: ReportOptions::new(),
             #[cfg(feature = "trace")]
             trace: ReportTrace::default(),
-            cold: None,
+            bag: super::DiagnosticBag::new(),
         };
         #[cfg(feature = "std")]
         report.apply_global_context();
@@ -305,7 +301,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         } = self;
         Report {
             inner,
@@ -313,7 +309,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             report,
             #[cfg(feature = "trace")]
             trace,
-            cold,
+            bag,
         }
     }
 }

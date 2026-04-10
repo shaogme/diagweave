@@ -172,7 +172,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
     report: ReportOptions, // 私有 - 按报告粒度的配置（内部采用延迟分配）
     #[cfg(feature = "trace")]
     trace: ReportTrace, // 私有 - 追踪上下文和事件（内部采用延迟分配）
-    cold: Option<Box<ColdData>>, // 私有 - 延迟分配的存储
+    bag: DiagnosticBag, // 私有 - 延迟分配的诊断包
 }
 ```
 
@@ -181,7 +181,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 - `metadata`：包含严重性类型状态和可选的 error_code/category/retryable（私有）
 - `report`：按报告粒度的配置，用于控制源链累积和原因收集行为（私有）
 - `trace`：追踪上下文和事件（私有，仅 `trace` feature 下可用）。内部使用 `Option<Box<ReportTraceInner>>` 实现延迟分配
-- `cold`：延迟分配的存储，用于诊断包（附件、展示原因、源错误）（私有）
+- `bag`：延迟分配的诊断包，用于附件、展示原因、源错误、上下文和系统上下文（私有）。内部使用 `Option<Box<DiagnosticBagInner>>` 实现延迟分配
 - `ReportOptions` 内部采用延迟分配（`Option<Box<ReportOptionsInner>>`），仅在显式设置选项时才分配堆内存
 - 字段访问通过方法提供，如 `inner()`、`severity()`、`options()` 等
 

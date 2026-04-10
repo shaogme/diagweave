@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use core::fmt;
 
 #[cfg(feature = "std")]
@@ -318,16 +319,12 @@ impl ReportOptionsInner {
             return ResolvedValue::new(value, ConfigSource::Report);
         }
         #[cfg(feature = "std")]
-        {
-            GlobalConfig::global().resolve_accumulate_source_chain_with_source()
-        }
+        return GlobalConfig::global().resolve_accumulate_source_chain_with_source();
         #[cfg(not(feature = "std"))]
-        {
-            ResolvedValue::new(
-                ProfileDefaults::accumulate_source_chain(),
-                ConfigSource::Profile,
-            )
-        }
+        return ResolvedValue::new(
+            ProfileDefaults::accumulate_source_chain(),
+            ConfigSource::Profile,
+        );
     }
 
     /// Resolves the effective value for `max_depth` with source tracking.
@@ -338,13 +335,9 @@ impl ReportOptionsInner {
             return ResolvedValue::new(value, ConfigSource::Report);
         }
         #[cfg(feature = "std")]
-        {
-            GlobalConfig::global().resolve_max_depth_with_source()
-        }
+        return GlobalConfig::global().resolve_max_depth_with_source();
         #[cfg(not(feature = "std"))]
-        {
-            ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile)
-        }
+        return ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile);
     }
 
     /// Resolves the effective value for `detect_cycle` with source tracking.
@@ -355,13 +348,9 @@ impl ReportOptionsInner {
             return ResolvedValue::new(value, ConfigSource::Report);
         }
         #[cfg(feature = "std")]
-        {
-            GlobalConfig::global().resolve_detect_cycle_with_source()
-        }
+        return GlobalConfig::global().resolve_detect_cycle_with_source();
         #[cfg(not(feature = "std"))]
-        {
-            ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile)
-        }
+        return ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile);
     }
 
     /// Resolves the effective value for `max_depth`.
@@ -444,7 +433,7 @@ impl Default for ReportOptionsInner {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReportOptions {
-    inner: Option<alloc::boxed::Box<ReportOptionsInner>>,
+    inner: Option<Box<ReportOptionsInner>>,
 }
 
 impl ReportOptions {
@@ -458,7 +447,7 @@ impl ReportOptions {
     /// Ensures the inner options are allocated, creating it if necessary.
     fn ensure_inner(&mut self) -> &mut ReportOptionsInner {
         self.inner
-            .get_or_insert_with(|| alloc::boxed::Box::new(ReportOptionsInner::new()))
+            .get_or_insert_with(|| Box::new(ReportOptionsInner::new()))
     }
 
     /// Sets whether source chains should be accumulated during `map_err()`.
@@ -487,16 +476,12 @@ impl ReportOptions {
             Some(inner) => inner.resolve_accumulate_source_chain_with_source(),
             None => {
                 #[cfg(feature = "std")]
-                {
-                    GlobalConfig::global().resolve_accumulate_source_chain_with_source()
-                }
+                return GlobalConfig::global().resolve_accumulate_source_chain_with_source();
                 #[cfg(not(feature = "std"))]
-                {
-                    ResolvedValue::new(
-                        ProfileDefaults::accumulate_source_chain(),
-                        ConfigSource::Profile,
-                    )
-                }
+                return ResolvedValue::new(
+                    ProfileDefaults::accumulate_source_chain(),
+                    ConfigSource::Profile,
+                );
             }
         }
     }
@@ -509,13 +494,9 @@ impl ReportOptions {
             Some(inner) => inner.resolve_max_depth_with_source(),
             None => {
                 #[cfg(feature = "std")]
-                {
-                    GlobalConfig::global().resolve_max_depth_with_source()
-                }
+                return GlobalConfig::global().resolve_max_depth_with_source();
                 #[cfg(not(feature = "std"))]
-                {
-                    ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile)
-                }
+                return ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile);
             }
         }
     }
@@ -528,13 +509,9 @@ impl ReportOptions {
             Some(inner) => inner.resolve_detect_cycle_with_source(),
             None => {
                 #[cfg(feature = "std")]
-                {
-                    GlobalConfig::global().resolve_detect_cycle_with_source()
-                }
+                return GlobalConfig::global().resolve_detect_cycle_with_source();
                 #[cfg(not(feature = "std"))]
-                {
-                    ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile)
-                }
+                return ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile);
             }
         }
     }

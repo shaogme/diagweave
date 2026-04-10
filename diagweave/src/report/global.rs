@@ -7,10 +7,12 @@
 #[cfg(feature = "std")]
 use std::sync::OnceLock;
 
+#[cfg(feature = "std")]
 use alloc::boxed::Box;
 
 #[cfg(feature = "trace")]
 use super::trace::ReportTrace;
+#[cfg(feature = "std")]
 use super::types::GlobalContext;
 use super::{Report, ReportMetadata, ReportOptions, SeverityState};
 
@@ -147,13 +149,13 @@ where
     /// 4. Allocate `ColdData` only if necessary
     /// 5. Populate the report with global context
     #[cfg(feature = "std")]
-    fn apply_global_context(&mut self) {
+    fn apply_global_context(mut self) -> Self {
         let Some(injector) = global_context_injector().get() else {
-            return;
+            return self;
         };
         let injected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(injector));
         let Some(global) = injected.unwrap_or_default() else {
-            return;
+            return self;
         };
 
         let GlobalContext {
@@ -183,7 +185,7 @@ where
         };
 
         if !needs_allocation {
-            return;
+            return self;
         }
 
         // Handle error metadata
@@ -220,6 +222,8 @@ where
                 .set_trace_state_opt(global_trace.trace_state)
                 .set_flags_opt(global_trace.flags);
         }
+
+        self
     }
 }
 
@@ -254,16 +258,6 @@ impl<E> Report<E, crate::report::MissingSeverity> {
     ///
     /// See [`register_global_injector`] for how to register a global context provider.
     pub fn new(inner: E) -> Self {
-        #[cfg(feature = "std")]
-        let mut report = Self {
-            inner,
-            metadata: ReportMetadata::new(),
-            options: ReportOptions::new(),
-            #[cfg(feature = "trace")]
-            trace: ReportTrace::default(),
-            bag: super::DiagnosticBag::new(),
-        };
-        #[cfg(not(feature = "std"))]
         let report = Self {
             inner,
             metadata: ReportMetadata::new(),
@@ -273,16 +267,20 @@ impl<E> Report<E, crate::report::MissingSeverity> {
             bag: super::DiagnosticBag::new(),
         };
         #[cfg(feature = "std")]
-        report.apply_global_context();
-        report
+        return report.apply_global_context();
+        #[cfg(not(feature = "std"))]
+        return report;
     }
 
-    /// Sets the severity for the report.
+    /// Sets the severity for the report when severity is not already set.
     ///
-    /// This is an alias for `set_severity()` for convenience when starting
-    /// from a `Report<E, MissingSeverity>`. It consumes the report and
-    /// returns a new report with the severity typestate changed to
-    /// `HasSeverity`.
+    /// This implementation is for `Report<E, MissingSeverity>`, which means
+    /// the severity has not been set yet. This method sets the severity and
+    /// transitions the typestate from `MissingSeverity` to `HasSeverity`.
+    ///
+    /// For `Report<E, HasSeverity>` (severity already set), this method is
+    /// a no-op and simply returns `self` unchanged. Use `set_severity()` to
+    /// force a new severity value regardless of current state.
     ///
     /// # Example
     ///
@@ -294,8 +292,10 @@ impl<E> Report<E, crate::report::MissingSeverity> {
     /// #[display("my error")]
     /// struct MyError;
     ///
+    /// // Starting from MissingSeverity, with_severity sets the severity
     /// let report = Report::new(MyError)
     ///     .with_severity(Severity::Error);
+    /// assert_eq!(report.severity(), Some(Severity::Error));
     /// ```
     pub fn with_severity(self, severity: super::Severity) -> Report<E, super::HasSeverity> {
         let Self {

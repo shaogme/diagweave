@@ -9,6 +9,7 @@ pub mod error;
 #[path = "types/source_error.rs"]
 mod source_error;
 
+use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::sync::Arc;
@@ -135,7 +136,7 @@ pub(crate) struct MetadataInner {
 pub struct ReportMetadata<State: SeverityState> {
     severity: State,
     #[cfg_attr(feature = "json", serde(flatten))]
-    inner: Option<alloc::boxed::Box<MetadataInner>>,
+    inner: Option<Box<MetadataInner>>,
 }
 
 impl<State: SeverityState> ReportMetadata<State> {
@@ -152,7 +153,7 @@ impl<State: SeverityState> ReportMetadata<State> {
     /// Ensures the inner metadata is allocated, creating it if necessary.
     fn ensure_inner(&mut self) -> &mut MetadataInner {
         self.inner.get_or_insert_with(|| {
-            alloc::boxed::Box::new(MetadataInner {
+            Box::new(MetadataInner {
                 error_code: None,
                 category: None,
                 retryable: None,

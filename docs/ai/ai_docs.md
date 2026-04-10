@@ -281,6 +281,8 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 #### Example Usage
 
 ```rust
+# #[cfg(feature = "std")]
+# {
 use diagweave::prelude::*;
 use diagweave::report::{GlobalConfig, ReportOptions, set_global_config};
 
@@ -311,6 +313,7 @@ let report3 = Report::new(error3).set_options(
         .with_max_depth(32)
         .with_cycle_detection(true)
 );
+# }
 ```
 
 ### `ErrorCode` Design and Conversions

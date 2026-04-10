@@ -2,10 +2,15 @@
 mod traversal;
 #[path = "source_error/util.rs"]
 mod util;
+
 use super::*;
 use crate::utils::FastSet;
-pub use traversal::{ReportSourceErrorIter, SourceErrorChainEntries};
+
+use alloc::boxed::Box;
+
 use util::is_report_wrapper_type;
+
+pub use traversal::{ReportSourceErrorIter, SourceErrorChainEntries};
 pub(crate) use util::{append_source_chain, build_origin_source_chain, limit_depth_source_chain};
 
 pub(crate) type SourceNodeId = usize;
@@ -41,14 +46,14 @@ impl DiagnosticBagExtInner {
 /// for lazy allocation to minimize overhead when no extended diagnostic data is present.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct DiagnosticBagExt {
-    inner: Option<alloc::boxed::Box<DiagnosticBagExtInner>>,
+    inner: Option<Box<DiagnosticBagExtInner>>,
 }
 
 impl DiagnosticBagExt {
     /// Ensures the inner storage is allocated, creating it if necessary.
     pub(crate) fn ensure_inner(&mut self) -> &mut DiagnosticBagExtInner {
         self.inner
-            .get_or_insert_with(|| alloc::boxed::Box::new(DiagnosticBagExtInner::new()))
+            .get_or_insert_with(|| Box::new(DiagnosticBagExtInner::new()))
     }
 
     /// Returns the stack trace, if any.
@@ -158,7 +163,7 @@ impl DiagnosticBagInner {
 /// ```
 #[derive(Debug, Default, PartialEq)]
 pub struct DiagnosticBag {
-    inner: Option<alloc::boxed::Box<DiagnosticBagInner>>,
+    inner: Option<Box<DiagnosticBagInner>>,
 }
 
 impl DiagnosticBag {
@@ -175,7 +180,7 @@ impl DiagnosticBag {
     /// Ensures the inner storage is allocated, creating it if necessary.
     pub(crate) fn ensure_inner(&mut self) -> &mut DiagnosticBagInner {
         self.inner
-            .get_or_insert_with(|| alloc::boxed::Box::new(DiagnosticBagInner::new()))
+            .get_or_insert_with(|| Box::new(DiagnosticBagInner::new()))
     }
 
     /// Returns the stack trace, if any.
@@ -291,7 +296,7 @@ impl DiagnosticBag {
     }
 
     /// Creates a DiagnosticBag from an existing inner bag.
-    fn from_inner(inner: alloc::boxed::Box<DiagnosticBagInner>) -> Self {
+    fn from_inner(inner: Box<DiagnosticBagInner>) -> Self {
         Self { inner: Some(inner) }
     }
 

@@ -3,6 +3,8 @@
 //! This module verifies that configuration values are resolved correctly
 //! following the priority: ReportOptions > GlobalConfig > Profile defaults.
 
+#![cfg(feature = "std")]
+
 mod report_common;
 use diagweave::prelude::*;
 use diagweave::report::{GlobalConfig, ReportOptions, set_global_config};

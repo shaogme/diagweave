@@ -378,6 +378,8 @@ where
     /// # Example
     ///
     /// ```rust
+    /// # #[cfg(feature = "std")]
+    /// # {
     /// use diagweave::prelude::Report;
     /// use diagweave::report::StackTrace;
     /// use diagweave::Error;
@@ -388,6 +390,7 @@ where
     ///
     /// let stack_trace = StackTrace::capture_raw();
     /// let report = Report::new(MyError).set_stack_trace(stack_trace);
+    /// # }
     /// ```
     pub fn set_stack_trace(mut self, stack_trace: StackTrace) -> Self {
         self.diagnostics_mut().set_stack_trace(stack_trace);
@@ -401,6 +404,8 @@ where
     /// # Example
     ///
     /// ```rust
+    /// # #[cfg(feature = "std")]
+    /// # {
     /// use diagweave::prelude::Report;
     /// use diagweave::report::StackTrace;
     /// use diagweave::Error;
@@ -411,6 +416,7 @@ where
     ///
     /// // Only capture if not already set
     /// let report = Report::new(MyError).with_stack_trace(StackTrace::capture_raw());
+    /// # }
     /// ```
     pub fn with_stack_trace(mut self, stack_trace: StackTrace) -> Self {
         if self.stack_trace().is_none() {

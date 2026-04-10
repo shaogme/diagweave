@@ -421,6 +421,8 @@ where
     /// # Example
     ///
     /// ```rust
+    /// # #[cfg(feature = "std")]
+    /// # {
     /// use diagweave::prelude::Report;
     /// use diagweave::Error;
     ///
@@ -432,6 +434,7 @@ where
     ///     .capture_stack_trace();
     /// let stack = report.stack_trace();
     /// assert!(stack.is_some());
+    /// # }
     /// ```
     pub fn stack_trace(&self) -> Option<&StackTrace> {
         self.diagnostics().stack_trace()

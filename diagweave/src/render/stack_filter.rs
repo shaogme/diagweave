@@ -12,7 +12,7 @@ pub fn should_filter_frame(frame: &StackFrame, filter: &StackTraceFilter) -> boo
 
 #[inline]
 pub fn is_std_or_runtime_frame(frame: &StackFrame) -> bool {
-    frame.module_path.as_ref().map_or(false, |m| {
+    frame.module_path.as_ref().is_some_and(|m| {
         m.starts_with("std::")
             || m.starts_with("core::")
             || m.starts_with("alloc::")
@@ -24,7 +24,7 @@ pub fn is_std_or_runtime_frame(frame: &StackFrame) -> bool {
 
 #[inline]
 pub fn is_internal_frame(frame: &StackFrame) -> bool {
-    frame.module_path.as_ref().map_or(false, |m| {
+    frame.module_path.as_ref().is_some_and(|m| {
         m.starts_with("diagweave::") || m.contains("diagnostic") || m.contains("report")
     })
 }

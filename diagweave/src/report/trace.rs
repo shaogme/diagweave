@@ -107,15 +107,9 @@ impl ReportTraceInner {
 /// Contains trace context (trace ID, span ID, etc.) and trace events.
 /// Uses lazy allocation via `Option<Box<ReportTraceInner>>` to minimize
 /// overhead when no trace information is present.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ReportTrace {
     inner: Option<Box<ReportTraceInner>>,
-}
-
-impl Default for ReportTrace {
-    fn default() -> Self {
-        Self { inner: None }
-    }
 }
 
 impl ReportTrace {
@@ -126,7 +120,7 @@ impl ReportTrace {
 
     /// Returns true if the report trace is empty (no context and no events).
     pub fn is_empty(&self) -> bool {
-        self.inner.as_ref().map_or(true, |inner| inner.is_empty())
+        self.inner.as_ref().is_none_or(|inner| inner.is_empty())
     }
 
     /// Returns the trace context, if any.
@@ -158,7 +152,7 @@ impl ReportTrace {
 
     /// Sets the trace context only if not already set.
     pub fn with_context(mut self, context: TraceContext) -> Self {
-        if self.context().is_none() || self.context().map_or(true, |c| c.is_empty()) {
+        if self.context().is_none() || self.context().is_none_or(|c| c.is_empty()) {
             self.ensure_inner().context = context;
         }
         self
@@ -272,72 +266,70 @@ impl ReportTrace {
 
     /// Sets the trace ID from an Option, only if not already set.
     pub fn set_trace_id_opt(mut self, trace_id: Option<TraceId>) -> Self {
-        if let Some(tid) = trace_id {
-            if self.context().and_then(|c| c.trace_id.as_ref()).is_none() {
-                self.ensure_inner().context.trace_id = Some(tid);
-            }
+        if let Some(tid) = trace_id
+            && self.context().and_then(|c| c.trace_id.as_ref()).is_none()
+        {
+            self.ensure_inner().context.trace_id = Some(tid);
         }
         self
     }
 
     /// Sets the span ID from an Option, only if not already set.
     pub fn set_span_id_opt(mut self, span_id: Option<SpanId>) -> Self {
-        if let Some(sid) = span_id {
-            if self.context().and_then(|c| c.span_id.as_ref()).is_none() {
-                self.ensure_inner().context.span_id = Some(sid);
-            }
+        if let Some(sid) = span_id
+            && self.context().and_then(|c| c.span_id.as_ref()).is_none()
+        {
+            self.ensure_inner().context.span_id = Some(sid);
         }
         self
     }
 
     /// Sets the parent span ID from an Option, only if not already set.
     pub fn set_parent_span_id_opt(mut self, parent_span_id: Option<ParentSpanId>) -> Self {
-        if let Some(psid) = parent_span_id {
-            if self
+        if let Some(psid) = parent_span_id
+            && self
                 .context()
                 .and_then(|c| c.parent_span_id.as_ref())
                 .is_none()
-            {
-                self.ensure_inner().context.parent_span_id = Some(psid);
-            }
+        {
+            self.ensure_inner().context.parent_span_id = Some(psid);
         }
         self
     }
 
     /// Sets the sampled flag from an Option, only if not already set.
     pub fn set_sampled_opt(mut self, sampled: Option<bool>) -> Self {
-        if let Some(s) = sampled {
-            if self.context().and_then(|c| c.sampled).is_none() {
-                let inner = self.ensure_inner();
-                inner.context.sampled = Some(s);
-                sync_flags_with_sampled(&mut inner.context);
-            }
+        if let Some(s) = sampled
+            && self.context().and_then(|c| c.sampled).is_none()
+        {
+            let inner = self.ensure_inner();
+            inner.context.sampled = Some(s);
+            sync_flags_with_sampled(&mut inner.context);
         }
         self
     }
 
     /// Sets the trace state from an Option, only if not already set.
     pub fn set_trace_state_opt(mut self, trace_state: Option<TraceState>) -> Self {
-        if let Some(ts) = trace_state {
-            if self
+        if let Some(ts) = trace_state
+            && self
                 .context()
                 .and_then(|c| c.trace_state.as_ref())
                 .is_none()
-            {
-                self.ensure_inner().context.trace_state = Some(ts);
-            }
+        {
+            self.ensure_inner().context.trace_state = Some(ts);
         }
         self
     }
 
     /// Sets the trace flags from an Option, only if not already set.
     pub fn set_flags_opt(mut self, flags: Option<TraceFlags>) -> Self {
-        if let Some(f) = flags {
-            if self.context().and_then(|c| c.flags.as_ref()).is_none() {
-                let inner = self.ensure_inner();
-                inner.context.flags = Some(f);
-                sync_sampled_with_flags(&mut inner.context);
-            }
+        if let Some(f) = flags
+            && self.context().and_then(|c| c.flags.as_ref()).is_none()
+        {
+            let inner = self.ensure_inner();
+            inner.context.flags = Some(f);
+            sync_sampled_with_flags(&mut inner.context);
         }
         self
     }

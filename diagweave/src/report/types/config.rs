@@ -199,7 +199,7 @@ impl GlobalConfig {
     ///
     /// If no configuration has been set, returns a default config with profile-dependent defaults.
     pub fn global() -> &'static Self {
-        GLOBAL_CONFIG.get_or_init(|| Self::new())
+        GLOBAL_CONFIG.get_or_init(Self::new)
     }
 
     fn set_global(self) -> Result<(), SetGlobalConfigError> {

@@ -97,22 +97,17 @@ pub enum PrettyIndent {
 }
 
 /// Filter strategy for stack trace frames.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "json", serde(rename_all = "snake_case"))]
 pub enum StackTraceFilter {
     /// Show all frames without filtering.
+    #[default]
     All,
     /// Filter out standard library and runtime frames.
     AppOnly,
     /// Filter out standard library, runtime, and internal frames.
     AppFocused,
-}
-
-impl Default for StackTraceFilter {
-    fn default() -> Self {
-        Self::All
-    }
 }
 
 impl Default for ReportRenderOptions {

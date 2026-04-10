@@ -278,7 +278,7 @@ impl<'a, K, V> IntoIterator for &'a FastMap<K, V> {
     type IntoIter = <&'a FastMapImpl<K, V> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.0).into_iter()
+        self.0.iter()
     }
 }
 
@@ -287,7 +287,7 @@ impl<'a, K, V> IntoIterator for &'a mut FastMap<K, V> {
     type IntoIter = <&'a mut FastMapImpl<K, V> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&mut self.0).into_iter()
+        self.0.iter_mut()
     }
 }
 
@@ -474,6 +474,6 @@ impl<'a, T> IntoIterator for &'a FastSet<T> {
     type IntoIter = <&'a FastSetImpl<T> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.0).into_iter()
+        self.0.iter()
     }
 }

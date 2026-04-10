@@ -50,7 +50,7 @@ impl TracingExporterTrait for TracingExporter {
                     prepared_level_to_tracing(prepared_event.level()),
                     prepared_event.index(),
                     prepared_event.event(),
-                    &ir.trace,
+                    ir.trace,
                 );
             }
         }

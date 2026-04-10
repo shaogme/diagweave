@@ -81,7 +81,7 @@ where
         if self.trace.is_empty() {
             return;
         }
-        let trace_value = build_trace_value(&self.trace, &self.error);
+        let trace_value = build_trace_value(self.trace, &self.error);
         fields.push(TracingField {
             key: "trace".into(),
             value: trace_value,

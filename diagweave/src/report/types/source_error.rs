@@ -19,17 +19,114 @@ pub struct SourceErrorEntry {
     pub depth: usize,
 }
 
+/// Inner diagnostic bag extension containing extended diagnostic data.
+/// This stores the four extended members that can be lazily allocated.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct DiagnosticBagExtInner {
+    stack_trace: Option<StackTrace>,
+    system: ContextMap,
+    display_causes: Option<DisplayCauseChain>,
+    diagnostic_source_errors: Option<SourceErrorChain>,
+}
+
+impl DiagnosticBagExtInner {
+    fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// A lazily-allocated diagnostic bag extension.
+///
+/// This follows the same pattern as `DiagnosticBag` - using `Option<Box<Inner>>`
+/// for lazy allocation to minimize overhead when no extended diagnostic data is present.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct DiagnosticBagExt {
+    inner: Option<alloc::boxed::Box<DiagnosticBagExtInner>>,
+}
+
+impl DiagnosticBagExt {
+    /// Ensures the inner storage is allocated, creating it if necessary.
+    pub(crate) fn ensure_inner(&mut self) -> &mut DiagnosticBagExtInner {
+        self.inner
+            .get_or_insert_with(|| alloc::boxed::Box::new(DiagnosticBagExtInner::new()))
+    }
+
+    /// Returns the stack trace, if any.
+    pub fn stack_trace(&self) -> Option<&StackTrace> {
+        self.inner.as_ref()?.stack_trace.as_ref()
+    }
+
+    /// Returns the system context map, or an empty reference if not allocated.
+    pub fn system(&self) -> &ContextMap {
+        self.inner
+            .as_ref()
+            .map(|i| &i.system)
+            .unwrap_or(ContextMap::default_ref())
+    }
+
+    /// Returns the display causes, if any.
+    pub(crate) fn display_causes(&self) -> Option<&DisplayCauseChain> {
+        self.inner.as_ref()?.display_causes.as_ref()
+    }
+
+    /// Returns the diagnostic source errors, if any.
+    pub(crate) fn diagnostic_source_errors(&self) -> Option<&SourceErrorChain> {
+        self.inner.as_ref()?.diagnostic_source_errors.as_ref()
+    }
+
+    /// Sets the stack trace.
+    pub fn set_stack_trace(&mut self, stack_trace: StackTrace) {
+        self.ensure_inner().stack_trace = Some(stack_trace);
+    }
+
+    /// Inserts a system context key-value pair.
+    pub fn insert_system(
+        &mut self,
+        key: impl Into<ref_str::StaticRefStr>,
+        value: impl Into<ContextValue>,
+    ) {
+        self.ensure_inner().system.insert(key, value);
+    }
+
+    /// Sets the display causes.
+    pub(crate) fn set_display_causes(&mut self, causes: DisplayCauseChain) {
+        self.ensure_inner().display_causes = Some(causes);
+    }
+
+    /// Sets the diagnostic source errors.
+    pub(crate) fn set_diagnostic_source_errors(&mut self, errors: SourceErrorChain) {
+        self.ensure_inner().diagnostic_source_errors = Some(errors);
+    }
+
+    /// Returns a mutable reference to the system context map, allocating if necessary.
+    pub(crate) fn system_mut(&mut self) -> &mut ContextMap {
+        &mut self.ensure_inner().system
+    }
+
+    /// Returns a mutable reference to the stack trace, allocating if necessary.
+    pub(crate) fn stack_trace_mut(&mut self) -> &mut Option<StackTrace> {
+        &mut self.ensure_inner().stack_trace
+    }
+
+    /// Returns a mutable reference to the display causes, allocating if necessary.
+    pub(crate) fn display_causes_mut(&mut self) -> &mut Option<DisplayCauseChain> {
+        &mut self.ensure_inner().display_causes
+    }
+
+    /// Returns a mutable reference to the diagnostic source errors, allocating if necessary.
+    pub(crate) fn diagnostic_source_errors_mut(&mut self) -> &mut Option<SourceErrorChain> {
+        &mut self.ensure_inner().diagnostic_source_errors
+    }
+}
+
 /// Inner diagnostic bag containing all diagnostic data.
 /// This is the actual storage for diagnostic information.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct DiagnosticBagInner {
-    stack_trace: Option<StackTrace>,
     context: ContextMap,
-    system: ContextMap,
     attachments: Vec<Attachment>,
-    display_causes: Option<DisplayCauseChain>,
     origin_source_errors: Option<SourceErrorChain>,
-    diagnostic_source_errors: Option<SourceErrorChain>,
+    ext: DiagnosticBagExt,
 }
 
 impl DiagnosticBagInner {
@@ -83,7 +180,7 @@ impl DiagnosticBag {
 
     /// Returns the stack trace, if any.
     pub fn stack_trace(&self) -> Option<&StackTrace> {
-        self.inner.as_ref()?.stack_trace.as_ref()
+        self.inner.as_ref()?.ext.stack_trace()
     }
 
     /// Returns the context map, or an empty reference if not allocated.
@@ -98,7 +195,7 @@ impl DiagnosticBag {
     pub fn system(&self) -> &ContextMap {
         self.inner
             .as_ref()
-            .map(|i| &i.system)
+            .map(|i| i.ext.system())
             .unwrap_or(ContextMap::default_ref())
     }
 
@@ -112,7 +209,7 @@ impl DiagnosticBag {
 
     /// Returns the display causes, if any.
     pub(crate) fn display_causes(&self) -> Option<&DisplayCauseChain> {
-        self.inner.as_ref()?.display_causes.as_ref()
+        self.inner.as_ref()?.ext.display_causes()
     }
 
     /// Returns the origin source errors, if any.
@@ -122,12 +219,12 @@ impl DiagnosticBag {
 
     /// Returns the diagnostic source errors, if any.
     pub(crate) fn diagnostic_source_errors(&self) -> Option<&SourceErrorChain> {
-        self.inner.as_ref()?.diagnostic_source_errors.as_ref()
+        self.inner.as_ref()?.ext.diagnostic_source_errors()
     }
 
     /// Sets the stack trace.
     pub fn set_stack_trace(&mut self, stack_trace: StackTrace) {
-        self.ensure_inner().stack_trace = Some(stack_trace);
+        self.ensure_inner().ext.set_stack_trace(stack_trace);
     }
 
     /// Inserts a context key-value pair.
@@ -145,7 +242,7 @@ impl DiagnosticBag {
         key: impl Into<ref_str::StaticRefStr>,
         value: impl Into<ContextValue>,
     ) {
-        self.ensure_inner().system.insert(key, value);
+        self.ensure_inner().ext.insert_system(key, value);
     }
 
     /// Adds an attachment.
@@ -155,7 +252,7 @@ impl DiagnosticBag {
 
     /// Sets the display causes.
     pub(crate) fn set_display_causes(&mut self, causes: DisplayCauseChain) {
-        self.ensure_inner().display_causes = Some(causes);
+        self.ensure_inner().ext.set_display_causes(causes);
     }
 
     /// Sets the origin source errors.
@@ -165,7 +262,7 @@ impl DiagnosticBag {
 
     /// Sets the diagnostic source errors.
     pub(crate) fn set_diagnostic_source_errors(&mut self, errors: SourceErrorChain) {
-        self.ensure_inner().diagnostic_source_errors = Some(errors);
+        self.ensure_inner().ext.set_diagnostic_source_errors(errors);
     }
 
     /// Returns a mutable reference to the context map, allocating if necessary.
@@ -175,22 +272,22 @@ impl DiagnosticBag {
 
     /// Returns a mutable reference to the system context map, allocating if necessary.
     pub(crate) fn system_mut(&mut self) -> &mut ContextMap {
-        &mut self.ensure_inner().system
+        self.ensure_inner().ext.system_mut()
     }
 
     /// Returns a mutable reference to the stack trace, allocating if necessary.
     pub(crate) fn stack_trace_mut(&mut self) -> &mut Option<StackTrace> {
-        &mut self.ensure_inner().stack_trace
+        self.ensure_inner().ext.stack_trace_mut()
     }
 
     /// Returns a mutable reference to the display causes, allocating if necessary.
     pub(crate) fn display_causes_mut(&mut self) -> &mut Option<DisplayCauseChain> {
-        &mut self.ensure_inner().display_causes
+        self.ensure_inner().ext.display_causes_mut()
     }
 
     /// Returns a mutable reference to the diagnostic source errors, allocating if necessary.
     pub(crate) fn diagnostic_source_errors_mut(&mut self) -> &mut Option<SourceErrorChain> {
-        &mut self.ensure_inner().diagnostic_source_errors
+        self.ensure_inner().ext.diagnostic_source_errors_mut()
     }
 
     /// Creates a DiagnosticBag from an existing inner bag.
@@ -206,13 +303,10 @@ impl DiagnosticBag {
     ) -> Self {
         match self.inner.take() {
             Some(inner) => DiagnosticBag::from_inner(Box::new(DiagnosticBagInner {
-                stack_trace: inner.stack_trace,
                 context: inner.context,
-                system: inner.system,
                 attachments: inner.attachments,
-                display_causes: inner.display_causes,
                 origin_source_errors: Some(origin_source_errors),
-                diagnostic_source_errors: inner.diagnostic_source_errors,
+                ext: inner.ext,
             })),
             None => {
                 let mut new_bag = Self::new();

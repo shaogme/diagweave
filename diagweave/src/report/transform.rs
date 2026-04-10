@@ -90,14 +90,14 @@ where
         let Self {
             inner,
             metadata,
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,
         } = self;
 
         // Check if source chain accumulation is enabled for this report
-        if report.resolve_accumulate_source_chain() {
+        if options.resolve_accumulate_source_chain() {
             // Build origin source chain with the old inner as the new root
             let origin_source_errors = build_origin_source_chain(&inner, bag.inner());
 
@@ -110,7 +110,7 @@ where
             Report {
                 inner: outer,
                 metadata,
-                report,
+                options,
                 #[cfg(feature = "trace")]
                 trace,
                 bag: new_bag,
@@ -121,7 +121,7 @@ where
             Report {
                 inner: outer,
                 metadata,
-                report,
+                options,
                 #[cfg(feature = "trace")]
                 trace,
                 bag,

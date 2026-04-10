@@ -456,7 +456,7 @@ where
     /// let options = report.options();
     /// ```
     pub fn options(&self) -> &ReportOptions {
-        &self.report
+        &self.options
     }
 
     /// Visits display causes using default collection options.

@@ -169,7 +169,7 @@ The `Report` struct is a high-level diagnostic container with lazy allocation fo
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E, // private - wrapped error value
     metadata: ReportMetadata<State>, // private - metadata including severity
-    report: ReportOptions, // private - per-report configuration (lazy allocation internally)
+    options: ReportOptions, // private - per-report configuration (lazy allocation internally)
     #[cfg(feature = "trace")]
     trace: ReportTrace, // private - trace context and events (lazy allocation internally)
     bag: DiagnosticBag, // private - lazily allocated diagnostic bag

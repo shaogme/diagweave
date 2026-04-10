@@ -87,6 +87,8 @@ pub struct RegisterGlobalContextError;
 /// trace context for distributed tracing:
 ///
 /// ```rust
+/// # #[cfg(feature = "trace")]
+/// # {
 /// use diagweave::report::{register_global_injector, GlobalContext, GlobalTraceContext};
 ///
 /// let _ = register_global_injector(|| {
@@ -101,6 +103,7 @@ pub struct RegisterGlobalContextError;
 ///     });
 ///     Some(ctx)
 /// });
+/// # }
 /// ```
 #[cfg(feature = "std")]
 pub fn register_global_injector(
@@ -255,7 +258,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         let mut report = Self {
             inner,
             metadata: ReportMetadata::new(),
-            report: ReportOptions::new(),
+            options: ReportOptions::new(),
             #[cfg(feature = "trace")]
             trace: ReportTrace::default(),
             bag: super::DiagnosticBag::new(),
@@ -264,7 +267,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         let report = Self {
             inner,
             metadata: ReportMetadata::new(),
-            report: ReportOptions::new(),
+            options: ReportOptions::new(),
             #[cfg(feature = "trace")]
             trace: ReportTrace::default(),
             bag: super::DiagnosticBag::new(),
@@ -298,7 +301,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         let Self {
             inner,
             metadata,
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,
@@ -306,7 +309,7 @@ impl<E> Report<E, crate::report::MissingSeverity> {
         Report {
             inner,
             metadata: metadata.set_severity(severity),
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,

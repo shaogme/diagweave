@@ -618,7 +618,7 @@ where
     /// let _report = report.set_options(ReportOptions::new().with_accumulate_source_chain(false));
     /// ```
     pub fn set_options(mut self, options: ReportOptions) -> Self {
-        self.report = options;
+        self.options = options;
         self
     }
 
@@ -643,7 +643,7 @@ where
     /// let _report = report.set_accumulate_source_chain(true);
     /// ```
     pub fn set_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        self.report = self.report.with_accumulate_source_chain(accumulate);
+        self.options = self.options.with_accumulate_source_chain(accumulate);
         self
     }
 }

@@ -115,7 +115,7 @@ use types::{DiagnosticBag, append_source_chain, limit_depth_source_chain};
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E,
     metadata: ReportMetadata<State>,
-    report: ReportOptions,
+    options: ReportOptions,
     #[cfg(feature = "trace")]
     trace: ReportTrace,
     bag: DiagnosticBag,
@@ -216,7 +216,7 @@ impl<E> Report<E, MissingSeverity> {
         let Self {
             inner,
             metadata,
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,
@@ -224,7 +224,7 @@ impl<E> Report<E, MissingSeverity> {
         Report {
             inner,
             metadata: metadata.set_severity(severity),
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,
@@ -257,7 +257,7 @@ impl<E> Report<E, HasSeverity> {
         let Self {
             inner,
             metadata,
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,
@@ -265,7 +265,7 @@ impl<E> Report<E, HasSeverity> {
         Report {
             inner,
             metadata: metadata.replace_severity(severity),
-            report,
+            options,
             #[cfg(feature = "trace")]
             trace,
             bag,

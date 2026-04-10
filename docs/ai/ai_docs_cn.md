@@ -169,7 +169,7 @@ enum FileError {
 pub struct Report<E, State: SeverityState = MissingSeverity> {
     inner: E, // 私有 - 被包装的错误值
     metadata: ReportMetadata<State>, // 私有 - 包含严重性的元数据
-    report: ReportOptions, // 私有 - 按报告粒度的配置（内部采用延迟分配）
+    options: ReportOptions, // 私有 - 按报告粒度的配置（内部采用延迟分配）
     #[cfg(feature = "trace")]
     trace: ReportTrace, // 私有 - 追踪上下文和事件（内部采用延迟分配）
     bag: DiagnosticBag, // 私有 - 延迟分配的诊断包

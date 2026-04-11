@@ -257,7 +257,7 @@ where
         E: Error + 'static,
     {
         self.diagnostics()
-            .origin_source_errors()
+            .origin_src_errors()
             .map(SourceErrorChain::iter_entries)
             .into_iter()
             .flatten()
@@ -291,7 +291,7 @@ where
         E: Error + 'static,
     {
         self.diagnostics()
-            .diagnostic_source_errors()
+            .diag_src_errors()
             .map(SourceErrorChain::iter_entries)
             .into_iter()
             .flatten()
@@ -300,13 +300,13 @@ where
     /// Returns the origin source-error chain associated with the report, if any.
     #[cfg(feature = "json")]
     pub(crate) fn origin_src_err_chain(&self) -> Option<&SourceErrorChain> {
-        self.diagnostics().origin_source_errors()
+        self.diagnostics().origin_src_errors()
     }
 
     /// Returns the diagnostic source-error chain associated with the report, if any.
     #[cfg(feature = "json")]
     pub(crate) fn diag_src_err_chain(&self) -> Option<&SourceErrorChain> {
-        self.diagnostics().diagnostic_source_errors()
+        self.diagnostics().diag_src_errors()
     }
 
     /// Returns the metadata associated with the report.

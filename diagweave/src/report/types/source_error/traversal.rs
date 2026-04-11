@@ -296,8 +296,8 @@ impl ReportSourceTraversalStrategy {
         State: crate::report::SeverityState,
     {
         match self {
-            Self::Origin => report.diagnostics().origin_source_errors(),
-            Self::Diagnostic => report.diagnostics().diagnostic_source_errors(),
+            Self::Origin => report.diagnostics().origin_src_errors(),
+            Self::Diagnostic => report.diagnostics().diag_src_errors(),
         }
     }
 

@@ -191,7 +191,7 @@ where
 {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         self.diagnostics()
-            .origin_source_errors()
+            .origin_src_errors()
             .and_then(SourceErrorChain::first_error)
             .or_else(|| self.inner().source())
     }

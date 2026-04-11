@@ -280,26 +280,32 @@ impl ContextMap {
         Self(FastMap::new())
     }
 
+    /// Returns `true` if the context map contains no entries.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns the number of entries in the context map.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if the context map contains a value for the specified key.
     pub fn contains_key<'a>(&self, key: impl Into<&'a str>) -> bool {
         self.0.contains_key(key.into())
     }
 
+    /// Inserts a key-value pair into the context map.
     pub fn insert(&mut self, key: impl Into<StaticRefStr>, value: impl Into<ContextValue>) {
         self.0.insert(key.into(), value.into());
     }
 
+    /// Returns an iterator over the key-value pairs in the context map.
     pub fn iter(&self) -> impl Iterator<Item = (&StaticRefStr, &ContextValue)> {
         self.0.iter()
     }
 
+    /// Returns a vector of key-value pairs sorted by key.
     pub fn sorted_entries(&self) -> Vec<(&StaticRefStr, &ContextValue)> {
         self.0.sorted_entries()
     }
@@ -340,16 +346,21 @@ impl<'a> IntoIterator for &'a ContextMap {
     }
 }
 
+/// A JSON-serialized context map, containing an ordered list of entries.
 #[cfg(feature = "json")]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JsonContext {
+    /// The ordered list of context entries.
     pub entries: Vec<JsonContextEntry>,
 }
 
+/// A single entry in a JSON-serialized context map.
 #[cfg(feature = "json")]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JsonContextEntry {
+    /// The context key.
     pub key: StaticRefStr,
+    /// The context value.
     pub value: ContextValue,
 }
 
@@ -362,19 +373,27 @@ pub struct GlobalErrorMeta {
 }
 
 impl GlobalErrorMeta {
+    /// Returns `true` if all metadata fields are `None`.
     pub fn is_empty(&self) -> bool {
         self.error_code.is_none() && self.category.is_none() && self.retryable.is_none()
     }
 }
 
+/// Global trace context for distributed tracing, containing W3C trace context fields.
 #[cfg(feature = "trace")]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GlobalTraceContext {
+    /// The W3C trace-id, a 32-digit hex string identifying the entire trace.
     pub trace_id: Option<TraceId>,
+    /// The W3C span-id, a 16-digit hex string identifying this span.
     pub span_id: Option<SpanId>,
+    /// The W3C parent-span-id, identifying the parent span.
     pub parent_span_id: Option<ParentSpanId>,
+    /// Whether this trace was sampled for collection.
     pub sampled: Option<bool>,
+    /// W3C trace-state header for vendor-specific trace information.
     pub trace_state: Option<TraceState>,
+    /// W3C trace flags (e.g., sampled flag).
     pub flags: Option<TraceFlags>,
 }
 

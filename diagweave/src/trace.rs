@@ -68,7 +68,7 @@ impl Debug for PreparedTracingEmission<'_> {
 
 impl<'a> PreparedTracingEmission<'a> {
     fn prepare(ir: DiagnosticIr<'a, HasSeverity>) -> Self {
-        let report_level = severity_to_prepared_level(ir.metadata.required_severity());
+        let report_level = severity_to_level(ir.metadata.required_severity());
         let trace_event_levels = ir
             .trace
             .events()
@@ -224,7 +224,7 @@ where
     }
 }
 
-fn severity_to_prepared_level(level: Severity) -> PreparedTracingLevel {
+fn severity_to_level(level: Severity) -> PreparedTracingLevel {
     match level {
         Severity::Trace => PreparedTracingLevel::Trace,
         Severity::Debug => PreparedTracingLevel::Debug,

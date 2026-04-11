@@ -105,7 +105,7 @@ where
             let outer = map(inner);
 
             // Build new bag with the origin source chain using the helper method
-            let new_bag = bag.with_origin_source_chain(origin_source_errors);
+            let new_bag = bag.with_origin_src_chain(origin_source_errors);
 
             Report {
                 inner: outer,

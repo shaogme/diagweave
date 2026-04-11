@@ -75,7 +75,7 @@ impl DiagnosticBagExt {
     }
 
     /// Returns the diagnostic source errors, if any.
-    pub(crate) fn diagnostic_source_errors(&self) -> Option<&SourceErrorChain> {
+    pub(crate) fn diag_src_errors(&self) -> Option<&SourceErrorChain> {
         self.inner.as_ref()?.diagnostic_source_errors.as_ref()
     }
 
@@ -99,7 +99,7 @@ impl DiagnosticBagExt {
     }
 
     /// Sets the diagnostic source errors.
-    pub(crate) fn set_diagnostic_source_errors(&mut self, errors: SourceErrorChain) {
+    pub(crate) fn set_diag_src_errors(&mut self, errors: SourceErrorChain) {
         self.ensure_inner().diagnostic_source_errors = Some(errors);
     }
 
@@ -119,7 +119,7 @@ impl DiagnosticBagExt {
     }
 
     /// Returns a mutable reference to the diagnostic source errors, allocating if necessary.
-    pub(crate) fn diagnostic_source_errors_mut(&mut self) -> &mut Option<SourceErrorChain> {
+    pub(crate) fn diag_src_errors_mut(&mut self) -> &mut Option<SourceErrorChain> {
         &mut self.ensure_inner().diagnostic_source_errors
     }
 }
@@ -218,13 +218,13 @@ impl DiagnosticBag {
     }
 
     /// Returns the origin source errors, if any.
-    pub(crate) fn origin_source_errors(&self) -> Option<&SourceErrorChain> {
+    pub(crate) fn origin_src_errors(&self) -> Option<&SourceErrorChain> {
         self.inner.as_ref()?.origin_source_errors.as_ref()
     }
 
     /// Returns the diagnostic source errors, if any.
-    pub(crate) fn diagnostic_source_errors(&self) -> Option<&SourceErrorChain> {
-        self.inner.as_ref()?.ext.diagnostic_source_errors()
+    pub(crate) fn diag_src_errors(&self) -> Option<&SourceErrorChain> {
+        self.inner.as_ref()?.ext.diag_src_errors()
     }
 
     /// Sets the stack trace.
@@ -261,13 +261,13 @@ impl DiagnosticBag {
     }
 
     /// Sets the origin source errors.
-    pub(crate) fn set_origin_source_errors(&mut self, errors: SourceErrorChain) {
+    pub(crate) fn set_origin_src_errors(&mut self, errors: SourceErrorChain) {
         self.ensure_inner().origin_source_errors = Some(errors);
     }
 
     /// Sets the diagnostic source errors.
-    pub(crate) fn set_diagnostic_source_errors(&mut self, errors: SourceErrorChain) {
-        self.ensure_inner().ext.set_diagnostic_source_errors(errors);
+    pub(crate) fn set_diag_src_errors(&mut self, errors: SourceErrorChain) {
+        self.ensure_inner().ext.set_diag_src_errors(errors);
     }
 
     /// Returns a mutable reference to the context map, allocating if necessary.
@@ -291,8 +291,8 @@ impl DiagnosticBag {
     }
 
     /// Returns a mutable reference to the diagnostic source errors, allocating if necessary.
-    pub(crate) fn diagnostic_source_errors_mut(&mut self) -> &mut Option<SourceErrorChain> {
-        self.ensure_inner().ext.diagnostic_source_errors_mut()
+    pub(crate) fn diag_src_errors_mut(&mut self) -> &mut Option<SourceErrorChain> {
+        self.ensure_inner().ext.diag_src_errors_mut()
     }
 
     /// Creates a DiagnosticBag from an existing inner bag.
@@ -302,10 +302,7 @@ impl DiagnosticBag {
 
     /// Creates a new bag with updated origin source errors, preserving all other data from this bag.
     /// If this bag is empty, creates a new bag with just the origin source errors.
-    pub(crate) fn with_origin_source_chain(
-        mut self,
-        origin_source_errors: SourceErrorChain,
-    ) -> Self {
+    pub(crate) fn with_origin_src_chain(mut self, origin_source_errors: SourceErrorChain) -> Self {
         match self.inner.take() {
             Some(inner) => DiagnosticBag::from_inner(Box::new(DiagnosticBagInner {
                 context: inner.context,
@@ -315,7 +312,7 @@ impl DiagnosticBag {
             })),
             None => {
                 let mut new_bag = Self::new();
-                new_bag.set_origin_source_errors(origin_source_errors);
+                new_bag.set_origin_src_errors(origin_source_errors);
                 new_bag
             }
         }

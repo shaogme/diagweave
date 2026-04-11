@@ -176,7 +176,7 @@ where
         &self,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
-        self.source_errors_view(self.diagnostics().origin_source_errors(), true, options)
+        self.source_errors_view(self.diagnostics().origin_src_errors(), true, options)
     }
 
     /// Returns the diagnostic source error chain view for rendering.
@@ -184,11 +184,7 @@ where
         &self,
         options: CauseCollectOptions,
     ) -> Option<SourceErrorChain> {
-        self.source_errors_view(
-            self.diagnostics().diagnostic_source_errors(),
-            false,
-            options,
-        )
+        self.source_errors_view(self.diagnostics().diag_src_errors(), false, options)
     }
 }
 
@@ -233,46 +229,7 @@ impl<E> Report<E, MissingSeverity> {
 }
 
 impl<E> Report<E, HasSeverity> {
-    /// Replaces the severity with a new value.
-    ///
-    /// This method is available on reports that already have a severity set.
-    /// It replaces the existing severity with a new one.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use diagweave::prelude::{Report, Severity};
-    /// use diagweave::Error;
-    ///
-    /// #[derive(Debug, Error)]
-    /// #[display("my error")]
-    /// struct MyError;
-    ///
-    /// let report = Report::new(MyError)
-    ///     .set_severity(Severity::Warn);
-    /// let report = report.replace_severity(Severity::Error); // Replace severity
-    /// assert_eq!(report.severity(), Some(Severity::Error));
-    /// ```
-    pub fn replace_severity(self, severity: Severity) -> Report<E, HasSeverity> {
-        let Self {
-            inner,
-            metadata,
-            options,
-            #[cfg(feature = "trace")]
-            trace,
-            bag,
-        } = self;
-        Report {
-            inner,
-            metadata: metadata.replace_severity(severity),
-            options,
-            #[cfg(feature = "trace")]
-            trace,
-            bag,
-        }
-    }
-
-    /// Sets the severity to a new value (alias for `replace_severity`).
+    /// Sets the severity to a new value.
     ///
     /// This method is provided for API consistency, allowing `set_severity`
     /// to be called on both `MissingSeverity` and `HasSeverity` typestates.
@@ -293,6 +250,21 @@ impl<E> Report<E, HasSeverity> {
     /// assert_eq!(report.severity(), Some(Severity::Error));
     /// ```
     pub fn set_severity(self, severity: Severity) -> Report<E, HasSeverity> {
-        self.replace_severity(severity)
+        let Self {
+            inner,
+            metadata,
+            options,
+            #[cfg(feature = "trace")]
+            trace,
+            bag,
+        } = self;
+        Report {
+            inner,
+            metadata: metadata.set_severity(severity),
+            options,
+            #[cfg(feature = "trace")]
+            trace,
+            bag,
+        }
     }
 }

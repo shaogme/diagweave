@@ -155,6 +155,7 @@ impl Display for ErrorCode {
 }
 
 impl ErrorCode {
+    /// Converts the error code into an owned `String`.
     pub fn into_string(self) -> String {
         match self {
             ErrorCode::Integer(i) => i.to_string(),
@@ -162,6 +163,7 @@ impl ErrorCode {
         }
     }
 
+    /// Returns the error code as a `Cow<str>`, avoiding allocation when possible.
     pub fn as_cow(&self) -> Cow<'_, str> {
         match self {
             ErrorCode::Integer(i) => i.to_string().into(),

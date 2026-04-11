@@ -603,6 +603,7 @@ impl Default for CauseCollectOptions {
 }
 
 impl CauseCollectOptions {
+    /// Creates a new `CauseCollectOptions` with default values from profile defaults.
     pub const fn new() -> Self {
         Self {
             max_depth: ProfileDefaults::max_depth(),
@@ -610,11 +611,13 @@ impl CauseCollectOptions {
         }
     }
 
+    /// Sets the maximum depth for cause chain traversal.
     pub const fn with_max_depth(mut self, max_depth: usize) -> Self {
         self.max_depth = max_depth;
         self
     }
 
+    /// Sets whether cycle detection is enabled during cause chain traversal.
     pub const fn with_detect_cycle(mut self, detect_cycle: bool) -> Self {
         self.detect_cycle = detect_cycle;
         self

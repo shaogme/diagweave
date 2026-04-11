@@ -27,6 +27,7 @@ pub use error::*;
 pub use source_error::*;
 
 mod severity_state {
+    /// A sealed trait marker for internal use only.
     pub trait Sealed {}
 }
 
@@ -202,15 +203,10 @@ impl Default for ReportMetadata<MissingSeverity> {
 }
 
 impl ReportMetadata<HasSeverity> {
-    /// Replaces the severity with a new value.
-    pub fn replace_severity(mut self, severity: Severity) -> Self {
+    /// Sets the severity to a new value.
+    pub fn set_severity(mut self, severity: Severity) -> Self {
         self.severity = HasSeverity::new(severity);
         self
-    }
-
-    /// Sets the severity to a new value (alias for `replace_severity`).
-    pub fn set_severity(self, severity: Severity) -> Self {
-        self.replace_severity(severity)
     }
 }
 

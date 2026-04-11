@@ -586,7 +586,7 @@ where
     pub fn with_diag_src_err(mut self, err: impl Error + Send + Sync + 'static) -> Self {
         let existing = self
             .diagnostics_mut()
-            .diagnostic_source_errors_mut()
+            .diag_src_errors_mut()
             .get_or_insert_with(SourceErrorChain::default);
         append_source_chain(existing, SourceErrorChain::from_error(err));
         self
@@ -597,8 +597,7 @@ where
     /// This method completely replaces any existing diagnostic source
     /// errors with the provided chain.
     pub fn set_diag_src_errs(mut self, source_errors: SourceErrorChain) -> Self {
-        self.diagnostics_mut()
-            .set_diagnostic_source_errors(source_errors);
+        self.diagnostics_mut().set_diag_src_errors(source_errors);
         self
     }
 

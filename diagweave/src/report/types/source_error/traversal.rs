@@ -1,6 +1,5 @@
 use super::util::{error_addr, is_report_wrapper_type};
 use super::*;
-use alloc::borrow::ToOwned;
 
 #[derive(Default)]
 struct PathSeenErrorAddrs {
@@ -70,27 +69,6 @@ impl WalkerCore {
     }
 }
 
-trait SourceArenaChain: Sized {
-    type Item;
-
-    fn roots(&self) -> &[SourceNodeId];
-    fn node(&self, id: SourceNodeId) -> Option<&Self::Item>;
-    fn error_ref(item: &Self::Item) -> &(dyn Error + Send + Sync + 'static);
-    fn type_name_for_entry_raw(item: &Self::Item) -> Option<&str>;
-    fn display_type_name_for_entry(
-        item: &Self::Item,
-        hide_report_wrapper_types: bool,
-    ) -> Option<&str> {
-        let type_name = Self::type_name_for_entry_raw(item)?;
-        if hide_report_wrapper_types && is_report_wrapper_type(type_name) {
-            None
-        } else {
-            Some(type_name)
-        }
-    }
-    fn source_roots(item: &Self::Item) -> &[SourceNodeId];
-}
-
 struct ChainFrame<'a> {
     ids: &'a [SourceNodeId],
     index: usize,
@@ -107,34 +85,29 @@ impl<'a> ChainFrame<'a> {
     }
 }
 
-enum SourceErrorVisit<'a, C>
-where
-    C: SourceArenaChain,
-{
+enum SourceErrorVisit<'a> {
     Error {
         error: &'a (dyn Error + 'static),
         depth: usize,
     },
     Item {
-        item: &'a C::Item,
+        item: &'a SourceErrorItem,
         depth: usize,
     },
 }
 
-struct ChainWalker<'a, C>
-where
-    C: SourceArenaChain,
-{
-    chain: &'a C,
+struct ChainWalker<'a> {
+    chain: &'a SourceErrorChain,
     stack: Vec<ChainFrame<'a>>,
     core: WalkerCore,
 }
 
-impl<'a, C> ChainWalker<'a, C>
-where
-    C: SourceArenaChain,
-{
-    fn from_roots(chain: &'a C, roots: &'a [SourceNodeId], options: CauseCollectOptions) -> Self {
+impl<'a> ChainWalker<'a> {
+    fn from_roots(
+        chain: &'a SourceErrorChain,
+        roots: &'a [SourceNodeId],
+        options: CauseCollectOptions,
+    ) -> Self {
         let mut stack = Vec::with_capacity(roots.len().min(options.max_depth));
         if !roots.is_empty() {
             stack.push(ChainFrame::new(roots, 0));
@@ -150,7 +123,7 @@ where
         self.core.state()
     }
 
-    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
+    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a>> {
         loop {
             let options = self.core.options();
             let (item, depth, source_ids) = {
@@ -167,18 +140,18 @@ where
                 };
                 frame.index += 1;
 
-                let Some(item) = self.chain.node(node_id) else {
+                let Some(item) = self.chain.nodes.get(node_id) else {
                     continue;
                 };
 
                 if !self
                     .core
-                    .allow_cycle(frame.depth, error_addr(C::error_ref(item)))
+                    .allow_cycle(frame.depth, error_addr(item.error.as_ref()))
                 {
                     continue;
                 }
 
-                (item, frame.depth, C::source_roots(item))
+                (item, frame.depth, &item.source_roots)
             };
 
             if !source_ids.is_empty() {
@@ -213,10 +186,7 @@ impl<'a> ErrorWalker<'a> {
         self.core.state()
     }
 
-    fn next_visit<C>(&mut self) -> Option<SourceErrorVisit<'a, C>>
-    where
-        C: SourceArenaChain,
-    {
+    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a>> {
         if !self.core.allow_depth(self.depth) {
             self.current = None;
             return None;
@@ -239,22 +209,16 @@ impl<'a> ErrorWalker<'a> {
     }
 }
 
-struct ReportSourceErrorTraversalImpl<'a, C>
-where
-    C: SourceArenaChain,
-{
-    chain_walk: Option<ChainWalker<'a, C>>,
+struct ReportSourceErrorTraversalImpl<'a> {
+    chain_walk: Option<ChainWalker<'a>>,
     error_walk: Option<ErrorWalker<'a>>,
     hide_report_wrapper_types: bool,
     finished_state: CauseTraversalState,
 }
 
-impl<'a, C> ReportSourceErrorTraversalImpl<'a, C>
-where
-    C: SourceArenaChain,
-{
+impl<'a> ReportSourceErrorTraversalImpl<'a> {
     fn with_walkers(
-        chain_walk: Option<ChainWalker<'a, C>>,
+        chain_walk: Option<ChainWalker<'a>>,
         error_walk: Option<ErrorWalker<'a>>,
         hide_report_wrapper_types: bool,
     ) -> Self {
@@ -270,13 +234,13 @@ where
         self.finished_state
     }
 
-    fn next_entry(&mut self) -> Option<SourceErrorEntry> {
+    fn next_entry(&mut self) -> Option<SourceErrorEntry<'a>> {
         let hide_report_wrapper_types = self.hide_report_wrapper_types;
         self.next_visit()
-            .map(|visit| SourceErrorEntry::from_visit::<C>(visit, hide_report_wrapper_types))
+            .map(|visit| SourceErrorEntry::from_visit(visit, hide_report_wrapper_types))
     }
 
-    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a, C>> {
+    fn next_visit(&mut self) -> Option<SourceErrorVisit<'a>> {
         if let Some(chain_walk) = self.chain_walk.as_mut() {
             if let Some(visit) = chain_walk.next_visit() {
                 self.finished_state.merge_from(chain_walk.state());
@@ -287,7 +251,7 @@ where
         }
 
         if let Some(error_walk) = self.error_walk.as_mut() {
-            if let Some(visit) = error_walk.next_visit::<C>() {
+            if let Some(visit) = error_walk.next_visit() {
                 self.finished_state.merge_from(error_walk.state());
                 return Some(visit);
             }
@@ -299,17 +263,14 @@ where
     }
 }
 
-fn traversal_from_chain<'a, C>(
-    source_errors: Option<&'a C>,
+fn traversal_from_chain<'a>(
+    source_errors: Option<&'a SourceErrorChain>,
     inner_source: Option<&'a (dyn Error + 'static)>,
     options: CauseCollectOptions,
     hide_report_wrapper_types: bool,
-) -> ReportSourceErrorTraversalImpl<'a, C>
-where
-    C: SourceArenaChain,
-{
+) -> ReportSourceErrorTraversalImpl<'a> {
     let chain_walk =
-        source_errors.map(|chain| ChainWalker::from_roots(chain, chain.roots(), options));
+        source_errors.map(|chain| ChainWalker::from_roots(chain, &chain.roots, options));
     let error_walk = if inner_source.is_some() {
         Some(ErrorWalker::new(inner_source, options))
     } else {
@@ -340,11 +301,7 @@ impl ReportSourceTraversalStrategy {
         }
     }
 
-    fn include_inner_source(self) -> bool {
-        matches!(self, Self::Origin)
-    }
-
-    fn hide_report_wrapper_types(self) -> bool {
+    fn is_origin(self) -> bool {
         matches!(self, Self::Origin)
     }
 }
@@ -353,29 +310,24 @@ fn traversal_from_report<'a, E, State>(
     report: &'a crate::report::Report<E, State>,
     options: CauseCollectOptions,
     strategy: ReportSourceTraversalStrategy,
-) -> ReportSourceErrorTraversalImpl<'a, SourceErrorChain>
+) -> ReportSourceErrorTraversalImpl<'a>
 where
     E: Error + 'static,
     State: crate::report::SeverityState,
 {
     let source_errors = strategy.source_errors(report);
-    let inner_source = if strategy.include_inner_source() {
+    let inner_source = if strategy.is_origin() {
         report.inner().source()
     } else {
         None
     };
 
-    traversal_from_chain::<SourceErrorChain>(
-        source_errors,
-        inner_source,
-        options,
-        strategy.hide_report_wrapper_types(),
-    )
+    traversal_from_chain(source_errors, inner_source, options, strategy.is_origin())
 }
 
 /// Iterator over source errors in a report.
 pub struct ReportSourceErrorIter<'a> {
-    walk: ReportSourceErrorTraversalImpl<'a, SourceErrorChain>,
+    walk: ReportSourceErrorTraversalImpl<'a>,
 }
 
 impl<'a> ReportSourceErrorIter<'a> {
@@ -412,30 +364,24 @@ impl<'a> ReportSourceErrorIter<'a> {
 }
 
 impl<'a> Iterator for ReportSourceErrorIter<'a> {
-    type Item = SourceErrorEntry;
+    type Item = SourceErrorEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.walk.next_entry()
     }
 }
 
-struct SourceErrorChainTraversal<'a, C>
-where
-    C: SourceArenaChain,
-{
-    walk: ChainWalker<'a, C>,
+struct SourceErrorChainTraversal<'a> {
+    walk: ChainWalker<'a>,
     hide_report_wrapper_types: bool,
 }
 
-impl<'a, C> SourceErrorChainTraversal<'a, C>
-where
-    C: SourceArenaChain,
-{
-    fn from_chain(chain: &'a C, hide_report_wrapper_types: bool) -> Self {
+impl<'a> SourceErrorChainTraversal<'a> {
+    fn from_chain(chain: &'a SourceErrorChain, hide_report_wrapper_types: bool) -> Self {
         Self {
             walk: ChainWalker::from_roots(
                 chain,
-                chain.roots(),
+                &chain.roots,
                 CauseCollectOptions {
                     max_depth: usize::MAX,
                     detect_cycle: true,
@@ -445,35 +391,37 @@ where
         }
     }
 
-    fn next_entry(&mut self) -> Option<SourceErrorEntry> {
+    fn next_entry(&mut self) -> Option<SourceErrorEntry<'a>> {
         let hide_report_wrapper_types = self.hide_report_wrapper_types;
         self.walk
             .next_visit()
-            .map(|visit| SourceErrorEntry::from_visit::<C>(visit, hide_report_wrapper_types))
+            .map(|visit| SourceErrorEntry::from_visit(visit, hide_report_wrapper_types))
     }
 }
 
-impl SourceErrorEntry {
-    fn from_visit<C>(visit: SourceErrorVisit<'_, C>, hide_report_wrapper_types: bool) -> Self
-    where
-        C: SourceArenaChain,
-    {
+impl<'a> SourceErrorEntry<'a> {
+    fn from_visit(visit: SourceErrorVisit<'a>, hide_report_wrapper_types: bool) -> Self {
         match visit {
             SourceErrorVisit::Error { error, depth } => Self {
-                message: error.to_string(),
+                error,
                 type_name: None,
                 display_type_name: None,
                 depth,
             },
             SourceErrorVisit::Item { item, depth } => {
-                let raw_type_name = C::type_name_for_entry_raw(item);
-                let display_type_name =
-                    C::display_type_name_for_entry(item, hide_report_wrapper_types);
+                let raw_type_name = item.type_name.as_ref();
+                let display_type_name = if hide_report_wrapper_types
+                    && raw_type_name.is_some_and(|t| is_report_wrapper_type(t))
+                {
+                    None
+                } else {
+                    raw_type_name
+                };
 
                 Self {
-                    message: C::error_ref(item).to_string(),
-                    type_name: raw_type_name.map(ToOwned::to_owned),
-                    display_type_name: display_type_name.map(ToOwned::to_owned),
+                    error: item.error.as_ref(),
+                    type_name: raw_type_name,
+                    display_type_name: display_type_name,
                     depth,
                 }
             }
@@ -481,33 +429,9 @@ impl SourceErrorEntry {
     }
 }
 
-impl SourceArenaChain for SourceErrorChain {
-    type Item = SourceErrorItem;
-
-    fn roots(&self) -> &[SourceNodeId] {
-        &self.roots
-    }
-
-    fn node(&self, id: SourceNodeId) -> Option<&Self::Item> {
-        self.nodes.get(id)
-    }
-
-    fn error_ref(item: &Self::Item) -> &(dyn Error + Send + Sync + 'static) {
-        item.error.as_ref()
-    }
-
-    fn type_name_for_entry_raw(item: &Self::Item) -> Option<&str> {
-        item.type_name.as_deref()
-    }
-
-    fn source_roots(item: &Self::Item) -> &[SourceNodeId] {
-        &item.source_roots
-    }
-}
-
 /// Iterator over flattened entries in a source-error chain.
 pub struct SourceErrorChainEntries<'a> {
-    walk: SourceErrorChainTraversal<'a, SourceErrorChain>,
+    walk: SourceErrorChainTraversal<'a>,
 }
 
 impl<'a> SourceErrorChainEntries<'a> {
@@ -519,7 +443,7 @@ impl<'a> SourceErrorChainEntries<'a> {
 }
 
 impl<'a> Iterator for SourceErrorChainEntries<'a> {
-    type Item = SourceErrorEntry;
+    type Item = SourceErrorEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.walk.next_entry()

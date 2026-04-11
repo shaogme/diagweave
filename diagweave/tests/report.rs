@@ -471,14 +471,14 @@ fn public_cause_visit_apis_are_accessible() {
     let mut origin_source = Vec::new();
     let origin_source_state = report
         .visit_origin_sources(|err| {
-            origin_source.push(err.message);
+            origin_source.push(err.error.to_string());
             Ok(())
         })
         .expect("origin source errors");
     let mut diagnostic_source = Vec::new();
     let diagnostic_source_state = report
         .visit_diag_sources(|err| {
-            diagnostic_source.push(err.message);
+            diagnostic_source.push(err.error.to_string());
             Ok(())
         })
         .expect("diagnostic source errors");
@@ -508,7 +508,7 @@ fn public_cause_visit_apis_are_accessible() {
         max_depth: 4,
         detect_cycle: true,
     });
-    let collected: Vec<String> = iter.by_ref().map(|err| err.message).collect();
+    let collected: Vec<String> = iter.by_ref().map(|err| err.error.to_string()).collect();
     let iter_state = iter.state();
     assert_eq!(collected, vec!["api unauthorized".to_owned()]);
     assert!(!iter_state.truncated);
@@ -524,7 +524,7 @@ fn source_iteration_can_disable_cycle_detection() {
         max_depth: 4,
         detect_cycle: false,
     });
-    let collected: Vec<String> = iter.by_ref().map(|err| err.message).collect();
+    let collected: Vec<String> = iter.by_ref().map(|err| err.error.to_string()).collect();
     let iter_state = iter.state();
 
     assert_eq!(
@@ -581,7 +581,7 @@ fn wrap_keeps_explicit_source_chain_isolated_from_inner_source() {
             max_depth: 8,
             detect_cycle: true,
         })
-        .map(|entry| entry.message)
+        .map(|entry| entry.error.to_string())
         .collect();
 
     assert!(!messages.iter().any(|message| message == "api unauthorized"));
@@ -600,7 +600,7 @@ fn source_iteration_keeps_top_level_siblings_at_same_depth() {
             max_depth: 4,
             detect_cycle: true,
         })
-        .map(|err| (err.message, err.depth))
+        .map(|err| (err.error.to_string(), err.depth))
         .collect();
 
     assert_eq!(
@@ -626,7 +626,7 @@ fn source_iteration_keeps_siblings_after_truncation() {
             max_depth: 1,
             detect_cycle: true,
         })
-        .map(|err| err.message)
+        .map(|err| err.error.to_string())
         .collect();
 
     assert!(collected.iter().any(|message| message == "network down"));
@@ -654,7 +654,10 @@ fn source_errors_iterator_only_uses_attached_chain() {
     static NATURAL_SOURCE: NaturalSourceError = NaturalSourceError;
 
     let report = Report::new(NaturalSourceError).with_diag_src_err(AuthError::InvalidToken);
-    let collected: Vec<String> = report.diag_source_errors().map(|err| err.message).collect();
+    let collected: Vec<String> = report
+        .diag_source_errors()
+        .map(|err| err.error.to_string())
+        .collect();
 
     assert_eq!(collected, vec!["auth invalid token".to_owned()]);
 }

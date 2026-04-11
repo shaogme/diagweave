@@ -588,7 +588,7 @@ fn render_source_error_chain(
         if show_type_name {
             let type_name = item.display_type_name(hide_report_wrapper_types);
             write_depth_indent(f, indent, current_depth)?;
-            writeln!(f, "- type: {}", type_name.unwrap_or("null"))?;
+            writeln!(f, "- type: {}", type_name.unwrap_or("null".into()))?;
         }
         let source_ids = item.source_roots.as_slice();
         if !source_ids.is_empty() {

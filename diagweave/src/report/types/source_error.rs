@@ -16,11 +16,11 @@ pub(crate) use util::{append_source_chain, build_origin_source_chain, limit_dept
 pub(crate) type SourceNodeId = usize;
 
 /// Iterator over source errors with depth/cycle control.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceErrorEntry {
-    pub message: String,
-    pub type_name: Option<String>,
-    pub display_type_name: Option<String>,
+#[derive(Debug, Clone)]
+pub struct SourceErrorEntry<'a> {
+    pub error: &'a (dyn Error + 'static),
+    pub type_name: Option<&'a StaticRefStr>,
+    pub display_type_name: Option<&'a StaticRefStr>,
     pub depth: usize,
 }
 
@@ -491,12 +491,15 @@ impl SourceErrorItem {
         }
     }
 
-    pub(crate) fn display_type_name(&self, hide_report_wrapper_types: bool) -> Option<&str> {
-        let type_name = self.type_name.as_deref()?;
-        if hide_report_wrapper_types && is_report_wrapper_type(type_name) {
+    pub(crate) fn display_type_name(
+        &self,
+        hide_report_wrapper_types: bool,
+    ) -> Option<StaticRefStr> {
+        let type_name = self.type_name.as_ref()?;
+        if hide_report_wrapper_types && is_report_wrapper_type(&type_name) {
             None
         } else {
-            Some(type_name)
+            Some(type_name.clone())
         }
     }
 }
@@ -513,7 +516,7 @@ pub struct SourceErrorChain {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExportedSourceErrorNode {
     pub message: String,
-    pub type_name: Option<String>,
+    pub type_name: Option<StaticRefStr>,
     pub source_roots: Vec<usize>,
 }
 

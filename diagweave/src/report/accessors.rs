@@ -5,7 +5,6 @@
 //! iteration over various components like attachments, causes, and source errors.
 
 use alloc::sync::Arc;
-use alloc::vec::Vec;
 use core::error::Error;
 use core::fmt::{self, Display};
 
@@ -253,14 +252,15 @@ where
     /// let outer: Report<OuterError> = inner.map_err(|_| OuterError);
     /// let sources: Vec<_> = outer.origin_source_errors().collect();
     /// ```
-    pub fn origin_source_errors(&self) -> impl Iterator<Item = SourceErrorEntry> + '_
+    pub fn origin_source_errors<'a>(&'a self) -> impl Iterator<Item = SourceErrorEntry<'a>>
     where
         E: Error + 'static,
     {
-        self.origin_src_err_view(self.options().as_cause_options())
-            .map(|chain| chain.iter_entries_origin().collect::<Vec<_>>())
-            .unwrap_or_default()
+        self.diagnostics()
+            .origin_source_errors()
+            .map(SourceErrorChain::iter_entries)
             .into_iter()
+            .flatten()
     }
 
     /// Returns source errors from the diagnostic chain associated with the report.
@@ -286,7 +286,7 @@ where
     ///     .with_diag_src_err(RelatedError);
     /// let sources: Vec<_> = report.diag_source_errors().collect();
     /// ```
-    pub fn diag_source_errors(&self) -> impl Iterator<Item = SourceErrorEntry> + '_
+    pub fn diag_source_errors<'a>(&'a self) -> impl Iterator<Item = SourceErrorEntry<'a>>
     where
         E: Error + 'static,
     {
@@ -575,7 +575,7 @@ where
     /// let outer: Report<OuterError> = inner.map_err(|_| OuterError);
     ///
     /// let state = outer.visit_origin_sources(|entry| {
-    ///     println!("Source: {}", entry.message);
+    ///     println!("Source: {}", entry.error);
     ///     Ok(())
     /// }).unwrap();
     /// ```
@@ -681,7 +681,7 @@ where
     /// let inner = Report::new(InnerError);
     /// let outer: Report<OuterError> = inner.map_err(|_| OuterError);
     /// for entry in outer.iter_origin_sources() {
-    ///     println!("Source: {}", entry.message);
+    ///     println!("Source: {}", entry.error);
     /// }
     /// ```
     pub fn iter_origin_sources(&self) -> ReportSourceErrorIter<'_>
@@ -713,7 +713,7 @@ where
     /// let report = Report::new(MainError)
     ///     .with_diag_src_err(RelatedError);
     /// for entry in report.iter_diag_sources() {
-    ///     println!("Related: {}", entry.message);
+    ///     println!("Related: {}", entry.error);
     /// }
     /// ```
     pub fn iter_diag_sources(&self) -> ReportSourceErrorIter<'_>

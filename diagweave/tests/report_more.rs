@@ -47,7 +47,7 @@ fn source_errors_iterator_preserves_long_attached_chain() {
 
     let collected: Vec<(String, usize)> = report
         .diag_source_errors()
-        .map(|err| (err.message, err.depth))
+        .map(|err| (err.error.to_string(), err.depth))
         .collect();
 
     assert_eq!(collected.len(), 20);
@@ -76,7 +76,7 @@ fn wrap_preserves_deep_source_chains() {
         max_depth: 32,
         detect_cycle: true,
     });
-    let collected: Vec<String> = iter.by_ref().map(|err| err.message).collect();
+    let collected: Vec<String> = iter.by_ref().map(|err| err.error.to_string()).collect();
     let iter_state = iter.state();
 
     assert!(collected.len() > 16);

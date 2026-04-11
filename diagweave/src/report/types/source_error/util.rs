@@ -6,7 +6,7 @@ pub(super) fn error_addr(error: &dyn Error) -> ErrorIdentity {
     ErrorIdentity::from_error(error)
 }
 
-pub(super) fn is_report_wrapper_type(type_name: &str) -> bool {
+pub(super) fn is_report_wrapper_type(type_name: &StaticRefStr) -> bool {
     let report_prefix = core::any::type_name::<crate::report::Report<()>>();
     let report_prefix = report_prefix
         .split_once('<')
@@ -397,9 +397,7 @@ impl SourceErrorChain {
                 let item = &self.nodes[id];
                 ExportedSourceErrorNode {
                     message: item.error.to_string(),
-                    type_name: item
-                        .display_type_name(hide_report_wrapper_types)
-                        .map(ToOwned::to_owned),
+                    type_name: item.display_type_name(hide_report_wrapper_types),
                     source_roots: item
                         .source_roots
                         .iter()
@@ -475,11 +473,6 @@ impl SourceErrorChain {
     pub fn iter_entries(&self) -> SourceErrorChainEntries<'_> {
         SourceErrorChainEntries::new(self, false)
     }
-
-    pub(crate) fn iter_entries_origin(&self) -> SourceErrorChainEntries<'_> {
-        SourceErrorChainEntries::new(self, true)
-    }
-
     /// Returns an iterator over root-level source error items.
     pub fn iter(&self) -> SourceErrorItemIter<'_> {
         SourceErrorItemIter {
@@ -604,7 +597,7 @@ impl serde::Serialize for DisplayCauseChain {
 struct SourceArenaNodeSerde {
     message: String,
     #[serde(rename = "type")]
-    type_name: Option<String>,
+    type_name: Option<StaticRefStr>,
     source_roots: Vec<usize>,
 }
 

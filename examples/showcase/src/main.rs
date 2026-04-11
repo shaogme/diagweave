@@ -313,7 +313,7 @@ where
         let mut idx = 0usize;
         let _ = report.visit_origin_sources(|source| {
             idx += 1;
-            println!("  {}. {}", idx, source.message);
+            println!("  {}. {}", idx, source.error);
             Ok(())
         });
         let mut source_count = 0usize;
@@ -336,7 +336,7 @@ where
         let mut idx = 0usize;
         let _ = report.visit_diag_sources(|source| {
             idx += 1;
-            println!("  {}. {}", idx, source.message);
+            println!("  {}. {}", idx, source.error);
             Ok(())
         });
         let mut source_count = 0usize;

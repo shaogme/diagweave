@@ -538,21 +538,29 @@ fn write_stack_trace_object(
         };
         write_json_string(f, label)
     })?;
-    write_object_field(f, pretty, depth, &mut first, "frames", |f| {
-        let mut array_first = true;
-        f.write_char('[')?;
-        for (_, frame) in filtered_frames(&stack_trace.frames, &options.stack_trace_filter)
-            .take(options.stack_trace_max_lines)
-        {
-            write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
-            write_stack_frame_object(f, pretty, depth + 2, frame)?;
+    match stack_trace.format {
+        crate::report::StackTraceFormat::Native => {
+            // Native format: output frames, no raw
+            write_object_field(f, pretty, depth, &mut first, "frames", |f| {
+                let mut array_first = true;
+                f.write_char('[')?;
+                for (_, frame) in filtered_frames(&stack_trace.frames, &options.stack_trace_filter)
+                    .take(options.stack_trace_max_lines)
+                {
+                    write_array_item_prefix(f, pretty, depth + 1, &mut array_first)?;
+                    write_stack_frame_object(f, pretty, depth + 2, frame)?;
+                }
+                close_array(f, pretty, depth + 1, array_first)
+            })?;
         }
-        close_array(f, pretty, depth + 1, array_first)
-    })?;
-    if let Some(raw) = stack_trace.raw.as_ref() {
-        write_object_field(f, pretty, depth, &mut first, "raw", |f| {
-            write_json_string(f, raw)
-        })?;
+        crate::report::StackTraceFormat::Raw => {
+            // Raw format: output raw, no frames
+            if let Some(raw) = stack_trace.raw.as_ref() {
+                write_object_field(f, pretty, depth, &mut first, "raw", |f| {
+                    write_json_string(f, raw)
+                })?;
+            }
+        }
     }
     close_object(f, pretty, depth, first)
 }

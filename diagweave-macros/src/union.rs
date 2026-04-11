@@ -206,11 +206,11 @@ impl<'a> ExpandContext<'a> {
         self.display_arms.push(quote! {
             #enum_name::#variant_ident(inner) => write!(f, "{}", inner)
         });
+        // External type variants should NOT return the inner type as source.
+        // This is because they are created via From conversion, not by wrapping
+        // a source error. The origin_source_errors is already populated by map_err.
         self.source_arms.push(quote! {
-            #enum_name::#variant_ident(inner) => {
-                let src: &(dyn ::core::error::Error + 'static) = inner;
-                ::core::option::Option::Some(src)
-            }
+            #enum_name::#variant_ident(..) => ::core::option::Option::None
         });
         self.constructor_variants
             .push(syn::parse_quote!(#variant_ident(#ty)));

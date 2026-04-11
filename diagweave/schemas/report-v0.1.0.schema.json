@@ -27,17 +27,29 @@
       }
     },
     "stack_trace": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["format", "frames"],
-      "properties": {
-        "format": { "$ref": "#/$defs/stack_trace_format" },
-        "frames": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/stack_frame" }
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "frames"],
+          "properties": {
+            "format": { "const": "native" },
+            "frames": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/stack_frame" }
+            }
+          }
         },
-        "raw": { "type": "string" }
-      }
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "raw"],
+          "properties": {
+            "format": { "const": "raw" },
+            "raw": { "type": "string" }
+          }
+        }
+      ]
     },
     "display_cause_chain": {
       "type": "object",

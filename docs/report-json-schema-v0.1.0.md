@@ -20,13 +20,48 @@ This document defines the machine-consumable JSON contract emitted by `diagweave
 
 ## StackTrace model
 
-- `diagnostic_bag.stack_trace.format: "native"|"raw"`
+The `stack_trace` object uses a discriminated union based on the `format` field:
+
+### Native format
+
+When `format: "native"`:
+- `diagnostic_bag.stack_trace.format: "native"` (required)
+- `diagnostic_bag.stack_trace.frames: array` (required)
 - `diagnostic_bag.stack_trace.frames[*].symbol: string|null`
 - `diagnostic_bag.stack_trace.frames[*].module_path: string|null`
 - `diagnostic_bag.stack_trace.frames[*].file: string|null`
 - `diagnostic_bag.stack_trace.frames[*].line: integer|null`
 - `diagnostic_bag.stack_trace.frames[*].column: integer|null`
-- `diagnostic_bag.stack_trace.raw: string|null`
+
+### Raw format
+
+When `format: "raw"`:
+- `diagnostic_bag.stack_trace.format: "raw"` (required)
+- `diagnostic_bag.stack_trace.raw: string` (required)
+
+### Example (native format)
+
+```json
+{
+  "stack_trace": {
+    "format": "native",
+    "frames": [
+      { "symbol": "main::inner", "file": "src/main.rs", "line": 42 }
+    ]
+  }
+}
+```
+
+### Example (raw format)
+
+```json
+{
+  "stack_trace": {
+    "format": "raw",
+    "raw": "0: std::backtrace_rs::backtrace::win64::trace\n1: ..."
+  }
+}
+```
 
 ## DisplayCauseChain model
 

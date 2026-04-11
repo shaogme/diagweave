@@ -40,15 +40,6 @@ pub struct TraceEventAttribute {
     pub value: AttachmentValue,
 }
 
-impl Default for TraceEventAttribute {
-    fn default() -> Self {
-        Self {
-            key: "".into(),
-            value: AttachmentValue::Null,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 /// A single event emitted within a trace.
 pub struct TraceEvent {

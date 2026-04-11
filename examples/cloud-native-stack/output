@@ -1,0 +1,1237 @@
+diagweave report json schema version = v0.1.0
+
+--- api:bad_request: Compact (Human) ---
+bad request: missing auth header
+--- api:bad_request: Pretty (Human) ---
+Error:
+  - message: bad request: missing auth header
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - severity: warn
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - request_id: req-20260327-0001
+  - route: /v1/order
+Attachments:
+  - note: gateway rejected request
+
+
+--- api:bad_request: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "bad request: missing auth header",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "severity": "warn"
+  },
+  "diagnostic_bag": {},
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": []
+  },
+  "context": {
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    },
+    "route": {
+      "kind": "string",
+      "value": "/v1/order"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "gateway rejected request"
+    }
+  ]
+}
+--- api:bad_request: OTel Envelope ---
+records_count=1
+severity_text=Some("warn")
+severity_number=Some(13)
+attributes_count=8
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=0
+origin_source_errors_count=0
+diagnostic_source_errors_count=0
+
+--- api:payment_declined: Compact (Human) ---
+payment declined by provider
+--- api:payment_declined: Pretty (Human) ---
+Error:
+  - message: payment declined by provider
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - error_code: PAYMENT.DECLINED
+  - severity: warn
+  - category: payment
+  - retryable: false
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - event[0]: payment.provider.decline (level: warn)
+    - timestamp: 1713337001000000000
+    - attributes:
+      - payment.amount_cents: 0
+      - payment.provider: mockpay
+  - event[1]: gateway.forward.payment (level: warn)
+    - timestamp: 1713337006000000000
+    - attributes:
+      - http.route: /v1/charge
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - payment_stage: charge
+  - request_id: req-20260327-0001
+  - route: /v1/charge
+Attachments:
+  - note: payment provider declined
+  - payload provider_reply (application/json): {decision: declined, decline_code: insufficient_funds, provider: mockpay}
+  - note: gateway forwarding to payment
+Display Causes:
+  1. risk policy rejected the transaction
+Origin Source Errors:
+  - message: payment declined by provider
+  - type: cloud_native_stack::payment::PaymentError
+Diagnostic Source Errors:
+  - message: issuer hard decline
+  - type: std::io::error::Error
+
+
+--- api:payment_declined: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "payment declined by provider",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "error_code": "PAYMENT.DECLINED",
+    "severity": "warn",
+    "category": "payment",
+    "retryable": false
+  },
+  "diagnostic_bag": {
+    "display_causes": {
+      "items": [
+        "risk policy rejected the transaction"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "payment declined by provider",
+          "type": "cloud_native_stack::payment::PaymentError",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "diagnostic_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "issuer hard decline",
+          "type": "std::io::error::Error",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": [
+      {
+        "name": "payment.provider.decline",
+        "level": "warn",
+        "timestamp_unix_nano": 1713337001000000000,
+        "attributes": [
+          {
+            "key": "payment.amount_cents",
+            "value": {
+              "kind": "unsigned",
+              "value": 0
+            }
+          },
+          {
+            "key": "payment.provider",
+            "value": {
+              "kind": "string",
+              "value": "mockpay"
+            }
+          }
+        ]
+      },
+      {
+        "name": "gateway.forward.payment",
+        "level": "warn",
+        "timestamp_unix_nano": 1713337006000000000,
+        "attributes": [
+          {
+            "key": "http.route",
+            "value": {
+              "kind": "string",
+              "value": "/v1/charge"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "payment_stage": {
+      "kind": "string",
+      "value": "charge"
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    },
+    "route": {
+      "kind": "string",
+      "value": "/v1/charge"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "payment provider declined"
+    },
+    {
+      "kind": "payload",
+      "name": "provider_reply",
+      "value": {
+        "kind": "object",
+        "value": {
+          "decision": {
+            "kind": "string",
+            "value": "declined"
+          },
+          "decline_code": {
+            "kind": "string",
+            "value": "insufficient_funds"
+          },
+          "provider": {
+            "kind": "string",
+            "value": "mockpay"
+          }
+        }
+      },
+      "media_type": "application/json"
+    },
+    {
+      "kind": "note",
+      "message": "gateway forwarding to payment"
+    }
+  ]
+}
+--- api:payment_declined: OTel Envelope ---
+records_count=3
+severity_text=Some("warn")
+severity_number=Some(13)
+attributes_count=18
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=1
+origin_source_errors_count=1
+diagnostic_source_errors_count=1
+
+--- api:order_network_error: Compact (Human) ---
+payment failed for order 9002
+--- api:order_network_error: Pretty (Human) ---
+Error:
+  - message: payment failed for order 9002
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - error_code: PAYMENT.NETWORK
+  - severity: error
+  - category: payment
+  - retryable: true
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - event[0]: payment.provider.io_error (level: error)
+    - timestamp: 1713337003000000000
+    - attributes:
+      - payment.amount_cents: 2
+      - error.kind: connection refused
+  - event[1]: order.payment (level: error)
+    - timestamp: 1713337005000000000
+    - attributes:
+      - order.id: 9002
+      - order.amount_cents: 2
+  - event[2]: gateway.forward.order (level: error)
+    - timestamp: 1713337007000000000
+    - attributes:
+      - http.route: /v1/order
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - order_amount_cents: 2
+  - order_id: 9002
+  - payment_stage: charge
+  - request_id: req-20260327-0001
+  - route: /v1/order
+Attachments:
+  - note: payment provider network error
+  - payload provider_reply (application/json): {decision: network_error, io_kind: connection refused, provider: mockpay}
+  - note: order pipeline entered payment stage
+  - note: gateway forwarding to order service
+Display Causes:
+  1. tcp dial to provider failed
+  2. order payment stage failed
+  3. order service call failed
+Origin Source Errors:
+  - message: payment failed for order 9002
+  - type: cloud_native_stack::order::OrderError
+    - source:
+    - message: payment provider refused connection
+    - type: cloud_native_stack::payment::PaymentError
+Diagnostic Source Errors:
+  - message: payment provider refused connection
+  - type: std::io::error::Error
+
+
+--- api:order_network_error: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "payment failed for order 9002",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "error_code": "PAYMENT.NETWORK",
+    "severity": "error",
+    "category": "payment",
+    "retryable": true
+  },
+  "diagnostic_bag": {
+    "display_causes": {
+      "items": [
+        "tcp dial to provider failed",
+        "order payment stage failed",
+        "order service call failed"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "payment failed for order 9002",
+          "type": "cloud_native_stack::order::OrderError",
+          "source_roots": [
+            1
+          ]
+        },
+        {
+          "message": "payment provider refused connection",
+          "type": "cloud_native_stack::payment::PaymentError",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "diagnostic_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "payment provider refused connection",
+          "type": "std::io::error::Error",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": [
+      {
+        "name": "payment.provider.io_error",
+        "level": "error",
+        "timestamp_unix_nano": 1713337003000000000,
+        "attributes": [
+          {
+            "key": "payment.amount_cents",
+            "value": {
+              "kind": "unsigned",
+              "value": 2
+            }
+          },
+          {
+            "key": "error.kind",
+            "value": {
+              "kind": "string",
+              "value": "connection refused"
+            }
+          }
+        ]
+      },
+      {
+        "name": "order.payment",
+        "level": "error",
+        "timestamp_unix_nano": 1713337005000000000,
+        "attributes": [
+          {
+            "key": "order.id",
+            "value": {
+              "kind": "unsigned",
+              "value": 9002
+            }
+          },
+          {
+            "key": "order.amount_cents",
+            "value": {
+              "kind": "unsigned",
+              "value": 2
+            }
+          }
+        ]
+      },
+      {
+        "name": "gateway.forward.order",
+        "level": "error",
+        "timestamp_unix_nano": 1713337007000000000,
+        "attributes": [
+          {
+            "key": "http.route",
+            "value": {
+              "kind": "string",
+              "value": "/v1/order"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "order_amount_cents": {
+      "kind": "unsigned",
+      "value": 2
+    },
+    "order_id": {
+      "kind": "unsigned",
+      "value": 9002
+    },
+    "payment_stage": {
+      "kind": "string",
+      "value": "charge"
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    },
+    "route": {
+      "kind": "string",
+      "value": "/v1/order"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "payment provider network error"
+    },
+    {
+      "kind": "payload",
+      "name": "provider_reply",
+      "value": {
+        "kind": "object",
+        "value": {
+          "decision": {
+            "kind": "string",
+            "value": "network_error"
+          },
+          "io_kind": {
+            "kind": "string",
+            "value": "connection refused"
+          },
+          "provider": {
+            "kind": "string",
+            "value": "mockpay"
+          }
+        }
+      },
+      "media_type": "application/json"
+    },
+    {
+      "kind": "note",
+      "message": "order pipeline entered payment stage"
+    },
+    {
+      "kind": "note",
+      "message": "gateway forwarding to order service"
+    }
+  ]
+}
+--- api:order_network_error: OTel Envelope ---
+records_count=4
+severity_text=Some("error")
+severity_number=Some(17)
+attributes_count=21
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=3
+origin_source_errors_count=2
+diagnostic_source_errors_count=1
+
+--- order:invalid: Compact (Human) ---
+order 0 is invalid
+--- order:invalid: Pretty (Human) ---
+Error:
+  - message: order 0 is invalid
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - error_code: ORDER.INVALID
+  - severity: warn
+  - category: order
+  - retryable: false
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - event[0]: order.validate (level: warn)
+    - timestamp: 1713337004000000000
+    - attributes:
+      - order.id: 0
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - order_id: 0
+  - request_id: req-20260327-0001
+Attachments:
+  - note: order validation failed
+  - payload order_validation (application/json): {order_id: 0, reason: non-zero order id required}
+Display Causes:
+  1. required fields missing
+Origin Source Errors:
+  - message: order 0 is invalid
+  - type: cloud_native_stack::order::OrderError
+
+
+--- order:invalid: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "order 0 is invalid",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "error_code": "ORDER.INVALID",
+    "severity": "warn",
+    "category": "order",
+    "retryable": false
+  },
+  "diagnostic_bag": {
+    "display_causes": {
+      "items": [
+        "required fields missing"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "order 0 is invalid",
+          "type": "cloud_native_stack::order::OrderError",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": [
+      {
+        "name": "order.validate",
+        "level": "warn",
+        "timestamp_unix_nano": 1713337004000000000,
+        "attributes": [
+          {
+            "key": "order.id",
+            "value": {
+              "kind": "unsigned",
+              "value": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "order_id": {
+      "kind": "unsigned",
+      "value": 0
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "order validation failed"
+    },
+    {
+      "kind": "payload",
+      "name": "order_validation",
+      "value": {
+        "kind": "object",
+        "value": {
+          "order_id": {
+            "kind": "integer",
+            "value": 0
+          },
+          "reason": {
+            "kind": "string",
+            "value": "non-zero order id required"
+          }
+        }
+      },
+      "media_type": "application/json"
+    }
+  ]
+}
+--- order:invalid: OTel Envelope ---
+records_count=2
+severity_text=Some("warn")
+severity_number=Some(13)
+attributes_count=15
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=1
+origin_source_errors_count=1
+diagnostic_source_errors_count=0
+
+--- payment:declined: Compact (Human) ---
+payment declined by provider
+--- payment:declined: Pretty (Human) ---
+Error:
+  - message: payment declined by provider
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - error_code: PAYMENT.DECLINED
+  - severity: warn
+  - category: payment
+  - retryable: false
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - event[0]: payment.provider.decline (level: warn)
+    - timestamp: 1713337001000000000
+    - attributes:
+      - payment.amount_cents: 0
+      - payment.provider: mockpay
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - payment_stage: charge
+  - request_id: req-20260327-0001
+Attachments:
+  - note: payment provider declined
+  - payload provider_reply (application/json): {decision: declined, decline_code: insufficient_funds, provider: mockpay}
+Display Causes:
+  1. risk policy rejected the transaction
+Origin Source Errors:
+  - message: payment declined by provider
+  - type: cloud_native_stack::payment::PaymentError
+Diagnostic Source Errors:
+  - message: issuer hard decline
+  - type: std::io::error::Error
+
+
+--- payment:declined: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "payment declined by provider",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "error_code": "PAYMENT.DECLINED",
+    "severity": "warn",
+    "category": "payment",
+    "retryable": false
+  },
+  "diagnostic_bag": {
+    "display_causes": {
+      "items": [
+        "risk policy rejected the transaction"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "payment declined by provider",
+          "type": "cloud_native_stack::payment::PaymentError",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "diagnostic_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "issuer hard decline",
+          "type": "std::io::error::Error",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": [
+      {
+        "name": "payment.provider.decline",
+        "level": "warn",
+        "timestamp_unix_nano": 1713337001000000000,
+        "attributes": [
+          {
+            "key": "payment.amount_cents",
+            "value": {
+              "kind": "unsigned",
+              "value": 0
+            }
+          },
+          {
+            "key": "payment.provider",
+            "value": {
+              "kind": "string",
+              "value": "mockpay"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "payment_stage": {
+      "kind": "string",
+      "value": "charge"
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "payment provider declined"
+    },
+    {
+      "kind": "payload",
+      "name": "provider_reply",
+      "value": {
+        "kind": "object",
+        "value": {
+          "decision": {
+            "kind": "string",
+            "value": "declined"
+          },
+          "decline_code": {
+            "kind": "string",
+            "value": "insufficient_funds"
+          },
+          "provider": {
+            "kind": "string",
+            "value": "mockpay"
+          }
+        }
+      },
+      "media_type": "application/json"
+    }
+  ]
+}
+--- payment:declined: OTel Envelope ---
+records_count=2
+severity_text=Some("warn")
+severity_number=Some(13)
+attributes_count=16
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=1
+origin_source_errors_count=1
+diagnostic_source_errors_count=1
+
+--- payment:timeout: Compact (Human) ---
+timeout after 250ms
+--- payment:timeout: Pretty (Human) ---
+Error:
+  - message: timeout after 250ms
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - error_code: PAYMENT.TIMEOUT
+  - severity: error
+  - category: payment
+  - retryable: true
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - event[0]: payment.provider.timeout (level: error)
+    - timestamp: 1713337002000000000
+    - attributes:
+      - payment.amount_cents: 1
+      - retryable: true
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - payment_stage: charge
+  - request_id: req-20260327-0001
+Attachments:
+  - note: payment provider timeout
+  - payload provider_reply (application/json): {decision: timeout, provider: mockpay, timeout_ms: 250}
+Display Causes:
+  1. upstream provider exceeded SLA
+Origin Source Errors:
+  - message: timeout after 250ms
+  - type: cloud_native_stack::payment::PaymentError
+Diagnostic Source Errors:
+  - message: provider response timeout
+  - type: std::io::error::Error
+
+
+--- payment:timeout: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "timeout after 250ms",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "error_code": "PAYMENT.TIMEOUT",
+    "severity": "error",
+    "category": "payment",
+    "retryable": true
+  },
+  "diagnostic_bag": {
+    "display_causes": {
+      "items": [
+        "upstream provider exceeded SLA"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "timeout after 250ms",
+          "type": "cloud_native_stack::payment::PaymentError",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "diagnostic_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "provider response timeout",
+          "type": "std::io::error::Error",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": [
+      {
+        "name": "payment.provider.timeout",
+        "level": "error",
+        "timestamp_unix_nano": 1713337002000000000,
+        "attributes": [
+          {
+            "key": "payment.amount_cents",
+            "value": {
+              "kind": "unsigned",
+              "value": 1
+            }
+          },
+          {
+            "key": "retryable",
+            "value": {
+              "kind": "bool",
+              "value": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "payment_stage": {
+      "kind": "string",
+      "value": "charge"
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "payment provider timeout"
+    },
+    {
+      "kind": "payload",
+      "name": "provider_reply",
+      "value": {
+        "kind": "object",
+        "value": {
+          "decision": {
+            "kind": "string",
+            "value": "timeout"
+          },
+          "provider": {
+            "kind": "string",
+            "value": "mockpay"
+          },
+          "timeout_ms": {
+            "kind": "integer",
+            "value": 250
+          }
+        }
+      },
+      "media_type": "application/json"
+    }
+  ]
+}
+--- payment:timeout: OTel Envelope ---
+records_count=2
+severity_text=Some("error")
+severity_number=Some(17)
+attributes_count=16
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=1
+origin_source_errors_count=1
+diagnostic_source_errors_count=1
+
+--- payment:network_error: Compact (Human) ---
+payment provider refused connection
+--- payment:network_error: Pretty (Human) ---
+Error:
+  - message: payment provider refused connection
+  - type: cloud_native_stack::ScenarioError
+Governance:
+  - error_code: PAYMENT.NETWORK
+  - severity: error
+  - category: payment
+  - retryable: true
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - event[0]: payment.provider.io_error (level: error)
+    - timestamp: 1713337003000000000
+    - attributes:
+      - payment.amount_cents: 2
+      - error.kind: connection refused
+System:
+  - deployment.environment: staging
+  - service.name: cloud-native-stack
+Context:
+  - payment_stage: charge
+  - request_id: req-20260327-0001
+Attachments:
+  - note: payment provider network error
+  - payload provider_reply (application/json): {decision: network_error, io_kind: connection refused, provider: mockpay}
+Display Causes:
+  1. tcp dial to provider failed
+Origin Source Errors:
+  - message: payment provider refused connection
+  - type: cloud_native_stack::payment::PaymentError
+Diagnostic Source Errors:
+  - message: payment provider refused connection
+  - type: std::io::error::Error
+
+
+--- payment:network_error: JSON (ELK) ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "payment provider refused connection",
+    "type": "cloud_native_stack::ScenarioError"
+  },
+  "metadata": {
+    "error_code": "PAYMENT.NETWORK",
+    "severity": "error",
+    "category": "payment",
+    "retryable": true
+  },
+  "diagnostic_bag": {
+    "display_causes": {
+      "items": [
+        "tcp dial to provider failed"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "payment provider refused connection",
+          "type": "cloud_native_stack::payment::PaymentError",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "diagnostic_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "payment provider refused connection",
+          "type": "std::io::error::Error",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111"
+    },
+    "events": [
+      {
+        "name": "payment.provider.io_error",
+        "level": "error",
+        "timestamp_unix_nano": 1713337003000000000,
+        "attributes": [
+          {
+            "key": "payment.amount_cents",
+            "value": {
+              "kind": "unsigned",
+              "value": 2
+            }
+          },
+          {
+            "key": "error.kind",
+            "value": {
+              "kind": "string",
+              "value": "connection refused"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "payment_stage": {
+      "kind": "string",
+      "value": "charge"
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-20260327-0001"
+    }
+  },
+  "system": {
+    "deployment.environment": {
+      "kind": "string",
+      "value": "staging"
+    },
+    "service.name": {
+      "kind": "string",
+      "value": "cloud-native-stack"
+    }
+  },
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "payment provider network error"
+    },
+    {
+      "kind": "payload",
+      "name": "provider_reply",
+      "value": {
+        "kind": "object",
+        "value": {
+          "decision": {
+            "kind": "string",
+            "value": "network_error"
+          },
+          "io_kind": {
+            "kind": "string",
+            "value": "connection refused"
+          },
+          "provider": {
+            "kind": "string",
+            "value": "mockpay"
+          }
+        }
+      },
+      "media_type": "application/json"
+    }
+  ]
+}
+--- payment:network_error: OTel Envelope ---
+records_count=2
+severity_text=Some("error")
+severity_number=Some(17)
+attributes_count=16
+trace_id=Some("4bf92f3577b34da6a3ce929d0e0e4736")
+span_id=Some("00f067aa0ba902b7")
+display_causes_count=1
+origin_source_errors_count=1
+diagnostic_source_errors_count=1
+[api:success_path] OK: OK

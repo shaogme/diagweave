@@ -250,13 +250,6 @@ fn remap_order(order: &[usize], len: usize) -> Vec<Option<usize>> {
     remap
 }
 
-fn chain_eq<C>(left: &C, right: &C) -> bool
-where
-    C: ArenaChainLike,
-{
-    normalize_chain_repr(left) == normalize_chain_repr(right)
-}
-
 pub(crate) fn append_source_chain(this: &mut SourceErrorChain, other: SourceErrorChain) {
     this.truncated |= other.truncated;
     this.cycle_detected |= other.cycle_detected;
@@ -347,7 +340,7 @@ impl core::fmt::Debug for SourceErrorChain {
 
 impl PartialEq for SourceErrorChain {
     fn eq(&self, other: &Self) -> bool {
-        chain_eq(self, other)
+        normalize_chain_repr(self) == normalize_chain_repr(other)
     }
 }
 

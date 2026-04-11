@@ -1,0 +1,337 @@
+=== Diagweave Best-Practice Showcase ===
+
+Schema version: v0.1.0
+
+Base constructor: resource user_123 not found
+Report helper constructor: session expired for user 1001 [trace_id=4bf92f3577b34da6a3ce929d0e0e4736, span_id=00f067aa0ba902b7, global_request_id=req-global-001]
+
+--- New Capabilities Showcase ---
+constructor_prefix: user 7 is locked
+constructor_prefix report: user 7 is locked [trace_id=4bf92f3577b34da6a3ce929d0e0e4736, span_id=00f067aa0ba902b7, global_request_id=req-global-001]
+Variant.to_report(): session expired for user 1001 [trace_id=4bf92f3577b34da6a3ce929d0e0e4736, span_id=00f067aa0ba902b7, global_request_id=req-global-001]
+global injector auto context: global_request_id=req-global-001
+
+--- Compact Rendering ---
+refused by peer
+
+--- Pretty Rendering ---
+Error:
+  - message: refused by peer
+  - type: showcase::ApiError
+Governance:
+  - error_code: ERR_AUTH_001
+  - severity: fatal
+  - category: auth
+  - retryable: false
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+  - parent_span_id: 1111111111111111
+  - sampled: true
+  - trace_state: service=api
+  - flags: 1
+  - event[0]: api.handler (level: error)
+    - timestamp: 1713337000000000000
+    - attributes:
+      - http.route: /v1/session
+      - component: gateway
+Stack Trace:
+  - format: Raw
+  -    0: std::backtrace_rs::backtrace::win64::trace
+  -              at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\std\src\..\..\backtrace\src\backtrace\win64.rs:85
+  -    1: std::backtrace_rs::backtrace::trace_unsynchronized
+  -              at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\std\src\..\..\backtrace\src\backtrace\mod.rs:66
+  -    2: std::backtrace::Backtrace::create
+  -              at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\std\src\backtrace.rs:331
+  -    3: std::backtrace::Backtrace::force_capture
+  -              at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\std\src\backtrace.rs:312
+  -    4: diagweave::report_impl::types::StackTrace::capture_raw
+  -              at .\diagweave\src\report\types.rs:385
+  -    5: diagweave::report_impl::Report<enum2$<showcase::DatabaseError>,diagweave::report_impl::types::MissingSeverity>::capture_stack_trace<enum2$<showcase::DatabaseError>,diagweave::report_impl::types::MissingSeverity>
+  -              at .\diagweave\src\report\builder.rs:458
+  - ... truncated stack trace output
+System:
+  - (none)
+Context:
+  - global_request_id: req-global-001
+  - request_id: req-8888
+  - user_id: 1001
+Attachments:
+  - note: failing over to secondary database
+  - payload request_meta (application/json): {retry: 3, version: v1}
+Display Causes:
+  1. db operation failed
+  2. query plan fallback selected
+Origin Source Errors:
+  - message: refused by peer
+  - type: showcase::AppError
+    - source:
+    - message: database connection lost: refused by peer
+    - type: showcase::DatabaseError
+      - source:
+      - message: refused by peer
+      - type: null
+Diagnostic Source Errors:
+  - message: replica lag detected
+  - type: std::io::error::Error
+
+
+--- JSON Rendering ---
+{
+  "schema_version": "v0.1.0",
+  "error": {
+    "message": "refused by peer",
+    "type": "showcase::ApiError"
+  },
+  "metadata": {
+    "error_code": "ERR_AUTH_001",
+    "severity": "fatal",
+    "category": "auth",
+    "retryable": false
+  },
+  "diagnostic_bag": {
+    "stack_trace": {
+      "format": "raw",
+      "raw": "   0: std::backtrace_rs::backtrace::win64::trace\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\..\\..\\backtrace\\src\\backtrace\\win64.rs:85\n   1: std::backtrace_rs::backtrace::trace_unsynchronized\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\..\\..\\backtrace\\src\\backtrace\\mod.rs:66\n   2: std::backtrace::Backtrace::create\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\backtrace.rs:331\n   3: std::backtrace::Backtrace::force_capture\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\backtrace.rs:312\n   4: diagweave::report_impl::types::StackTrace::capture_raw\n             at .\\diagweave\\src\\report\\types.rs:385\n   5: diagweave::report_impl::Report<enum2$<showcase::DatabaseError>,diagweave::report_impl::types::MissingSeverity>::capture_stack_trace<enum2$<showcase::DatabaseError>,diagweave::report_impl::types::MissingSeverity>\n             at .\\diagweave\\src\\report\\builder.rs:458\n   6: showcase::service_layer::closure$0\n             at .\\examples\\showcase\\src\\main.rs:157\n   7: enum2$<core::result::Result<tuple$<>,diagweave::report_impl::Report<enum2$<showcase::DatabaseError>,diagweave::report_impl::types::MissingSeverity> > >::map_err<tuple$<>,diagweave::report_impl::Report<enum2$<showcase::DatabaseError>,diagweave::report_impl:\n             at C:\\Users\\GlorYouth\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\core\\src\\result.rs:968\n   8: diagweave::report_impl::ext::Diagnostic::diag<enum2$<core::result::Result<tuple$<>,enum2$<showcase::DatabaseError> > >,enum2$<showcase::AppError>,diagweave::report_impl::types::MissingSeverity,showcase::service_layer::closure_env$0>\n             at .\\diagweave\\src\\report\\ext.rs:45\n   9: showcase::service_layer\n             at .\\examples\\showcase\\src\\main.rs:151\n  10: showcase::api_handler\n             at .\\examples\\showcase\\src\\main.rs:189\n  11: showcase::main\n             at .\\examples\\showcase\\src\\main.rs:489\n  12: core::ops::function::FnOnce::call_once<void (*)(),tuple$<> >\n             at C:\\Users\\GlorYouth\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\core\\src\\ops\\function.rs:250\n  13: core::hint::black_box\n             at C:\\Users\\GlorYouth\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\core\\src\\hint.rs:482\n  14: std::sys::backtrace::__rust_begin_short_backtrace<void (*)(),tuple$<> >\n             at C:\\Users\\GlorYouth\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\std\\src\\sys\\backtrace.rs:166\n  15: std::rt::lang_start::closure$0<tuple$<> >\n             at C:\\Users\\GlorYouth\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\std\\src\\rt.rs:206\n  16: std::rt::lang_start_internal::closure$0\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\rt.rs:175\n  17: std::panicking::catch_unwind::do_call\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\panicking.rs:581\n  18: std::panicking::catch_unwind\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\panicking.rs:544\n  19: std::panic::catch_unwind\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\panic.rs:359\n  20: std::rt::lang_start_internal\n             at /rustc/4a4ef493e3a1488c6e321570238084b38948f6db/library\\std\\src\\rt.rs:171\n  21: std::rt::lang_start<tuple$<> >\n             at C:\\Users\\GlorYouth\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\std\\src\\rt.rs:205\n  22: main\n  23: invoke_main\n             at D:\\a\\_work\\1\\s\\src\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl:78\n  24: __scrt_common_main_seh\n             at D:\\a\\_work\\1\\s\\src\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl:288\n  25: BaseThreadInitThunk\n  26: RtlUserThreadStart\n"
+    },
+    "display_causes": {
+      "items": [
+        "db operation failed",
+        "query plan fallback selected"
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "origin_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "refused by peer",
+          "type": "showcase::AppError",
+          "source_roots": [
+            1
+          ]
+        },
+        {
+          "message": "database connection lost: refused by peer",
+          "type": "showcase::DatabaseError",
+          "source_roots": [
+            2
+          ]
+        },
+        {
+          "message": "refused by peer",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    },
+    "diagnostic_source_errors": {
+      "roots": [
+        0
+      ],
+      "nodes": [
+        {
+          "message": "replica lag detected",
+          "type": "std::io::error::Error",
+          "source_roots": []
+        }
+      ],
+      "truncated": false,
+      "cycle_detected": false
+    }
+  },
+  "trace": {
+    "context": {
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "00f067aa0ba902b7",
+      "parent_span_id": "1111111111111111",
+      "sampled": true,
+      "trace_state": "service=api",
+      "flags": 1
+    },
+    "events": [
+      {
+        "name": "api.handler",
+        "level": "error",
+        "timestamp_unix_nano": 1713337000000000000,
+        "attributes": [
+          {
+            "key": "http.route",
+            "value": {
+              "kind": "string",
+              "value": "/v1/session"
+            }
+          },
+          {
+            "key": "component",
+            "value": {
+              "kind": "string",
+              "value": "gateway"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "context": {
+    "global_request_id": {
+      "kind": "string",
+      "value": "req-global-001"
+    },
+    "request_id": {
+      "kind": "string",
+      "value": "req-8888"
+    },
+    "user_id": {
+      "kind": "unsigned",
+      "value": 1001
+    }
+  },
+  "system": {},
+  "attachments": [
+    {
+      "kind": "note",
+      "message": "failing over to secondary database"
+    },
+    {
+      "kind": "payload",
+      "name": "request_meta",
+      "value": {
+        "kind": "object",
+        "value": {
+          "retry": {
+            "kind": "integer",
+            "value": 3
+          },
+          "version": {
+            "kind": "string",
+            "value": "v1"
+          }
+        }
+      },
+      "media_type": "application/json"
+    }
+  ]
+}
+
+JSON check: schema_version="v0.1.0", causes_present=true
+
+--- Pretty Rendering (Lean Profile) ---
+Error:
+  - message: refused by peer
+  - type: showcase::ApiError
+Context:
+  - global_request_id: req-global-001
+  - request_id: req-8888
+  - user_id: 1001
+Attachments:
+  - note: failing over to secondary database
+  - payload request_meta (application/json): {retry: 3, version: v1}
+Display Causes:
+  1. db operation failed
+  2. query plan fallback selected
+Origin Source Errors:
+  - message: refused by peer
+  - type: showcase::AppError
+    - source:
+    - message: database connection lost: refused by peer
+    - type: showcase::DatabaseError
+      - source:
+      - message: refused by peer
+      - type: null
+Diagnostic Source Errors:
+  - message: replica lag detected
+  - type: std::io::error::Error
+
+
+--- Custom Emoji Renderer ---
+🚨 ERROR: refused by peer 🚨
+
+--- Diagnostic IR (Metadata) ---
+Error Code: Some(String(StaticRefStr("ERR_AUTH_001")))
+Severity: Some(Fatal)
+Severity: Some(Fatal)
+StackTrace Present: true
+Display Causes:
+  1. db operation failed
+  2. query plan fallback selected
+  summary: count=2, truncated=false, cycle_detected=false
+Origin Source Errors:
+  1. refused by peer
+  2. database connection lost: refused by peer
+  3. refused by peer
+  summary: count=3, truncated=false, cycle_detected=false
+Diagnostic Source Errors:
+  1. replica lag detected
+  summary: count=1, truncated=false, cycle_detected=false
+
+Tracing fields count: 12
+OTel records: 2
+
+[Tracing Exporter] error=refused by peer, severity=Some(Fatal), required_severity=Fatal, context_count=3, attachment_count=2, stack_trace=true
+
+--- Unified Display Causes ---
+Report:
+Error:
+  - message: resource item_1 not found
+  - type: showcase::BaseError
+Governance:
+  - (none)
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+Stack Trace:
+  - (none)
+System:
+  - (none)
+Context:
+  - global_request_id: req-global-001
+Attachments:
+  - note: local processing delayed
+Display Causes:
+  1. cache invalidated
+  2. hardware failure
+Origin Source Errors:
+  - (none)
+Diagnostic Source Errors:
+  - (none)
+
+
+Automatic conversion sequence: Auth -> App -> Api works!
+--- Manual StackTrace API ---
+With stack trace: operation timed out after 42ms [trace_id=4bf92f3577b34da6a3ce929d0e0e4736, span_id=00f067aa0ba902b7, stack_trace=present, global_request_id=req-global-001]
+After clear: operation timed out after 42ms [trace_id=4bf92f3577b34da6a3ce929d0e0e4736, span_id=00f067aa0ba902b7, global_request_id=req-global-001]
+
+--- Context Values ---
+Error:
+  - message: operation timed out after 100ms
+  - type: showcase::BaseError
+Governance:
+  - (none)
+Trace:
+  - trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+  - span_id: 00f067aa0ba902b7
+Stack Trace:
+  - (none)
+System:
+  - (none)
+Context:
+  - byte_values: [222, 173, 190, 239]
+  - global_request_id: req-global-001
+  - score: 0.95
+  - secret: <redacted:password:masked>
+  - tags: [auth, slow, v2]
+Attachments:
+  - (none)
+Display Causes:
+  - (none)
+Origin Source Errors:
+  - (none)
+Diagnostic Source Errors:
+  - (none)
+
+

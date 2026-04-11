@@ -377,7 +377,6 @@ fn init_global_context() {
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context.insert("request_id", REQUEST_ID);
-        ctx.context.insert("span_id", SPAN_ID);
         ctx.system.insert("service.name", "cloud-native-stack");
         ctx.system.insert("deployment.environment", "staging");
         ctx.trace = Some(diagweave::report::GlobalTraceContext {

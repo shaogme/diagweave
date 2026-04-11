@@ -24,7 +24,7 @@ pub enum AttachmentValue {
     Float(f64),
     Bool(bool),
     Array(Vec<AttachmentValue>),
-    Object(FastMap<String, AttachmentValue>),
+    Object(FastMap<StaticRefStr, AttachmentValue>),
     Bytes(Vec<u8>),
     Redacted {
         kind: Option<StaticRefStr>,
@@ -186,21 +186,21 @@ where
     }
 }
 
-impl<V> From<FastMap<String, V>> for AttachmentValue
+impl<V, K: Into<StaticRefStr>> From<FastMap<K, V>> for AttachmentValue
 where
     V: Into<AttachmentValue>,
 {
-    fn from(value: FastMap<String, V>) -> Self {
-        Self::Object(value.into_iter().map(|(k, v)| (k, v.into())).collect())
+    fn from(value: FastMap<K, V>) -> Self {
+        Self::Object(value.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
     }
 }
 
-impl<V> From<BTreeMap<String, V>> for AttachmentValue
+impl<V, K: Into<StaticRefStr>> From<BTreeMap<K, V>> for AttachmentValue
 where
     V: Into<AttachmentValue>,
 {
-    fn from(value: BTreeMap<String, V>) -> Self {
-        Self::Object(value.into_iter().map(|(k, v)| (k, v.into())).collect())
+    fn from(value: BTreeMap<K, V>) -> Self {
+        Self::Object(value.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
     }
 }
 
@@ -226,7 +226,7 @@ impl From<serde_json::Value> for AttachmentValue {
             serde_json::Value::Object(obj) => {
                 let mut map = FastMap::with_capacity(obj.len());
                 for (k, v) in obj {
-                    map.insert(k, AttachmentValue::from(v));
+                    map.insert(k.into(), AttachmentValue::from(v));
                 }
                 Self::Object(map)
             }

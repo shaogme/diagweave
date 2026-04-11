@@ -297,19 +297,19 @@ pub(crate) fn build_ctx_and_attachments(
     let mut attachment_items = Vec::new();
 
     for (key, value) in context {
-        context_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
+        context_map.insert(key.clone(), AttachmentValue::from(value));
     }
     for (key, value) in system {
-        system_map.insert(key.as_ref().to_string(), AttachmentValue::from(value));
+        system_map.insert(key.clone(), AttachmentValue::from(value));
     }
 
     for attachment in attachments {
         match attachment {
             Attachment::Note { message } => {
                 let mut map = FastMap::new();
-                map.insert("kind".to_string(), AttachmentValue::String("note".into()));
+                map.insert("kind".into(), AttachmentValue::String("note".into()));
                 map.insert(
-                    "message".to_string(),
+                    "message".into(),
                     AttachmentValue::String(message.to_string().into()),
                 );
                 attachment_items.push(AttachmentValue::Object(map));
@@ -321,13 +321,13 @@ pub(crate) fn build_ctx_and_attachments(
             } => {
                 let mut map = FastMap::new();
                 map.insert(
-                    "kind".to_string(),
+                    "kind".into(),
                     AttachmentValue::String("payload".into()),
                 );
-                map.insert("name".to_string(), AttachmentValue::String(name.clone()));
-                map.insert("value".to_string(), value.clone());
+                map.insert("name".into(), AttachmentValue::String(name.clone()));
+                map.insert("value".into(), value.clone());
                 map.insert(
-                    "media_type".to_string(),
+                    "media_type".into(),
                     media_type
                         .as_ref()
                         .map(|v| AttachmentValue::String(v.clone()))
@@ -349,11 +349,11 @@ pub(crate) fn build_ctx_and_attachments(
 pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert(
-        "message".to_string(),
+        "message".into(),
         AttachmentValue::String(error.message.to_string_owned().into()),
     );
     map.insert(
-        "type".to_string(),
+        "type".into(),
         AttachmentValue::String(error.r#type.to_string().into()),
     );
     AttachmentValue::Object(map)
@@ -365,13 +365,13 @@ pub(crate) fn build_trace_value(
     error: &DiagnosticIrError<'_>,
 ) -> AttachmentValue {
     let mut trace_obj = FastMap::new();
-    trace_obj.insert("error".to_string(), build_error_value(error));
+    trace_obj.insert("error".into(), build_error_value(error));
     trace_obj.insert(
-        "context".to_string(),
+        "context".into(),
         build_trace_ctx_value_opt(trace.context()),
     );
     trace_obj.insert(
-        "events".to_string(),
+        "events".into(),
         AttachmentValue::Array(
             trace
                 .events()
@@ -394,7 +394,7 @@ fn build_trace_ctx_value_opt(context: Option<&TraceContext>) -> AttachmentValue 
 fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
     let mut ctx = FastMap::new();
     ctx.insert(
-        "trace_id".to_string(),
+        "trace_id".into(),
         context
             .trace_id
             .as_ref()
@@ -402,7 +402,7 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
-        "span_id".to_string(),
+        "span_id".into(),
         context
             .span_id
             .as_ref()
@@ -410,7 +410,7 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
-        "parent_span_id".to_string(),
+        "parent_span_id".into(),
         context
             .parent_span_id
             .as_ref()
@@ -418,14 +418,14 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
-        "sampled".to_string(),
+        "sampled".into(),
         context
             .sampled
             .map(AttachmentValue::Bool)
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
-        "trace_state".to_string(),
+        "trace_state".into(),
         context
             .trace_state
             .as_ref()
@@ -433,7 +433,7 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     ctx.insert(
-        "flags".to_string(),
+        "flags".into(),
         context
             .flags
             .map(|v| AttachmentValue::Unsigned(v.bits() as u64))
@@ -446,33 +446,33 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
 fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert(
-        "name".to_string(),
+        "name".into(),
         AttachmentValue::String(event.name.clone()),
     );
     map.insert(
-        "level".to_string(),
+        "level".into(),
         event
             .level
             .map(|v| AttachmentValue::String(v.to_string().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "timestamp_unix_nano".to_string(),
+        "timestamp_unix_nano".into(),
         event
             .timestamp_unix_nano
             .map(AttachmentValue::Unsigned)
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "attributes".to_string(),
+        "attributes".into(),
         AttachmentValue::Array(
             event
                 .attributes
                 .iter()
                 .map(|attr| {
                     let mut kv = FastMap::new();
-                    kv.insert("key".to_string(), AttachmentValue::String(attr.key.clone()));
-                    kv.insert("value".to_string(), attr.value.clone());
+                    kv.insert("key".into(), AttachmentValue::String(attr.key.clone()));
+                    kv.insert("value".into(), attr.value.clone());
                     AttachmentValue::Object(kv)
                 })
                 .collect(),
@@ -488,9 +488,9 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
         crate::report::StackTraceFormat::Native => "native",
         crate::report::StackTraceFormat::Raw => "raw",
     };
-    map.insert("format".to_string(), AttachmentValue::String(format.into()));
+    map.insert("format".into(), AttachmentValue::String(format.into()));
     map.insert(
-        "frames".to_string(),
+        "frames".into(),
         AttachmentValue::Array(
             stack_trace
                 .frames
@@ -500,7 +500,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
         ),
     );
     map.insert(
-        "raw".to_string(),
+        "raw".into(),
         stack_trace
             .raw
             .as_ref()
@@ -514,7 +514,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
 fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert(
-        "symbol".to_string(),
+        "symbol".into(),
         frame
             .symbol
             .as_ref()
@@ -522,7 +522,7 @@ fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "module_path".to_string(),
+        "module_path".into(),
         frame
             .module_path
             .as_ref()
@@ -530,7 +530,7 @@ fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "file".to_string(),
+        "file".into(),
         frame
             .file
             .as_ref()
@@ -538,14 +538,14 @@ fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "line".to_string(),
+        "line".into(),
         frame
             .line
             .map(|v| AttachmentValue::Unsigned(v as u64))
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "column".to_string(),
+        "column".into(),
         frame
             .column
             .map(|v| AttachmentValue::Unsigned(v as u64))
@@ -561,7 +561,7 @@ pub(crate) fn build_display_causes(
 ) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert(
-        "items".to_string(),
+        "items".into(),
         AttachmentValue::Array(
             display_causes
                 .iter()
@@ -570,11 +570,11 @@ pub(crate) fn build_display_causes(
         ),
     );
     map.insert(
-        "truncated".to_string(),
+        "truncated".into(),
         AttachmentValue::Bool(state.truncated),
     );
     map.insert(
-        "cycle_detected".to_string(),
+        "cycle_detected".into(),
         AttachmentValue::Bool(state.cycle_detected),
     );
     AttachmentValue::Object(map)
@@ -598,7 +598,7 @@ fn build_source_errors_value(
     let exported = source_errors.export_with_options(hide_report_wrapper_types);
     let mut map = FastMap::new();
     map.insert(
-        "roots".to_string(),
+        "roots".into(),
         AttachmentValue::Array(
             exported
                 .roots
@@ -609,7 +609,7 @@ fn build_source_errors_value(
         ),
     );
     map.insert(
-        "nodes".to_string(),
+        "nodes".into(),
         AttachmentValue::Array(
             exported
                 .nodes
@@ -625,11 +625,11 @@ fn build_source_errors_value(
         ),
     );
     map.insert(
-        "truncated".to_string(),
+        "truncated".into(),
         AttachmentValue::Bool(exported.truncated),
     );
     map.insert(
-        "cycle_detected".to_string(),
+        "cycle_detected".into(),
         AttachmentValue::Bool(exported.cycle_detected),
     );
     AttachmentValue::Object(map)
@@ -643,17 +643,17 @@ fn build_source_err_node(
 ) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert(
-        "message".to_string(),
+        "message".into(),
         AttachmentValue::String(message.to_string().into()),
     );
     map.insert(
-        "type".to_string(),
+        "type".into(),
         type_name
             .map(|type_name| AttachmentValue::String(type_name.to_string().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
-        "source_roots".to_string(),
+        "source_roots".into(),
         AttachmentValue::Array(
             source_roots
                 .iter()

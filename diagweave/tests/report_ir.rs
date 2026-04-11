@@ -281,8 +281,8 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .attach_payload(
             "payload",
             AttachmentValue::from(BTreeMap::from([
-                ("path".into(), AttachmentValue::from("/health")),
-                ("status".into(), AttachmentValue::Unsigned(401)),
+                ("path", AttachmentValue::from("/health")),
+                ("status", AttachmentValue::Unsigned(401)),
             ])),
             Some("application/json"),
         )

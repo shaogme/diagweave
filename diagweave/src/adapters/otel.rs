@@ -253,7 +253,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         });
         attributes.push(OtelAttribute {
             key: "exception.message".into(),
-            value: OtelValue::String(self.error.message.to_string_owned().into()),
+            value: OtelValue::String(self.error.message.as_cow().into()),
         });
         if let Some(stack_trace) = self.metadata.stack_trace() {
             attributes.push(OtelAttribute {

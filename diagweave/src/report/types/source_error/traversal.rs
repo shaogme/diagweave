@@ -411,7 +411,7 @@ impl<'a> SourceErrorEntry<'a> {
             SourceErrorVisit::Item { item, depth } => {
                 let raw_type_name = item.type_name.as_ref();
                 let display_type_name = if hide_report_wrapper_types
-                    && raw_type_name.is_some_and(|t| is_report_wrapper_type(t))
+                    && raw_type_name.is_some_and(is_report_wrapper_type)
                 {
                     None
                 } else {
@@ -421,7 +421,7 @@ impl<'a> SourceErrorEntry<'a> {
                 Self {
                     error: item.error.as_ref(),
                     type_name: raw_type_name,
-                    display_type_name: display_type_name,
+                    display_type_name,
                     depth,
                 }
             }

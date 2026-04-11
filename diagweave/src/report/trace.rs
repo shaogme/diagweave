@@ -15,16 +15,21 @@ pub enum TraceEventLevel {
     Error,
 }
 
-impl Display for TraceEventLevel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let label = match self {
+impl TraceEventLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
             Self::Trace => "trace",
             Self::Debug => "debug",
             Self::Info => "info",
             Self::Warn => "warn",
             Self::Error => "error",
-        };
-        write!(f, "{label}")
+        }
+    }
+}
+
+impl Display for TraceEventLevel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 

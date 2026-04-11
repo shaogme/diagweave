@@ -169,7 +169,7 @@ fn error_code_supports_try_into_integer_and_into_string() {
     let invalid: Result<i64, ErrorCodeIntError> = ErrorCode::from("E_AUTH").try_into();
     assert_eq!(invalid, Err(ErrorCodeIntError::InvalidIntegerString));
 
-    let s_from_into: String = ErrorCode::from(123u16).into();
+    let s_from_into: String = ErrorCode::from(123u16).to_string();
     assert_eq!(s_from_into, "123");
 
     let s_from_to_string = ErrorCode::from("AUTH.INVALID_TOKEN").to_string();

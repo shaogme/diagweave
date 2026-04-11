@@ -1,5 +1,4 @@
-use alloc::borrow::ToOwned;
-use alloc::string::{String, ToString};
+use alloc::string::ToString;
 use alloc::sync::Arc;
 #[cfg(feature = "trace")]
 use alloc::vec::Vec;
@@ -9,6 +8,7 @@ use core::fmt::{self, Display, Formatter};
 use ref_str::RefStr;
 #[cfg(feature = "json")]
 use ref_str::StaticRefStr;
+use std::borrow::Cow;
 
 #[cfg(feature = "json")]
 use crate::render_impl::REPORT_JSON_SCHEMA_VERSION;
@@ -45,12 +45,11 @@ pub enum DiagnosticIrMessage<'a> {
 }
 
 impl DiagnosticIrMessage<'_> {
-    /// Materializes the message into an owned `String`.
-    pub fn to_string_owned(&self) -> String {
+    pub fn as_cow(&self) -> Cow<'_, str> {
         match self {
-            Self::Borrowed(v) => (*v).to_owned(),
-            Self::Owned(v) => v.to_string(),
-            Self::Display(v) => v.to_string(),
+            Self::Borrowed(v) => Cow::Borrowed(v),
+            Self::Owned(v) => Cow::Borrowed(v),
+            Self::Display(v) => Cow::Owned(v.to_string()),
         }
     }
 }
@@ -67,13 +66,13 @@ impl Display for DiagnosticIrMessage<'_> {
 
 impl core::fmt::Debug for DiagnosticIrMessage<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.to_string_owned())
+        write!(f, "{:?}", self.as_cow())
     }
 }
 
 impl PartialEq for DiagnosticIrMessage<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.to_string_owned() == other.to_string_owned()
+        self.as_cow() == other.as_cow()
     }
 }
 
@@ -95,7 +94,7 @@ impl serde::Serialize for DiagnosticIrMessage<'_> {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string_owned())
+        serializer.serialize_str(&self.as_cow())
     }
 }
 
@@ -320,10 +319,7 @@ pub(crate) fn build_ctx_and_attachments(
                 media_type,
             } => {
                 let mut map = FastMap::new();
-                map.insert(
-                    "kind".into(),
-                    AttachmentValue::String("payload".into()),
-                );
+                map.insert("kind".into(), AttachmentValue::String("payload".into()));
                 map.insert("name".into(), AttachmentValue::String(name.clone()));
                 map.insert("value".into(), value.clone());
                 map.insert(
@@ -350,7 +346,7 @@ pub(crate) fn build_error_value(error: &DiagnosticIrError<'_>) -> AttachmentValu
     let mut map = FastMap::new();
     map.insert(
         "message".into(),
-        AttachmentValue::String(error.message.to_string_owned().into()),
+        AttachmentValue::String(error.message.to_string().into()),
     );
     map.insert(
         "type".into(),
@@ -366,10 +362,7 @@ pub(crate) fn build_trace_value(
 ) -> AttachmentValue {
     let mut trace_obj = FastMap::new();
     trace_obj.insert("error".into(), build_error_value(error));
-    trace_obj.insert(
-        "context".into(),
-        build_trace_ctx_value_opt(trace.context()),
-    );
+    trace_obj.insert("context".into(), build_trace_ctx_value_opt(trace.context()));
     trace_obj.insert(
         "events".into(),
         AttachmentValue::Array(
@@ -445,15 +438,12 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
 #[cfg(feature = "trace")]
 fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
     let mut map = FastMap::new();
-    map.insert(
-        "name".into(),
-        AttachmentValue::String(event.name.clone()),
-    );
+    map.insert("name".into(), AttachmentValue::String(event.name.clone()));
     map.insert(
         "level".into(),
         event
             .level
-            .map(|v| AttachmentValue::String(v.to_string().into()))
+            .map(|v| AttachmentValue::String(v.as_str().into()))
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(
@@ -504,7 +494,7 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
         stack_trace
             .raw
             .as_ref()
-            .map(|v| AttachmentValue::String(v.to_string().into()))
+            .map(|v| AttachmentValue::String(v.clone()))
             .unwrap_or(AttachmentValue::Null),
     );
     AttachmentValue::Object(map)
@@ -569,10 +559,7 @@ pub(crate) fn build_display_causes(
                 .collect(),
         ),
     );
-    map.insert(
-        "truncated".into(),
-        AttachmentValue::Bool(state.truncated),
-    );
+    map.insert("truncated".into(), AttachmentValue::Bool(state.truncated));
     map.insert(
         "cycle_detected".into(),
         AttachmentValue::Bool(state.cycle_detected),
@@ -617,7 +604,7 @@ fn build_source_errors_value(
                 .map(|node| {
                     build_source_err_node(
                         &node.message,
-                        node.type_name.as_deref(),
+                        node.type_name.clone(),
                         node.source_roots.as_slice(),
                     )
                 })
@@ -638,7 +625,7 @@ fn build_source_errors_value(
 #[cfg(any(feature = "trace", feature = "otel"))]
 fn build_source_err_node(
     message: &str,
-    type_name: Option<&str>,
+    type_name: Option<StaticRefStr>,
     source_roots: &[usize],
 ) -> AttachmentValue {
     let mut map = FastMap::new();
@@ -649,7 +636,7 @@ fn build_source_err_node(
     map.insert(
         "type".into(),
         type_name
-            .map(|type_name| AttachmentValue::String(type_name.to_string().into()))
+            .map(AttachmentValue::String)
             .unwrap_or(AttachmentValue::Null),
     );
     map.insert(

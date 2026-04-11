@@ -433,16 +433,6 @@ impl core::fmt::Debug for DisplayCauseItemsDebug<'_> {
     }
 }
 
-impl Clone for DisplayCauseChain {
-    fn clone(&self) -> Self {
-        Self {
-            items: self.items.clone(),
-            truncated: self.truncated,
-            cycle_detected: self.cycle_detected,
-        }
-    }
-}
-
 impl core::fmt::Debug for DisplayCauseChain {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("DisplayCauseChain")
@@ -496,7 +486,7 @@ impl SourceErrorItem {
         hide_report_wrapper_types: bool,
     ) -> Option<StaticRefStr> {
         let type_name = self.type_name.as_ref()?;
-        if hide_report_wrapper_types && is_report_wrapper_type(&type_name) {
+        if hide_report_wrapper_types && is_report_wrapper_type(type_name) {
             None
         } else {
             Some(type_name.clone())

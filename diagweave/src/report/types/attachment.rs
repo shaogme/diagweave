@@ -191,7 +191,12 @@ where
     V: Into<AttachmentValue>,
 {
     fn from(value: FastMap<K, V>) -> Self {
-        Self::Object(value.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
+        Self::Object(
+            value
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        )
     }
 }
 
@@ -200,7 +205,12 @@ where
     V: Into<AttachmentValue>,
 {
     fn from(value: BTreeMap<K, V>) -> Self {
-        Self::Object(value.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
+        Self::Object(
+            value
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        )
     }
 }
 
@@ -244,25 +254,6 @@ pub enum Attachment {
         value: AttachmentValue,
         media_type: Option<StaticRefStr>,
     },
-}
-
-impl Clone for Attachment {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Note { message } => Self::Note {
-                message: Box::new(message.to_string()),
-            },
-            Self::Payload {
-                name,
-                value,
-                media_type,
-            } => Self::Payload {
-                name: name.clone(),
-                value: value.clone(),
-                media_type: media_type.clone(),
-            },
-        }
-    }
 }
 
 impl PartialEq for Attachment {

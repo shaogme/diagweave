@@ -161,17 +161,12 @@ impl ErrorCode {
             ErrorCode::String(s) => s.into_string(),
         }
     }
-}
 
-impl From<ErrorCode> for String {
-    fn from(value: ErrorCode) -> Self {
-        value.into_string()
-    }
-}
-
-impl From<&ErrorCode> for String {
-    fn from(value: &ErrorCode) -> Self {
-        value.to_string()
+    pub fn as_cow(&self) -> Cow<'_, str> {
+        match self {
+            ErrorCode::Integer(i) => i.to_string().into(),
+            ErrorCode::String(s) => s.as_cow(),
+        }
     }
 }
 

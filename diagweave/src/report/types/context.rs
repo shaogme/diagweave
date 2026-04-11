@@ -399,6 +399,9 @@ pub struct GlobalTraceContext {
 
 #[cfg(feature = "trace")]
 impl GlobalTraceContext {
+    /// Returns `true` if all trace context fields are `None`.
+    ///
+    /// This is used to check whether any trace context has been set.
     pub fn is_empty(&self) -> bool {
         self.trace_id.is_none()
             && self.span_id.is_none()

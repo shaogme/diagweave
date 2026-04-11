@@ -299,7 +299,7 @@ pub enum MyError {
 - `iter_diag_sources()` / `iter_diag_srcs_ext(options)`
 - `options()` — 读取当前 `ReportOptions` 配置
 - `set_options(options: ReportOptions)` — 替换报告选项
-- `set_accumulate_source_chain(accumulate: bool)` — 快速开关 `map_err()` 的 source 链累积行为
+- `set_accumulate_src_chain(accumulate: bool)` — 快速开关 `map_err()` 的 source 链累积行为
 
 Note 附件读取：
 
@@ -327,7 +327,7 @@ Note 附件读取：
 
 - `with_display_cause` / `with_display_causes` 接收 `impl Display + Send + Sync + 'static`，并追加到展示原因字符串链（用于渲染与 IR）。
 - `with_diag_src_err` 用于显式追加错误对象到**诊断补充链**，参数要求 `impl Error + Send + Sync + 'static`。
-- 原生传播链由 `map_err()` 与 `Error::source()` 维护；`map_err()` 是否把旧内层错误继续串接到新错误的 `source` 链，由 `ReportOptions.accumulate_source_chain` 决定。
+- 原生传播链由 `map_err()` 与 `Error::source()` 维护；`map_err()` 是否把旧内层错误继续串接到新错误的 `source` 链，由 `ReportOptions.accumulate_src_chain` 决定。
 
 全局上下文注入（`std`）：
 

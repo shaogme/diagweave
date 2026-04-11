@@ -211,7 +211,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `report.iter_diag_srcs_ext(options)` | Iterates diagnostic source errors with custom options |
 | `report.options()` | Reads the current `ReportOptions` configuration |
 | `report.set_options(options: ReportOptions)` | Replaces the current report options |
-| `report.set_accumulate_source_chain(accumulate: bool)` | Quick toggle for `map_err()` origin `source` chain accumulation |
+| `report.set_accumulate_src_chain(accumulate: bool)` | Quick toggle for `map_err()` origin `source` chain accumulation |
 | `report.map_err(map: FnOnce(E) -> Outer)`| Maps internal error type while preserving diagnostics; when source chain accumulation is enabled, the old inner error is attached to the new error's `source` chain |
 
 `ReportMetadata<State>` now contains severity typestate and optional metadata fields. The severity is stored as a direct field (not wrapped in Option or Box), while error_code/category/retryable are stored in an inner `Option<Box<MetadataInner>>` for lazy allocation. Read access goes through methods like `error_code()`, `category()`, `retryable()`, and `severity()`. Composition uses builder methods such as `with_error_code(...)` and `set_severity(...)`.
@@ -226,13 +226,13 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 | Option | Debug Build | Release Build |
 |--------|-------------|---------------|
-| `accumulate_source_chain` | `true` | `false` |
+| `accumulate_src_chain` | `true` | `false` |
 | `detect_cycle` | `true` | `false` |
 | `max_depth` | `16` | `16` |
 
 #### Configuration Options
 
-- `accumulate_source_chain`: When set, `map_err()` preserves and extends the origin `source` chain; when not set, inherits from `GlobalConfig` or profile defaults.
+- `accumulate_src_chain`: When set, `map_err()` preserves and extends the origin `source` chain; when not set, inherits from `GlobalConfig` or profile defaults.
 - `max_depth`: Maximum depth of causes to collect during source error traversal. Higher values provide more complete error context but may impact performance for very deep error chains. When not set, inherits from `GlobalConfig` or defaults to 16.
 - `detect_cycle`: When set, the error chain traversal will track visited errors and mark cycles when detected. When not set, inherits from `GlobalConfig` or profile defaults.
 
@@ -241,7 +241,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | Method | Description |
 |--------|-------------|
 | `ReportOptions::new()` | Creates options with lazy allocation (no heap allocation until an option is set) |
-| `.with_accumulate_source_chain(bool)` | Sets source chain accumulation (allocates inner storage if needed) |
+| `.with_accumulate_src_chain(bool)` | Sets source chain accumulation (allocates inner storage if needed) |
 | `.with_max_depth(usize)` | Sets cause collection depth limit |
 | `.with_cycle_detection(bool)` | Enables/disables cycle detection |
 
@@ -249,7 +249,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 | Method | Description |
 |--------|-------------|
-| `.resolve_accumulate_source_chain()` | Resolves the actual accumulation setting (Priority: ReportOptions > GlobalConfig > Profile default) |
+| `.resolve_accumulate_src_chain()` | Resolves the actual accumulation setting (Priority: ReportOptions > GlobalConfig > Profile default) |
 | `.resolve_max_depth()` | Resolves the actual depth limit |
 | `.resolve_detect_cycle()` | Resolves the actual cycle detection setting |
 | `.resolve_*_with_source()` | Resolves value with source tracking (returns `ResolvedValue<T>`) |
@@ -259,7 +259,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | Method | Description |
 |--------|-------------|
 | `.is_set()` | Returns `true` if any option was explicitly configured |
-| `.accumulate_source_chain()` | Returns `Option<bool>` - the explicitly set value or `None` if inherited |
+| `.accumulate_src_chain()` | Returns `Option<bool>` - the explicitly set value or `None` if inherited |
 | `.max_depth()` | Returns `Option<usize>` - the explicitly set value or `None` if inherited |
 | `.detect_cycle()` | Returns `Option<bool>` - the explicitly set value or `None` if inherited |
 
@@ -270,10 +270,10 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | Method | Description |
 |--------|-------------|
 | `GlobalConfig::new()` | Creates global config with profile-dependent defaults |
-| `.with_accumulate_source_chain(bool)` | Sets default accumulation behavior |
+| `.with_accumulate_src_chain(bool)` | Sets default accumulation behavior |
 | `.with_max_depth(usize)` | Sets default depth limit |
 | `.with_cycle_detection(bool)` | Sets default cycle detection |
-| `.accumulate_source_chain()` | Returns the configured accumulation default |
+| `.accumulate_src_chain()` | Returns the configured accumulation default |
 | `.max_depth()` | Returns the configured depth default |
 | `.detect_cycle()` | Returns the configured cycle detection default |
 | `set_global_config(config)` | Sets global config (can only be called once) |
@@ -288,7 +288,7 @@ use diagweave::report::{GlobalConfig, ReportOptions, set_global_config};
 
 // Set global defaults (call once at application startup)
 let config = GlobalConfig::new()
-    .with_accumulate_source_chain(true)
+    .with_accumulate_src_chain(true)
     .with_max_depth(32)
     .with_cycle_detection(true);
 set_global_config(config).expect("Global config already set");
@@ -309,7 +309,7 @@ let report2 = Report::new(error2).set_options(
 let error3 = std::io::Error::new(std::io::ErrorKind::Other, "test error");
 let report3 = Report::new(error3).set_options(
     ReportOptions::new()
-        .with_accumulate_source_chain(true)
+        .with_accumulate_src_chain(true)
         .with_max_depth(32)
         .with_cycle_detection(true)
 );
@@ -372,7 +372,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | Add a system context key-value pair |
 | `set_system` | `(ContextMap)` | Replace the system context map |
 | `set_options` | `ReportOptions` | Replace the current report options |
-| `set_accumulate_source_chain` | `bool` | Quick toggle for `map_err()` origin `source` chain accumulation |
+| `set_accumulate_src_chain` | `bool` | Quick toggle for `map_err()` origin `source` chain accumulation |
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | Add remarks or resolution suggestions |
 | `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | Attach named payload (supports media types) |
 | `set_severity` | `Severity` | Set severity (Debug, Info, Warn, Error, Fatal), replacing existing value |
@@ -462,7 +462,7 @@ Provides pipelines for seamless diagnostic info injection on error paths by impl
   The closure receives a `Report<E>` and returns a `Report<E2, State2>`. When only adding metadata,
   no explicit type annotations are needed; when transforming the error type (e.g., via `map_err`),
   the return type must be annotated. If you need to control whether the origin source chain continues
-  to accumulate, configure the report options first via `set_accumulate_source_chain()`.
+  to accumulate, configure the report options first via `set_accumulate_src_chain()`.
 
 #### 2. `ResultReportExt` (on `Result<T, Report<E>>`)
 Instead of duplicating every `Report` method, this trait provides a single combinator:
@@ -834,7 +834,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
         .to_report()
         .and_then_report(|r| {
             r.with_ctx("db", "primary")
-                .set_accumulate_source_chain(true)
+                .set_accumulate_src_chain(true)
                 .map_err(AppError::Db)
         })?;
     Ok(())

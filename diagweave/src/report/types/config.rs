@@ -16,17 +16,17 @@ use std::sync::OnceLock;
 ///
 /// | Option | Debug Build | Release Build |
 /// |--------|-------------|---------------|
-/// | `accumulate_source_chain` | `true` | `false` |
+/// | `accumulate_src_chain` | `true` | `false` |
 /// | `detect_cycle` | `true` | `false` |
 /// | `max_depth` | `16` | `16` |
 pub struct ProfileDefaults;
 
 impl ProfileDefaults {
-    /// Returns the default value for `accumulate_source_chain` based on build profile.
+    /// Returns the default value for `accumulate_src_chain` based on build profile.
     ///
     /// In debug builds, returns `true` to enable source chain accumulation for better debugging.
     /// In release builds, returns `false` for better performance.
-    pub const fn accumulate_source_chain() -> bool {
+    pub const fn accumulate_src_chain() -> bool {
         cfg!(debug_assertions)
     }
 
@@ -109,7 +109,7 @@ impl<T: fmt::Display> fmt::Display for ResolvedValue<T> {
 ///
 /// // Set global defaults for your application
 /// let config = GlobalConfig::new()
-///     .with_accumulate_source_chain(true)
+///     .with_accumulate_src_chain(true)
 ///     .with_max_depth(32)
 ///     .with_cycle_detection(true);
 ///
@@ -118,8 +118,8 @@ impl<T: fmt::Display> fmt::Display for ResolvedValue<T> {
 #[cfg(feature = "std")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GlobalConfig {
-    /// Default value for `accumulate_source_chain` when not set in ReportOptions.
-    accumulate_source_chain: bool,
+    /// Default value for `accumulate_src_chain` when not set in ReportOptions.
+    accumulate_src_chain: bool,
     /// Default value for `max_depth` when not set in ReportOptions.
     max_depth: usize,
     /// Default value for `detect_cycle` when not set in ReportOptions.
@@ -134,20 +134,20 @@ impl GlobalConfig {
     ///
     /// | Option | Debug Build | Release Build |
     /// |--------|-------------|---------------|
-    /// | `accumulate_source_chain` | `true` | `false` |
+    /// | `accumulate_src_chain` | `true` | `false` |
     /// | `detect_cycle` | `true` | `false` |
     /// | `max_depth` | `16` | `16` |
     pub const fn new() -> Self {
         Self {
-            accumulate_source_chain: ProfileDefaults::accumulate_source_chain(),
+            accumulate_src_chain: ProfileDefaults::accumulate_src_chain(),
             max_depth: ProfileDefaults::max_depth(),
             detect_cycle: ProfileDefaults::detect_cycle(),
         }
     }
 
-    /// Sets the default for `accumulate_source_chain`.
-    pub const fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        self.accumulate_source_chain = accumulate;
+    /// Sets the default for `accumulate_src_chain`.
+    pub const fn with_accumulate_src_chain(mut self, accumulate: bool) -> Self {
+        self.accumulate_src_chain = accumulate;
         self
     }
 
@@ -163,27 +163,27 @@ impl GlobalConfig {
         self
     }
 
-    /// Resolves the `accumulate_source_chain` value with source tracking.
+    /// Resolves the `accumulate_src_chain` value with source tracking.
     #[cfg(feature = "std")]
-    fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
-        ResolvedValue::new(self.accumulate_source_chain, ConfigSource::Global)
+    fn resolve_accumulate_src_chain_src(&self) -> ResolvedValue<bool> {
+        ResolvedValue::new(self.accumulate_src_chain, ConfigSource::Global)
     }
 
     /// Resolves the `max_depth` value with source tracking.
     #[cfg(feature = "std")]
-    fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
+    fn resolve_max_depth_src(&self) -> ResolvedValue<usize> {
         ResolvedValue::new(self.max_depth, ConfigSource::Global)
     }
 
     /// Resolves the `detect_cycle` value with source tracking.
     #[cfg(feature = "std")]
-    fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
+    fn resolve_detect_cycle_src(&self) -> ResolvedValue<bool> {
         ResolvedValue::new(self.detect_cycle, ConfigSource::Global)
     }
 
-    /// Returns the `accumulate_source_chain` value.
-    pub fn accumulate_source_chain(&self) -> bool {
-        self.accumulate_source_chain
+    /// Returns the `accumulate_src_chain` value.
+    pub fn accumulate_src_chain(&self) -> bool {
+        self.accumulate_src_chain
     }
 
     /// Returns the `max_depth` value.
@@ -241,7 +241,7 @@ impl std::error::Error for SetGlobalConfigError {}
 /// use diagweave::report::{GlobalConfig, set_global_config};
 ///
 /// let config = GlobalConfig::new()
-///     .with_accumulate_source_chain(true)
+///     .with_accumulate_src_chain(true)
 ///     .with_max_depth(32);
 ///
 /// set_global_config(config).expect("Global config already set");
@@ -271,7 +271,7 @@ pub(crate) struct ReportOptionsInner {
     /// When `None`, the value is inherited from [`GlobalConfig`] or profile defaults.
     ///
     /// **Default**: `None` (inherits from global config or profile default).
-    accumulate_source_chain: Option<bool>,
+    accumulate_src_chain: Option<bool>,
 
     /// Maximum depth of causes to collect during source error traversal.
     ///
@@ -305,24 +305,24 @@ impl ReportOptionsInner {
     /// All values will be inherited from [`GlobalConfig`] or profile defaults.
     pub(crate) const fn new() -> Self {
         Self {
-            accumulate_source_chain: None,
+            accumulate_src_chain: None,
             max_depth: None,
             detect_cycle: None,
         }
     }
 
-    /// Resolves the effective value for `accumulate_source_chain` with source tracking.
+    /// Resolves the effective value for `accumulate_src_chain` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub(crate) fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
-        if let Some(value) = self.accumulate_source_chain {
+    pub(crate) fn resolve_accumulate_src_chain_src(&self) -> ResolvedValue<bool> {
+        if let Some(value) = self.accumulate_src_chain {
             return ResolvedValue::new(value, ConfigSource::Report);
         }
         #[cfg(feature = "std")]
-        return GlobalConfig::global().resolve_accumulate_source_chain_with_source();
+        return GlobalConfig::global().resolve_accumulate_src_chain_src();
         #[cfg(not(feature = "std"))]
         return ResolvedValue::new(
-            ProfileDefaults::accumulate_source_chain(),
+            ProfileDefaults::accumulate_src_chain(),
             ConfigSource::Profile,
         );
     }
@@ -330,12 +330,12 @@ impl ReportOptionsInner {
     /// Resolves the effective value for `max_depth` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub(crate) fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
+    pub(crate) fn resolve_max_depth_src(&self) -> ResolvedValue<usize> {
         if let Some(value) = self.max_depth {
             return ResolvedValue::new(value, ConfigSource::Report);
         }
         #[cfg(feature = "std")]
-        return GlobalConfig::global().resolve_max_depth_with_source();
+        return GlobalConfig::global().resolve_max_depth_src();
         #[cfg(not(feature = "std"))]
         return ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile);
     }
@@ -343,12 +343,12 @@ impl ReportOptionsInner {
     /// Resolves the effective value for `detect_cycle` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub(crate) fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
+    pub(crate) fn resolve_detect_cycle_src(&self) -> ResolvedValue<bool> {
         if let Some(value) = self.detect_cycle {
             return ResolvedValue::new(value, ConfigSource::Report);
         }
         #[cfg(feature = "std")]
-        return GlobalConfig::global().resolve_detect_cycle_with_source();
+        return GlobalConfig::global().resolve_detect_cycle_src();
         #[cfg(not(feature = "std"))]
         return ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile);
     }
@@ -357,14 +357,14 @@ impl ReportOptionsInner {
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
     pub(crate) fn max_depth(&self) -> usize {
-        self.resolve_max_depth_with_source().value
+        self.resolve_max_depth_src().value
     }
 
     /// Resolves the effective value for `detect_cycle`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
     pub(crate) fn detect_cycle(&self) -> bool {
-        self.resolve_detect_cycle_with_source().value
+        self.resolve_detect_cycle_src().value
     }
 
     /// Returns a CauseCollectOptions view with resolved values for internal use.
@@ -403,7 +403,7 @@ impl Default for ReportOptionsInner {
 ///
 /// | Option | Debug Build | Release Build |
 /// |--------|-------------|---------------|
-/// | `accumulate_source_chain` | `true` | `false` |
+/// | `accumulate_src_chain` | `true` | `false` |
 /// | `detect_cycle` | `true` | `false` |
 /// | `max_depth` | `16` | `16` |
 ///
@@ -423,7 +423,7 @@ impl Default for ReportOptionsInner {
 /// let report = Report::new(my_error);
 ///
 /// // Explicitly enable source chain accumulation
-/// let _report = report.set_accumulate_source_chain(true);
+/// let _report = report.set_accumulate_src_chain(true);
 ///
 /// // Configure cause collection depth
 /// let _report = _report.set_options(ReportOptions::new().with_max_depth(32));
@@ -451,8 +451,8 @@ impl ReportOptions {
     }
 
     /// Sets whether source chains should be accumulated during `map_err()`.
-    pub fn with_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        self.ensure_inner().accumulate_source_chain = Some(accumulate);
+    pub fn with_accumulate_src_chain(mut self, accumulate: bool) -> Self {
+        self.ensure_inner().accumulate_src_chain = Some(accumulate);
         self
     }
 
@@ -468,18 +468,18 @@ impl ReportOptions {
         self
     }
 
-    /// Resolves the effective value for `accumulate_source_chain` with source tracking.
+    /// Resolves the effective value for `accumulate_src_chain` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub fn resolve_accumulate_source_chain_with_source(&self) -> ResolvedValue<bool> {
+    pub fn resolve_accumulate_src_chain_src(&self) -> ResolvedValue<bool> {
         match self.inner.as_ref() {
-            Some(inner) => inner.resolve_accumulate_source_chain_with_source(),
+            Some(inner) => inner.resolve_accumulate_src_chain_src(),
             None => {
                 #[cfg(feature = "std")]
-                return GlobalConfig::global().resolve_accumulate_source_chain_with_source();
+                return GlobalConfig::global().resolve_accumulate_src_chain_src();
                 #[cfg(not(feature = "std"))]
                 return ResolvedValue::new(
-                    ProfileDefaults::accumulate_source_chain(),
+                    ProfileDefaults::accumulate_src_chain(),
                     ConfigSource::Profile,
                 );
             }
@@ -489,12 +489,12 @@ impl ReportOptions {
     /// Resolves the effective value for `max_depth` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub fn resolve_max_depth_with_source(&self) -> ResolvedValue<usize> {
+    pub fn resolve_max_depth_src(&self) -> ResolvedValue<usize> {
         match self.inner.as_ref() {
-            Some(inner) => inner.resolve_max_depth_with_source(),
+            Some(inner) => inner.resolve_max_depth_src(),
             None => {
                 #[cfg(feature = "std")]
-                return GlobalConfig::global().resolve_max_depth_with_source();
+                return GlobalConfig::global().resolve_max_depth_src();
                 #[cfg(not(feature = "std"))]
                 return ResolvedValue::new(ProfileDefaults::max_depth(), ConfigSource::Profile);
             }
@@ -504,37 +504,37 @@ impl ReportOptions {
     /// Resolves the effective value for `detect_cycle` with source tracking.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub fn resolve_detect_cycle_with_source(&self) -> ResolvedValue<bool> {
+    pub fn resolve_detect_cycle_src(&self) -> ResolvedValue<bool> {
         match self.inner.as_ref() {
-            Some(inner) => inner.resolve_detect_cycle_with_source(),
+            Some(inner) => inner.resolve_detect_cycle_src(),
             None => {
                 #[cfg(feature = "std")]
-                return GlobalConfig::global().resolve_detect_cycle_with_source();
+                return GlobalConfig::global().resolve_detect_cycle_src();
                 #[cfg(not(feature = "std"))]
                 return ResolvedValue::new(ProfileDefaults::detect_cycle(), ConfigSource::Profile);
             }
         }
     }
 
-    /// Resolves the effective value for `accumulate_source_chain`.
+    /// Resolves the effective value for `accumulate_src_chain`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
-    pub fn resolve_accumulate_source_chain(&self) -> bool {
-        self.resolve_accumulate_source_chain_with_source().value
+    pub fn resolve_accumulate_src_chain(&self) -> bool {
+        self.resolve_accumulate_src_chain_src().value
     }
 
     /// Resolves the effective value for `max_depth`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
     pub fn resolve_max_depth(&self) -> usize {
-        self.resolve_max_depth_with_source().value
+        self.resolve_max_depth_src().value
     }
 
     /// Resolves the effective value for `detect_cycle`.
     ///
     /// Priority: ReportOptions > GlobalConfig > Profile default
     pub fn resolve_detect_cycle(&self) -> bool {
-        self.resolve_detect_cycle_with_source().value
+        self.resolve_detect_cycle_src().value
     }
 
     /// Returns a CauseCollectOptions view with resolved values for internal use.
@@ -553,12 +553,12 @@ impl ReportOptions {
         self.inner.is_some()
     }
 
-    /// Returns the `accumulate_source_chain` value if explicitly set.
+    /// Returns the `accumulate_src_chain` value if explicitly set.
     ///
     /// Returns `None` if the value is inherited from [`GlobalConfig`] or profile defaults.
-    /// Use [`accumulate_source_chain`](Self::accumulate_source_chain) to get the effective value.
-    pub fn accumulate_source_chain(&self) -> Option<bool> {
-        self.inner.as_ref()?.accumulate_source_chain
+    /// Use [`accumulate_src_chain`](Self::accumulate_src_chain) to get the effective value.
+    pub fn accumulate_src_chain(&self) -> Option<bool> {
+        self.inner.as_ref()?.accumulate_src_chain
     }
 
     /// Returns the `max_depth` value if explicitly set.
@@ -632,12 +632,12 @@ mod tests {
     fn test_profile_defaults() {
         #[cfg(debug_assertions)]
         {
-            assert!(ProfileDefaults::accumulate_source_chain());
+            assert!(ProfileDefaults::accumulate_src_chain());
             assert!(ProfileDefaults::detect_cycle());
         }
         #[cfg(not(debug_assertions))]
         {
-            assert!(!ProfileDefaults::accumulate_source_chain());
+            assert!(!ProfileDefaults::accumulate_src_chain());
             assert!(!ProfileDefaults::detect_cycle());
         }
         assert_eq!(ProfileDefaults::max_depth(), 16);
@@ -646,14 +646,14 @@ mod tests {
     #[test]
     fn test_report_options_resolution() {
         let opts = ReportOptions::new();
-        let resolved = opts.resolve_accumulate_source_chain_with_source();
+        let resolved = opts.resolve_accumulate_src_chain_src();
         #[cfg(feature = "std")]
         assert_eq!(resolved.source, ConfigSource::Global);
         #[cfg(not(feature = "std"))]
         assert_eq!(resolved.source, ConfigSource::Profile);
 
-        let opts_with_value = ReportOptions::new().with_accumulate_source_chain(true);
-        let resolved = opts_with_value.resolve_accumulate_source_chain_with_source();
+        let opts_with_value = ReportOptions::new().with_accumulate_src_chain(true);
+        let resolved = opts_with_value.resolve_accumulate_src_chain_src();
         assert_eq!(resolved.source, ConfigSource::Report);
         assert!(resolved.value);
     }

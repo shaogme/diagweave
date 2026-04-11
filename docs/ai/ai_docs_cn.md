@@ -211,7 +211,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | `report.iter_diag_srcs_ext(options)` | 使用自定义选项迭代诊断补充链 |
 | `report.options()` | 读取当前 `ReportOptions` 配置 |
 | `report.set_options(options: ReportOptions)` | 替换当前报告的选项配置 |
-| `report.set_accumulate_source_chain(accumulate: bool)` | 快速设置 `map_err()` 的原生 `source` 链累积行为 |
+| `report.set_accumulate_src_chain(accumulate: bool)` | 快速设置 `map_err()` 的原生 `source` 链累积行为 |
 | `report.map_err(map: FnOnce(E) -> Outer)` | 映射内部错误类型并保留诊断信息；当启用 source 链累积时，会把旧的内层错误接到新错误的 `source` 链上 |
 
 `ReportMetadata<State>` 现在包含严重性类型状态和可选元数据字段。严重性作为直接字段存储（不包装在 Option 或 Box 中），而 error_code/category/retryable 存储在内部的 `Option<Box<MetadataInner>>` 中以实现延迟分配。读取请使用 `error_code()`、`category()`、`retryable()`、`severity()` 等接口。写入式组合请使用 `with_error_code(...)`、`set_severity(...)` 等 builder 方法。
@@ -226,13 +226,13 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 | 选项 | Debug 构建 | Release 构建 |
 |------|------------|--------------|
-| `accumulate_source_chain` | `true` | `false` |
+| `accumulate_src_chain` | `true` | `false` |
 | `detect_cycle` | `true` | `false` |
 | `max_depth` | `16` | `16` |
 
 #### 配置选项说明
 
-- `accumulate_source_chain`：设置后，`map_err()` 会保留并延伸原生 `source` 链；未设置时从 `GlobalConfig` 或 profile 默认值继承。
+- `accumulate_src_chain`：设置后，`map_err()` 会保留并延伸原生 `source` 链；未设置时从 `GlobalConfig` 或 profile 默认值继承。
 - `max_depth`：原因收集时的最大深度限制。较高的值提供更完整的错误上下文，但对于非常深的错误链可能影响性能。未设置时从 `GlobalConfig` 或默认值 16 继承。
 - `detect_cycle`：设置后，错误链遍历将跟踪已访问的错误并在检测到循环时标记。未设置时从 `GlobalConfig` 或 profile 默认值继承。
 
@@ -241,7 +241,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | 方法 | 说明 |
 |------|------|
 | `ReportOptions::new()` | 创建延迟分配的选项（在设置任何选项前不会分配堆内存） |
-| `.with_accumulate_source_chain(bool)` | 设置源链累积行为（如需要会分配内部存储） |
+| `.with_accumulate_src_chain(bool)` | 设置源链累积行为（如需要会分配内部存储） |
 | `.with_max_depth(usize)` | 设置原因收集深度限制 |
 | `.with_cycle_detection(bool)` | 启用/禁用循环检测 |
 
@@ -249,7 +249,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 
 | 方法 | 说明 |
 |------|------|
-| `.resolve_accumulate_source_chain()` | 解析实际使用的累积设置（优先级：ReportOptions > GlobalConfig > Profile default） |
+| `.resolve_accumulate_src_chain()` | 解析实际使用的累积设置（优先级：ReportOptions > GlobalConfig > Profile default） |
 | `.resolve_max_depth()` | 解析实际使用的深度限制 |
 | `.resolve_detect_cycle()` | 解析实际使用的循环检测设置 |
 | `.resolve_*_with_source()` | 解析值并返回来源追踪（返回 `ResolvedValue<T>`） |
@@ -259,7 +259,7 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | 方法 | 说明 |
 |------|------|
 | `.is_set()` | 返回 `true` 表示至少有一个选项被显式配置 |
-| `.accumulate_source_chain()` | 返回 `Option<bool>` - 显式设置的值，若继承则返回 `None` |
+| `.accumulate_src_chain()` | 返回 `Option<bool>` - 显式设置的值，若继承则返回 `None` |
 | `.max_depth()` | 返回 `Option<usize>` - 显式设置的值，若继承则返回 `None` |
 | `.detect_cycle()` | 返回 `Option<bool>` - 显式设置的值，若继承则返回 `None` |
 
@@ -270,10 +270,10 @@ pub struct Report<E, State: SeverityState = MissingSeverity> {
 | 方法 | 说明 |
 |------|------|
 | `GlobalConfig::new()` | 创建具有 profile 相关默认值的全局配置 |
-| `.with_accumulate_source_chain(bool)` | 设置默认累积行为 |
+| `.with_accumulate_src_chain(bool)` | 设置默认累积行为 |
 | `.with_max_depth(usize)` | 设置默认深度限制 |
 | `.with_cycle_detection(bool)` | 设置默认循环检测 |
-| `.accumulate_source_chain()` | 返回配置的累积默认值 |
+| `.accumulate_src_chain()` | 返回配置的累积默认值 |
 | `.max_depth()` | 返回配置的深度默认值 |
 | `.detect_cycle()` | 返回配置的循环检测默认值 |
 | `set_global_config(config)` | 设置全局配置（仅可调用一次） |
@@ -288,7 +288,7 @@ use diagweave::report::{GlobalConfig, ReportOptions, set_global_config};
 
 // 设置全局默认值（应用启动时调用一次）
 let config = GlobalConfig::new()
-    .with_accumulate_source_chain(true)
+    .with_accumulate_src_chain(true)
     .with_max_depth(32)
     .with_cycle_detection(true);
 set_global_config(config).expect("全局配置已设置");
@@ -309,7 +309,7 @@ let report2 = Report::new(error2).set_options(
 let error3 = std::io::Error::new(std::io::ErrorKind::Other, "测试错误");
 let report3 = Report::new(error3).set_options(
     ReportOptions::new()
-        .with_accumulate_source_chain(true)
+        .with_accumulate_src_chain(true)
         .with_max_depth(32)
         .with_cycle_detection(true)
 );
@@ -372,7 +372,7 @@ let report3 = Report::new(error3).set_options(
 | `with_system` | `(impl Into<StaticRefStr>, impl Into<ContextValue>)` | 添加系统上下文键值对 |
 | `set_system` | `(ContextMap)` | 替换系统上下文映射 |
 | `set_options` | `ReportOptions` | 替换当前报告的选项配置 |
-| `set_accumulate_source_chain` | `bool` | 快速设置 `map_err()` 是否累积原生 `source` 链 |
+| `set_accumulate_src_chain` | `bool` | 快速设置 `map_err()` 是否累积原生 `source` 链 |
 | `attach_note` / `attach_printable` | `impl Display + Send + Sync + 'static` | 添加备注或解决建议 |
 | `attach_payload` / `attach_payload` | `(impl Into<StaticRefStr>, Value, Option<impl Into<StaticRefStr>>)` | 附加命名负载 (支持媒体类型) |
 | `set_severity` | `Severity` | 设置严重程度 (Debug, Info, Warn, Error, Fatal)，覆盖已有值 |
@@ -460,7 +460,7 @@ let report = report.capture_stack_trace();
 - `diag(...)`：Result<T, E> 上的快捷入口，泛型版本允许转换错误类型和状态类型；签名：
   `diag<E2, State2>(self, f: impl FnOnce(Report<E>) -> Report<E2, State2>) -> Result<T, Report<E2, State2>>`。
   闭包接收 `Report<E>` 并返回 `Report<E2, State2>`。当仅添加元数据时无需显式类型标注；
-  当转换错误类型（如通过 `map_err`）时需要标注返回类型。若需要控制原生 source 链是否继续累积，可先通过 `set_accumulate_source_chain()` 配置报告选项。
+  当转换错误类型（如通过 `map_err`）时需要标注返回类型。若需要控制原生 source 链是否继续累积，可先通过 `set_accumulate_src_chain()` 配置报告选项。
 
 #### 2. `ResultReportExt` (作用于 `Result<T, Report<E>>`)
 不再重复每个 `Report` 方法，而是提供单一组合子：
@@ -792,7 +792,7 @@ let _report = Report::new(MyError).attach_payload(
 ```
 
 ### 2. 多层包装与错误链透传 (Wrap)
-在架构各层之间传递时保留完整的 `source` 错误链。`map_err()` 默认会在 debug 构建中累积原生 source 链，在 release 构建中默认关闭；可以通过 `set_accumulate_source_chain(true/false)` 显式控制。
+在架构各层之间传递时保留完整的 `source` 错误链。`map_err()` 默认会在 debug 构建中累积原生 source 链，在 release 构建中默认关闭；可以通过 `set_accumulate_src_chain(true/false)` 显式控制。
 ```rust
 use diagweave::prelude::*;
 use std::fmt;
@@ -832,7 +832,7 @@ fn service_layer() -> Result<(), Report<AppError>> {
         .to_report()
         .and_then_report(|r| {
             r.with_ctx("db", "primary")
-                .set_accumulate_source_chain(true)
+                .set_accumulate_src_chain(true)
                 .map_err(AppError::Db)
         })?;
     Ok(())

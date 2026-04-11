@@ -167,24 +167,7 @@ fn service_layer(user_id: u64) -> Result<(), Report<AppError>> {
 }
 
 fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasSeverity>> {
-    let trace_id = match TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736") {
-        Ok(v) => v,
-        Err(()) => {
-            return Err(Report::new(ApiError::retry_later(1)).with_severity(Severity::Error));
-        }
-    };
-    let span_id = match SpanId::new("00f067aa0ba902b7") {
-        Ok(v) => v,
-        Err(()) => {
-            return Err(Report::new(ApiError::retry_later(1)).with_severity(Severity::Error));
-        }
-    };
-    let parent_span_id = match ParentSpanId::new("1111111111111111") {
-        Ok(v) => v,
-        Err(()) => {
-            return Err(Report::new(ApiError::retry_later(1)).with_severity(Severity::Error));
-        }
-    };
+    let (trace_id, span_id, parent_span_id) = parse_trace_ids()?;
 
     service_layer(1001).and_then_report(|r| {
         r.with_ctx("request_id", request_id)
@@ -221,6 +204,18 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
     })?;
 
     Ok("Success".into())
+}
+
+/// Parses trace IDs from hardcoded strings.
+/// Returns an error report if any ID is invalid.
+fn parse_trace_ids() -> Result<(TraceId, SpanId, ParentSpanId), Report<ApiError, HasSeverity>> {
+    let trace_id = TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736")
+        .map_err(|_| Report::new(ApiError::retry_later(1)).with_severity(Severity::Error))?;
+    let span_id = SpanId::new("00f067aa0ba902b7")
+        .map_err(|_| Report::new(ApiError::retry_later(1)).with_severity(Severity::Error))?;
+    let parent_span_id = ParentSpanId::new("1111111111111111")
+        .map_err(|_| Report::new(ApiError::retry_later(1)).with_severity(Severity::Error))?;
+    Ok((trace_id, span_id, parent_span_id))
 }
 
 fn print_render_outputs<E, State>(report: &Report<E, State>)

@@ -14,17 +14,17 @@ where
 {
     /// Maps the inner error type while preserving all diagnostic data.
     ///
-    /// When source chain accumulation is enabled via [`ReportOptions::accumulate_source_chain`],
+    /// When source chain accumulation is enabled via [`ReportOptions::accumulate_src_chain`],
     /// this method also accumulates the origin source error chain.
     ///
     /// # Source Chain Accumulation
     ///
-    /// If `accumulate_source_chain` is `true`:
+    /// If `accumulate_src_chain` is `true`:
     /// - The current report's origin source chain (if any) is preserved
     /// - The old inner error is added as a source of the new outer error
     /// - The resulting chain reflects: `outer -> old_inner -> ...old sources`
     ///
-    /// If `accumulate_source_chain` is `false`:
+    /// If `accumulate_src_chain` is `false`:
     /// - Only the error type is transformed
     /// - No source chain manipulation occurs
     ///
@@ -55,7 +55,7 @@ where
     /// let report: Report<OuterError> = inner_report.map_err(|e| OuterError::from(e));
     ///
     /// // Control source chain accumulation per-report
-    /// let _report = report.set_accumulate_source_chain(false); // Disable accumulation
+    /// let _report = report.set_accumulate_src_chain(false); // Disable accumulation
     /// ```
     ///
     /// # Preserved Data
@@ -97,7 +97,7 @@ where
         } = self;
 
         // Check if source chain accumulation is enabled for this report
-        if options.resolve_accumulate_source_chain() {
+        if options.resolve_accumulate_src_chain() {
             // Build origin source chain with the old inner as the new root
             let origin_source_errors = build_origin_source_chain(&inner, bag.inner());
 
@@ -105,7 +105,7 @@ where
             let outer = map(inner);
 
             // Build new bag with the origin source chain using the helper method
-            let new_bag = bag.with_origin_src_chain(origin_source_errors);
+            let new_bag = bag.with_origin_srcs(origin_source_errors);
 
             Report {
                 inner: outer,

@@ -620,7 +620,7 @@ where
     /// let report = Report::new(my_error);
     ///
     /// // Disable source chain accumulation for this specific report
-    /// let _report = report.set_options(ReportOptions::new().with_accumulate_source_chain(false));
+    /// let _report = report.set_options(ReportOptions::new().with_accumulate_src_chain(false));
     /// ```
     pub fn set_options(mut self, options: ReportOptions) -> Self {
         self.options = options;
@@ -629,7 +629,7 @@ where
 
     /// Sets whether source chains should be accumulated during `map_err()`.
     ///
-    /// This is a convenience method for setting the `accumulate_source_chain` option.
+    /// This is a convenience method for setting the `accumulate_src_chain` option.
     ///
     /// # Example
     ///
@@ -645,10 +645,10 @@ where
     /// let report = Report::new(my_error);
     ///
     /// // Enable source chain accumulation for this specific report
-    /// let _report = report.set_accumulate_source_chain(true);
+    /// let _report = report.set_accumulate_src_chain(true);
     /// ```
-    pub fn set_accumulate_source_chain(mut self, accumulate: bool) -> Self {
-        self.options = self.options.with_accumulate_source_chain(accumulate);
+    pub fn set_accumulate_src_chain(mut self, accumulate: bool) -> Self {
+        self.options = self.options.with_accumulate_src_chain(accumulate);
         self
     }
 }

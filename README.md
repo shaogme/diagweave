@@ -299,7 +299,7 @@ Read APIs on `Report<E>`:
 - `iter_diag_sources()` / `iter_diag_srcs_ext(options)`
 - `options()` — read current `ReportOptions`
 - `set_options(options: ReportOptions)` — replace report options
-- `set_accumulate_source_chain(accumulate: bool)` — quick toggle for `map_err()` source chain accumulation
+- `set_accumulate_src_chain(accumulate: bool)` — quick toggle for `map_err()` source chain accumulation
 
 Attachment note access:
 
@@ -327,7 +327,7 @@ Cause semantics:
 
 - `with_display_cause` / `with_display_causes` accept `impl Display + Send + Sync + 'static` and append display-cause strings (for rendering/IR).
 - `with_diag_src_err` appends explicit error objects into the **diagnostic** source chain, requiring `impl Error + Send + Sync + 'static`.
-- Origin source propagation is maintained by `map_err()` and `Error::source()`; whether `map_err()` continues to chain the old inner error is controlled by `ReportOptions.accumulate_source_chain`.
+- Origin source propagation is maintained by `map_err()` and `Error::source()`; whether `map_err()` continues to chain the old inner error is controlled by `ReportOptions.accumulate_src_chain`.
 
 Global context injector (`std`):
 

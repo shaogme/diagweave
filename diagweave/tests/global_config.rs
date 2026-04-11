@@ -14,7 +14,7 @@ use report_common::*;
 #[test]
 fn report_options_new_creates_unset_fields() {
     let opts = ReportOptions::new();
-    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.accumulate_src_chain().is_none());
     assert!(opts.max_depth().is_none());
     assert!(opts.detect_cycle().is_none());
 }
@@ -23,7 +23,7 @@ fn report_options_new_creates_unset_fields() {
 #[test]
 fn report_options_default_creates_unset_fields() {
     let opts = ReportOptions::default();
-    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.accumulate_src_chain().is_none());
     assert!(opts.max_depth().is_none());
     assert!(opts.detect_cycle().is_none());
 }
@@ -32,11 +32,11 @@ fn report_options_default_creates_unset_fields() {
 #[test]
 fn report_options_builder_sets_values() {
     let opts = ReportOptions::new()
-        .with_accumulate_source_chain(true)
+        .with_accumulate_src_chain(true)
         .with_max_depth(32)
         .with_cycle_detection(false);
 
-    assert_eq!(opts.accumulate_source_chain(), Some(true));
+    assert_eq!(opts.accumulate_src_chain(), Some(true));
     assert_eq!(opts.max_depth(), Some(32));
     assert_eq!(opts.detect_cycle(), Some(false));
 }
@@ -49,7 +49,7 @@ fn report_options_resolve_returns_global_config_values() {
     // When ReportOptions fields are None, values come from GlobalConfig
     // We just verify the methods work without asserting specific values
     // since GlobalConfig may have been modified by other tests
-    let _ = opts.resolve_accumulate_source_chain();
+    let _ = opts.resolve_accumulate_src_chain();
     let _ = opts.resolve_detect_cycle();
     let _ = opts.resolve_max_depth();
 }
@@ -58,11 +58,11 @@ fn report_options_resolve_returns_global_config_values() {
 #[test]
 fn report_options_resolve_returns_set_values() {
     let opts = ReportOptions::new()
-        .with_accumulate_source_chain(false)
+        .with_accumulate_src_chain(false)
         .with_max_depth(64)
         .with_cycle_detection(true);
 
-    assert!(!opts.resolve_accumulate_source_chain());
+    assert!(!opts.resolve_accumulate_src_chain());
     assert_eq!(opts.resolve_max_depth(), 64);
     assert!(opts.resolve_detect_cycle());
 }
@@ -75,12 +75,12 @@ fn global_config_new_has_profile_defaults() {
     // Check profile-dependent defaults
     #[cfg(debug_assertions)]
     {
-        assert!(config.accumulate_source_chain());
+        assert!(config.accumulate_src_chain());
         assert!(config.detect_cycle());
     }
     #[cfg(not(debug_assertions))]
     {
-        assert!(!config.accumulate_source_chain);
+        assert!(!config.accumulate_src_chain);
         assert!(!config.detect_cycle);
     }
     assert_eq!(config.max_depth(), 16);
@@ -90,11 +90,11 @@ fn global_config_new_has_profile_defaults() {
 #[test]
 fn global_config_builder_sets_values() {
     let config = GlobalConfig::new()
-        .with_accumulate_source_chain(true)
+        .with_accumulate_src_chain(true)
         .with_max_depth(32)
         .with_cycle_detection(false);
 
-    assert!(config.accumulate_source_chain());
+    assert!(config.accumulate_src_chain());
     assert_eq!(config.max_depth(), 32);
     assert!(!config.detect_cycle());
 }
@@ -103,11 +103,11 @@ fn global_config_builder_sets_values() {
 #[test]
 fn global_config_resolve_returns_configured_values() {
     let config = GlobalConfig::new()
-        .with_accumulate_source_chain(true)
+        .with_accumulate_src_chain(true)
         .with_max_depth(50)
         .with_cycle_detection(false);
 
-    assert!(config.accumulate_source_chain());
+    assert!(config.accumulate_src_chain());
     assert_eq!(config.max_depth(), 50);
     assert!(!config.detect_cycle());
 }
@@ -119,18 +119,18 @@ fn report_uses_explicit_report_options() {
 
     let report = Report::new(AuthError::InvalidToken).set_options(
         ReportOptions::new()
-            .with_accumulate_source_chain(true)
+            .with_accumulate_src_chain(true)
             .with_max_depth(8)
             .with_cycle_detection(false),
     );
 
     let opts = report.options();
-    assert_eq!(opts.accumulate_source_chain(), Some(true));
+    assert_eq!(opts.accumulate_src_chain(), Some(true));
     assert_eq!(opts.max_depth(), Some(8));
     assert_eq!(opts.detect_cycle(), Some(false));
 
     // Verify resolved values
-    assert!(report.options().resolve_accumulate_source_chain());
+    assert!(report.options().resolve_accumulate_src_chain());
     assert_eq!(report.options().resolve_max_depth(), 8);
     assert!(!report.options().resolve_detect_cycle());
 }
@@ -144,28 +144,28 @@ fn report_returns_default_options_when_not_set() {
     let opts = report.options();
 
     // All fields should be None (unset)
-    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.accumulate_src_chain().is_none());
     assert!(opts.max_depth().is_none());
     assert!(opts.detect_cycle().is_none());
 
     // Resolved values come from GlobalConfig
     // We just verify the methods work without asserting specific values
     // since GlobalConfig may have been modified by other tests
-    let _ = opts.resolve_accumulate_source_chain();
+    let _ = opts.resolve_accumulate_src_chain();
     let _ = opts.resolve_detect_cycle();
     let _ = opts.resolve_max_depth();
 }
 
-/// Test that set_accumulate_source_chain works correctly.
+/// Test that set_accumulate_src_chain works correctly.
 #[test]
-fn report_set_accumulate_source_chain_works() {
+fn report_set_accumulate_src_chain_works() {
     let _guard = init_test();
 
-    let report = Report::new(AuthError::InvalidToken).set_accumulate_source_chain(true);
+    let report = Report::new(AuthError::InvalidToken).set_accumulate_src_chain(true);
     let opts = report.options();
 
-    assert_eq!(opts.accumulate_source_chain(), Some(true));
-    assert!(opts.resolve_accumulate_source_chain());
+    assert_eq!(opts.accumulate_src_chain(), Some(true));
+    assert!(opts.resolve_accumulate_src_chain());
 }
 
 /// Test configuration priority: ReportOptions > GlobalConfig > Profile defaults.
@@ -180,13 +180,13 @@ fn config_priority_report_over_global() {
     // Create a report with explicit options
     let report = Report::new(AuthError::InvalidToken).set_options(
         ReportOptions::new()
-            .with_accumulate_source_chain(false)
+            .with_accumulate_src_chain(false)
             .with_max_depth(100)
             .with_cycle_detection(true),
     );
 
     // ReportOptions should be used, regardless of GlobalConfig
-    assert!(!report.options().resolve_accumulate_source_chain());
+    assert!(!report.options().resolve_accumulate_src_chain());
     assert_eq!(report.options().resolve_max_depth(), 100);
     assert!(report.options().resolve_detect_cycle());
 }
@@ -197,7 +197,7 @@ fn partial_configuration_works() {
     // Only set max_depth, leave others unset
     let opts = ReportOptions::new().with_max_depth(20);
 
-    assert!(opts.accumulate_source_chain().is_none());
+    assert!(opts.accumulate_src_chain().is_none());
     assert_eq!(opts.max_depth(), Some(20));
     assert!(opts.detect_cycle().is_none());
 
@@ -207,12 +207,12 @@ fn partial_configuration_works() {
     // Others should use profile defaults
     #[cfg(debug_assertions)]
     {
-        assert!(opts.resolve_accumulate_source_chain());
+        assert!(opts.resolve_accumulate_src_chain());
         assert!(opts.resolve_detect_cycle());
     }
     #[cfg(not(debug_assertions))]
     {
-        assert!(!opts.resolve_accumulate_source_chain());
+        assert!(!opts.resolve_accumulate_src_chain());
         assert!(!opts.resolve_detect_cycle());
     }
 }
@@ -223,7 +223,7 @@ fn global_config_affects_resolve() {
     // Note: GlobalConfig is a singleton, so we can't test this in isolation
     // This test verifies the integration works
     let config = GlobalConfig::new()
-        .with_accumulate_source_chain(true)
+        .with_accumulate_src_chain(true)
         .with_max_depth(50)
         .with_cycle_detection(true);
 
@@ -236,7 +236,7 @@ fn global_config_affects_resolve() {
     // When ReportOptions fields are None, GlobalConfig values should be used
     // If GlobalConfig was successfully set, resolve should return those values
     // If GlobalConfig was already set by another test, we just verify no panic
-    let _ = opts.resolve_accumulate_source_chain();
+    let _ = opts.resolve_accumulate_src_chain();
     let _ = opts.resolve_max_depth();
     let _ = opts.resolve_detect_cycle();
 }

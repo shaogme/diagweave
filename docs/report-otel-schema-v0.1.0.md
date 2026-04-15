@@ -18,7 +18,7 @@ This document defines the machine-consumable OpenTelemetry envelope emitted by `
 - `timestamp_unix_nano: integer|null`
 - `observed_timestamp_unix_nano: integer|null`
 - `severity_text: string|null`
-- `severity_number: 1|5|9|13|17|21|null`
+- `severity_number: OtelSeverityNumber|null` (`1|5|9|13|17|21` on the wire)
 - `trace_id: 32-hex-string|null`
 - `span_id: 16-hex-string|null`
 - `trace_flags: integer|null`
@@ -26,11 +26,13 @@ This document defines the machine-consumable OpenTelemetry envelope emitted by `
 
 Record semantics:
 
-- The primary `exception` record uses a structured `body` value that mirrors the report error node rather than a plain message string.
+- The primary `exception` record uses a plain string `body` value containing the error message, per OTel Semantic Conventions.
+- The full structured error data (message + type) is preserved in `exception.raw_data` attribute for complete context.
 - For the primary record, `severity_text` / `severity_number` are projected from `metadata.severity`.
 - Trace-event records keep `body: null` and carry their data in top-level fields and attributes.
 - For trace-event records, top-level severity comes from `trace.events[*].level`; when an event level is absent, the exporter falls back to the report `metadata.severity`.
 - `to_otel_envelope()` is only available on `DiagnosticIr<'_, HasSeverity>`, so export always carries a report-level severity fallback and event severity fields are always populated.
+- `parent_span_id` is emitted as the `trace.parent_span_id` attribute rather than a top-level event field.
 
 ## OtelAttribute model
 
@@ -57,6 +59,7 @@ Current exporters populate these keys:
 
 - `exception.type`
 - `exception.message`
+- `exception.raw_data` (structured error data with message and type)
 - `exception.stacktrace`
 - `error.code`
 - `error.category`
@@ -89,6 +92,7 @@ When `feature = "otel"` is enabled, `diagweave` exports:
 - `OtelEnvelope`
 - `OtelEvent`
 - `OtelAttribute`
+- `OtelSeverityNumber`
 - `OtelValue`
 - `REPORT_OTEL_SCHEMA_VERSION`
 - `REPORT_OTEL_SCHEMA_DRAFT`

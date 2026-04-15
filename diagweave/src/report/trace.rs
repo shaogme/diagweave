@@ -442,17 +442,45 @@ impl Display for TraceState {
     }
 }
 
+/// Trace flags as defined by the W3C TraceContext specification.
+///
+/// The flags are represented as a single byte where:
+/// - Bit 0: Sampled flag (1 = sampled, 0 = not sampled)
+/// - Bits 1-7: Reserved for future use
+///
+/// # Example
+/// ```
+/// use diagweave::report::TraceFlags;
+///
+/// let flags = TraceFlags::new(1);
+/// assert!(flags.is_sampled());
+/// assert_eq!(flags.bits(), 1);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceFlags(u8);
 
 impl TraceFlags {
+    /// Creates new trace flags from a raw byte value.
     pub fn new(value: u8) -> Self {
         Self(value)
     }
 
+    /// Returns the raw flags byte.
+    ///
+    /// Bit layout per W3C TraceContext specification:
+    /// - Bit 0: Sampled flag (1 = sampled, 0 = not sampled)
+    /// - Bits 1-7: Reserved for future use
     pub fn bits(self) -> u8 {
         self.0
+    }
+
+    /// Returns true if the sampled bit (bit 0) is set.
+    ///
+    /// Per W3C TraceContext specification, this indicates whether
+    /// the trace should be sampled and recorded by tracing backends.
+    pub fn is_sampled(self) -> bool {
+        (self.0 & 1) == 1
     }
 }
 

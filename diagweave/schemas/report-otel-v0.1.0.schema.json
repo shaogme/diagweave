@@ -17,13 +17,13 @@
     },
     "otel_attribute": {
       "type": "object",
-      "description": "OTEL attribute key/value pair. For diagnostic source chains, diagweave emits `diagnostic_bag.origin_source_errors` and `diagnostic_bag.diagnostic_source_errors` as structured OtelValue objects with roots/nodes/source_roots/truncated/cycle_detected fields.",
+      "description": "OTEL attribute key/value pair. For diagnostic source chains, diagweave emits `diagnostic_bag.origin_source_errors` and `diagnostic_bag.diagnostic_source_errors` as structured OtelValue objects with roots/nodes/source_roots/truncated/cycle_detected fields. The `exception.raw_data` attribute contains the full structured error data (message + type) for complete context preservation.",
       "additionalProperties": false,
       "required": ["key", "value"],
       "properties": {
         "key": {
-          "type": "string",
-          "description": "Examples include `exception.type`, `diagnostic_bag.display_causes`, `diagnostic_bag.origin_source_errors`, and `diagnostic_bag.diagnostic_source_errors`."
+            "type": "string",
+            "description": "Examples include `exception.type`, `exception.message`, `exception.raw_data`, `diagnostic_bag.display_causes`, `diagnostic_bag.origin_source_errors`, and `diagnostic_bag.diagnostic_source_errors`."
         },
         "value": { "$ref": "#/$defs/otel_value" }
       }
@@ -116,10 +116,10 @@
       "properties": {
         "name": { "type": "string" },
         "body": {
-          "description": "Structured error node for the primary exception record, or null for trace-event records.",
+          "description": "Human-readable error message string for the primary exception record, or null for trace-event records. Per OTel Semantic Conventions, this should be a plain string rather than a structured object.",
           "oneOf": [
-            { "$ref": "#/$defs/otel_value" },
-            { "type": "null" }
+              { "$ref": "#/$defs/otel_value" },
+              { "type": "null" }
           ]
         },
         "timestamp_unix_nano": { "type": ["integer", "null"], "minimum": 0 },

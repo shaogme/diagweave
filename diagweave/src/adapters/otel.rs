@@ -3,6 +3,8 @@ use alloc::format;
 use alloc::string::ToString;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::convert::TryFrom;
+use core::fmt;
 use ref_str::RefStr;
 
 use crate::render_impl::{
@@ -15,6 +17,78 @@ fn error_code_otel_value(value: &ErrorCode) -> OtelValue<'_> {
     match value {
         ErrorCode::Integer(v) => OtelValue::Int(*v),
         ErrorCode::String(v) => OtelValue::String(v.clone().into()),
+    }
+}
+
+/// Severity numbers allowed by the OTLP log data model.
+///
+/// This wrapper prevents accidental emission of values outside the OTEL
+/// severity range and validates deserialization against the schema contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(try_from = "u8", into = "u8"))]
+pub struct OtelSeverityNumber(u8);
+
+impl OtelSeverityNumber {
+    pub const TRACE: Self = Self(1);
+    pub const DEBUG: Self = Self(5);
+    pub const INFO: Self = Self(9);
+    pub const WARN: Self = Self(13);
+    pub const ERROR: Self = Self(17);
+    pub const FATAL: Self = Self(21);
+
+    pub const fn as_u8(self) -> u8 {
+        self.0
+    }
+}
+
+impl From<OtelSeverityNumber> for u8 {
+    fn from(value: OtelSeverityNumber) -> Self {
+        value.0
+    }
+}
+
+impl TryFrom<u8> for OtelSeverityNumber {
+    type Error = &'static str;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 | 5 | 9 | 13 | 17 | 21 => Ok(Self(value)),
+            _ => Err("severity number must be one of 1, 5, 9, 13, 17, or 21"),
+        }
+    }
+}
+
+impl From<crate::report::Severity> for OtelSeverityNumber {
+    fn from(level: crate::report::Severity) -> Self {
+        match level {
+            crate::report::Severity::Trace => Self::TRACE,
+            crate::report::Severity::Debug => Self::DEBUG,
+            crate::report::Severity::Info => Self::INFO,
+            crate::report::Severity::Warn => Self::WARN,
+            crate::report::Severity::Error => Self::ERROR,
+            crate::report::Severity::Fatal => Self::FATAL,
+        }
+    }
+}
+
+#[cfg(feature = "trace")]
+impl From<crate::report::TraceEventLevel> for OtelSeverityNumber {
+    fn from(level: crate::report::TraceEventLevel) -> Self {
+        match level {
+            crate::report::TraceEventLevel::Trace => Self::TRACE,
+            crate::report::TraceEventLevel::Debug => Self::DEBUG,
+            crate::report::TraceEventLevel::Info => Self::INFO,
+            crate::report::TraceEventLevel::Warn => Self::WARN,
+            crate::report::TraceEventLevel::Error => Self::ERROR,
+        }
+    }
+}
+
+impl fmt::Display for OtelSeverityNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -42,7 +116,7 @@ pub struct OtelEvent<'a> {
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub severity_text: Option<ref_str::StaticRefStr>,
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
-    pub severity_number: Option<u8>,
+    pub severity_number: Option<OtelSeverityNumber>,
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub trace_id: Option<RefStr<'a>>,
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
@@ -256,11 +330,11 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
 
         OtelEvent {
             name: "exception".into(),
-            body: Some(OtelValue::from_attachment(build_error_value(&self.error))),
+            body: Some(OtelValue::String(self.error.message.as_cow().into())),
             timestamp_unix_nano: None,
             observed_timestamp_unix_nano: None,
             severity_text: Some(severity_ref(report_level)),
-            severity_number: Some(severity_to_otel_number(report_level)),
+            severity_number: Some(report_level.into()),
             trace_id,
             span_id,
             trace_flags,
@@ -284,6 +358,11 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         attributes.push(OtelAttribute {
             key: "exception.message".into(),
             value: OtelValue::String(self.error.message.as_cow().into()),
+        });
+        // Add structured error data as exception.raw_data for full context preservation
+        attributes.push(OtelAttribute {
+            key: "exception.raw_data".into(),
+            value: OtelValue::from_attachment(build_error_value(&self.error)),
         });
         if let Some(stack_trace) = self.metadata.stack_trace() {
             attributes.push(OtelAttribute {
@@ -427,12 +506,12 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
             let (severity_text, severity_number) = match trace_event.level {
                 Some(level) => {
                     let severity_text = trace_event_level_ref(level);
-                    let severity_number = trace_event_level_to_otel_number(level);
+                    let severity_number = level.into();
                     (Some(severity_text), Some(severity_number))
                 }
                 None => (
                     Some(severity_ref(fallback_level)),
-                    Some(severity_to_otel_number(fallback_level)),
+                    Some(fallback_level.into()),
                 ),
             };
             let mut attributes = trace_event
@@ -470,28 +549,6 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 attributes,
             });
         }
-    }
-}
-
-fn severity_to_otel_number(level: crate::report::Severity) -> u8 {
-    match level {
-        crate::report::Severity::Trace => 1,
-        crate::report::Severity::Debug => 5,
-        crate::report::Severity::Info => 9,
-        crate::report::Severity::Warn => 13,
-        crate::report::Severity::Error => 17,
-        crate::report::Severity::Fatal => 21,
-    }
-}
-
-#[cfg(feature = "trace")]
-fn trace_event_level_to_otel_number(level: crate::report::TraceEventLevel) -> u8 {
-    match level {
-        crate::report::TraceEventLevel::Trace => 1,
-        crate::report::TraceEventLevel::Debug => 5,
-        crate::report::TraceEventLevel::Info => 9,
-        crate::report::TraceEventLevel::Warn => 13,
-        crate::report::TraceEventLevel::Error => 17,
     }
 }
 

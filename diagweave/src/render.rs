@@ -3,6 +3,9 @@ mod ir;
 #[cfg(feature = "json")]
 #[path = "render/json.rs"]
 mod json;
+#[cfg(all(feature = "json", feature = "otel"))]
+#[path = "render/otel_snapshot.rs"]
+mod otel_snapshot;
 #[path = "render/pretty.rs"]
 mod pretty;
 #[path = "render/stack_filter.rs"]
@@ -273,7 +276,8 @@ impl<E> Report<E, HasSeverity> {
         E: core::error::Error + Display + 'static,
     {
         let ir = self.to_diagnostic_ir();
-        let otel = ir.to_otel_envelope();
+        let mut otel = ir.to_otel_envelope();
+        otel_snapshot::normalize_otel_envelope(&mut otel);
         serde_json::to_string(&otel).unwrap_or_default()
     }
 }

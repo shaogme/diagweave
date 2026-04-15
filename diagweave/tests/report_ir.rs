@@ -1,6 +1,6 @@
 mod report_common;
 #[cfg(feature = "otel")]
-use diagweave::adapters::OtelValue;
+use diagweave::adapters::{OtelSeverityNumber, OtelValue};
 use diagweave::prelude::*;
 use diagweave::report::ReportMetadata;
 use report_common::*;
@@ -153,7 +153,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
     let record = otel.records.first().expect("report record should exist");
     assert_eq!(record.name, "exception");
     assert_eq!(record.severity_text.as_deref(), Some("error"));
-    assert_eq!(record.severity_number, Some(17));
+    assert_eq!(record.severity_number, Some(OtelSeverityNumber::ERROR));
 
     let overflow_ctx = record
         .attributes
@@ -217,7 +217,7 @@ fn diagnostic_ir_requires_explicit_severity_upgrade_before_otel() {
 
     assert_eq!(record.name, "exception");
     assert_eq!(record.severity_text.as_deref(), Some("warn"));
-    assert_eq!(record.severity_number, Some(13));
+    assert_eq!(record.severity_number, Some(OtelSeverityNumber::WARN));
 }
 
 #[cfg(all(feature = "trace", feature = "otel"))]
@@ -325,7 +325,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         Some(1_713_337_000_000_000_000)
     );
     assert_eq!(trace_record.severity_text.as_deref(), Some("warn"));
-    assert_eq!(trace_record.severity_number, Some(13));
+    assert_eq!(trace_record.severity_number, Some(OtelSeverityNumber::WARN));
     assert!(trace_record.trace_id.as_ref().map(|v| v.as_ref()).is_some());
     assert!(
         trace_record
@@ -390,13 +390,22 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     assert_eq!(records[0]["name"], "exception");
     assert_eq!(records[0]["severity_text"], "error");
     assert_eq!(records[0]["severity_number"], 17);
-    assert_eq!(records[0]["body"]["KvList"][0]["key"], "message");
+    assert!(records[0].get("parent_span_id").is_none());
+    // Body is now a plain string per OTel semantic conventions
     assert_eq!(
-        records[0]["body"]["KvList"][0]["value"],
+        records[0]["body"],
         serde_json::json!({"String": "api unauthorized"})
     );
     assert_eq!(records[1]["name"], "db.query");
     assert_eq!(records[1]["severity_text"], "info");
     assert_eq!(records[1]["severity_number"], 9);
+    assert!(records[1].get("parent_span_id").is_none());
     assert!(records[1]["body"].is_null());
+}
+
+#[cfg(all(feature = "json", feature = "otel"))]
+#[test]
+fn otel_severity_number_rejects_invalid_values_on_deserialize() {
+    let parsed = serde_json::from_value::<OtelSeverityNumber>(serde_json::json!(99));
+    assert!(parsed.is_err());
 }

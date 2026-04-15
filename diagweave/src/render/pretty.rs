@@ -30,7 +30,7 @@ impl Pretty {
 
 impl<E, State> ReportRenderer<E, State> for Pretty
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
@@ -110,7 +110,7 @@ fn render_error_section(
 
 fn render_governance_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -165,7 +165,7 @@ where
 #[cfg(feature = "trace")]
 fn render_trace_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -236,7 +236,7 @@ where
 
 fn render_stack_trace<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -313,7 +313,7 @@ fn render_raw_stack_trace(
 
 fn render_attachments<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -327,7 +327,7 @@ where
 
 fn render_system_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -358,7 +358,7 @@ where
 
 fn render_context_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -389,7 +389,7 @@ where
 
 fn render_attachment_section<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -449,7 +449,7 @@ where
 
 fn render_display_causes<State>(
     f: &mut Formatter<'_>,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
@@ -506,7 +506,7 @@ fn render_src_errors_section<E, State, F>(
     source_chain: F,
 ) -> fmt::Result
 where
-    E: Error + 'static,
+    E: Error,
     State: SeverityState,
     F: FnOnce(
         &Report<E, State>,

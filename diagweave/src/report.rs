@@ -143,7 +143,7 @@ where
 
 impl<E, State> Report<E, State>
 where
-    E: Error + 'static,
+    E: Error,
     State: SeverityState,
 {
     /// Builds a source error chain view based on stored errors and inner source.

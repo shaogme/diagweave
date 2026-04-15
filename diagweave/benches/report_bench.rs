@@ -164,7 +164,7 @@ fn bench_ir_and_render(c: &mut Criterion) {
         group.bench_function(BenchmarkId::new("to_diagnostic_ir", name), |b| {
             b.iter(|| {
                 let ir = report.to_diagnostic_ir();
-                black_box(ir.context_count + ir.attachment_count);
+                black_box(ir.context.len() + ir.attachments.len());
             })
         });
 

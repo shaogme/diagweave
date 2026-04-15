@@ -87,7 +87,7 @@ impl<'a> ChainFrame<'a> {
 
 enum SourceErrorVisit<'a> {
     Error {
-        error: &'a (dyn Error + 'static),
+        error: &'a dyn Error,
         depth: usize,
     },
     Item {
@@ -168,13 +168,13 @@ impl<'a> ChainWalker<'a> {
 }
 
 struct ErrorWalker<'a> {
-    current: Option<&'a (dyn Error + 'static)>,
+    current: Option<&'a dyn Error>,
     depth: usize,
     core: WalkerCore,
 }
 
 impl<'a> ErrorWalker<'a> {
-    fn new(current: Option<&'a (dyn Error + 'static)>, options: CauseCollectOptions) -> Self {
+    fn new(current: Option<&'a dyn Error>, options: CauseCollectOptions) -> Self {
         Self {
             current,
             depth: 0,
@@ -265,7 +265,7 @@ impl<'a> ReportSourceErrorTraversalImpl<'a> {
 
 fn traversal_from_chain<'a>(
     source_errors: Option<&'a SourceErrorChain>,
-    inner_source: Option<&'a (dyn Error + 'static)>,
+    inner_source: Option<&'a dyn Error>,
     options: CauseCollectOptions,
     hide_report_wrapper_types: bool,
 ) -> ReportSourceErrorTraversalImpl<'a> {
@@ -292,7 +292,7 @@ impl ReportSourceTraversalStrategy {
         report: &crate::report::Report<E, State>,
     ) -> Option<&SourceErrorChain>
     where
-        E: Error + 'static,
+        E: Error,
         State: crate::report::SeverityState,
     {
         match self {
@@ -312,7 +312,7 @@ fn traversal_from_report<'a, E, State>(
     strategy: ReportSourceTraversalStrategy,
 ) -> ReportSourceErrorTraversalImpl<'a>
 where
-    E: Error + 'static,
+    E: Error,
     State: crate::report::SeverityState,
 {
     let source_errors = strategy.source_errors(report);
@@ -336,7 +336,7 @@ impl<'a> ReportSourceErrorIter<'a> {
         options: CauseCollectOptions,
     ) -> Self
     where
-        E: Error + 'static,
+        E: Error,
         State: crate::report::SeverityState,
     {
         Self {
@@ -349,7 +349,7 @@ impl<'a> ReportSourceErrorIter<'a> {
         options: CauseCollectOptions,
     ) -> Self
     where
-        E: Error + 'static,
+        E: Error,
         State: crate::report::SeverityState,
     {
         Self {

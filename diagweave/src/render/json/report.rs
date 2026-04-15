@@ -42,7 +42,7 @@ pub(super) fn write_metadata_object<E, State>(
     report: &Report<E, State>,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let mut first = true;
@@ -59,7 +59,7 @@ pub(super) fn write_diag_bag<E, State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let mut first = true;
@@ -80,7 +80,7 @@ fn write_diag_stack<E, State>(
     first: &mut bool,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     if !options.show_stack_trace_section
@@ -105,7 +105,7 @@ fn write_diag_display_causes<E, State>(
     first: &mut bool,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     if !options.show_cause_chains_section
@@ -130,7 +130,7 @@ fn write_diag_origin_sources<E, State>(
     first: &mut bool,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     if !options.show_cause_chains_section
@@ -159,7 +159,7 @@ fn write_diag_extra_sources<E, State>(
     first: &mut bool,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     if !options.show_cause_chains_section
@@ -181,7 +181,7 @@ where
 
 fn has_display_causes<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.display_causes_chain().is_some()
@@ -189,7 +189,7 @@ where
 
 fn has_origin_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.origin_src_err_chain().is_some() || report.inner().source().is_some()
@@ -197,7 +197,7 @@ where
 
 fn has_diag_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.diag_src_err_chain().is_some()
@@ -211,7 +211,7 @@ fn write_meta_gov_fields<E, State>(
     report: &Report<E, State>,
 ) -> fmt::Result
 where
-    E: Error + 'static,
+    E: Error,
     State: SeverityState,
 {
     let metadata = report.metadata();
@@ -242,7 +242,7 @@ fn write_display_causes<State>(
     f: &mut Formatter<'_>,
     pretty: bool,
     depth: usize,
-    report: &Report<impl Error + 'static, State>,
+    report: &Report<impl Error, State>,
     display_causes: &crate::report::DisplayCauseChain,
     options: ReportRenderOptions,
 ) -> fmt::Result
@@ -407,7 +407,7 @@ pub(super) fn write_trace_object<E, State>(
     options: ReportRenderOptions,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let trace = report.trace();

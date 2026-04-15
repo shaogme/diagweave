@@ -49,7 +49,7 @@ impl Json {
 #[cfg(feature = "json")]
 impl<E, State> ReportRenderer<E, State> for Json
 where
-    E: core::error::Error + Display + 'static,
+    E: core::error::Error,
     State: SeverityState,
 {
     fn render(&self, report: &Report<E, State>, f: &mut Formatter<'_>) -> fmt::Result {
@@ -244,7 +244,7 @@ where
     /// Returns a snapshot-ready compact summary string.
     pub fn snap_compact(&self) -> String
     where
-        E: core::error::Error + Display + 'static,
+        E: core::error::Error,
     {
         self.render(Compact::summary()).to_string()
     }
@@ -252,7 +252,7 @@ where
     /// Returns a snapshot-ready pretty-printed string.
     pub fn snap_pretty(&self) -> String
     where
-        E: core::error::Error + Display + 'static,
+        E: core::error::Error,
     {
         self.render(Pretty::default()).to_string()
     }
@@ -261,7 +261,7 @@ where
     #[cfg(feature = "json")]
     pub fn snap_json(&self) -> String
     where
-        E: core::error::Error + Display + 'static,
+        E: core::error::Error,
     {
         self.render(Json::default()).to_string()
     }
@@ -273,7 +273,7 @@ impl<E> Report<E, HasSeverity> {
     #[cfg(all(feature = "json", feature = "otel"))]
     pub fn snap_otel(&self) -> String
     where
-        E: core::error::Error + Display + 'static,
+        E: core::error::Error,
     {
         let ir = self.to_diagnostic_ir();
         let mut otel = ir.to_otel_envelope_default();

@@ -135,13 +135,13 @@ where
             Vec<AttachmentValue>,
         ) = build_ctx_and_attachments(self.context, self.system, self.attachments);
 
-        if self.context_count > 0 {
+        if !self.context.is_empty() {
             fields.push(TracingField {
                 key: "context".into(),
                 value: context_value,
             });
         }
-        if self.system_count > 0 {
+        if !self.system.is_empty() {
             fields.push(TracingField {
                 key: "system".into(),
                 value: system_value,
@@ -345,7 +345,7 @@ impl DiagnosticIr<'_, HasSeverity> {
 
 impl<E> Report<E, HasSeverity>
 where
-    E: Error + Display + 'static,
+    E: Error,
 {
     /// Prepares this report for tracing emission by freezing its diagnostic IR and
     /// resolving every final tracing level up front.

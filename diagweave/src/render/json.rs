@@ -9,7 +9,7 @@ mod report;
 mod trace;
 
 use core::error::Error;
-use core::fmt::{self, Display, Formatter, Write};
+use core::fmt::{self, Formatter, Write};
 
 use crate::report::{Report, SeverityState};
 
@@ -21,14 +21,13 @@ pub(super) use helpers::{
     close_array, close_object, write_array_item_prefix, write_error_code, write_indent,
     write_json_display, write_json_string, write_object_field,
 };
-
 pub(super) fn write_json_report<E, State>(
     report: &Report<E, State>,
     options: ReportRenderOptions,
     f: &mut Formatter<'_>,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let pretty = options.json_pretty;
@@ -101,7 +100,7 @@ struct JsonSectionFlags {
 
 fn calc_section_flags<E, State>(report: &Report<E, State>) -> JsonSectionFlags
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let metadata = report.metadata();
@@ -127,7 +126,7 @@ where
 
 fn has_stack_trace<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.stack_trace().is_some()
@@ -135,7 +134,7 @@ where
 
 fn has_display_causes<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.display_causes_chain().is_some()
@@ -143,7 +142,7 @@ where
 
 fn has_origin_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.origin_src_err_chain().is_some() || report.inner().source().is_some()
@@ -151,7 +150,7 @@ where
 
 fn has_diag_source_errors<E, State>(report: &Report<E, State>) -> bool
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     report.diag_src_err_chain().is_some()

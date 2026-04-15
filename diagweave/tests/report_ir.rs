@@ -58,8 +58,8 @@ fn diagnostic_ir_is_structured_and_renderer_independent() {
     );
     assert_eq!(ir.metadata.severity(), Some(Severity::Error));
     assert_eq!(ir.metadata.severity(), Some(Severity::Error));
-    assert_eq!(ir.context_count, 1);
-    assert_eq!(ir.attachment_count, 2);
+    assert_eq!(ir.context.len(), 1);
+    assert_eq!(ir.attachments.len(), 2);
 }
 
 #[cfg(feature = "trace")]

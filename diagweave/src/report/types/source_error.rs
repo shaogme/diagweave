@@ -18,7 +18,7 @@ pub(crate) type SourceNodeId = usize;
 /// Iterator over source errors with depth/cycle control.
 #[derive(Debug, Clone)]
 pub struct SourceErrorEntry<'a> {
-    pub error: &'a (dyn Error + 'static),
+    pub error: &'a (dyn Error + 'a),
     pub type_name: Option<&'a StaticRefStr>,
     pub display_type_name: Option<&'a StaticRefStr>,
     pub depth: usize,

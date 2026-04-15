@@ -179,9 +179,6 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub display_causes_state: CauseTraversalState,
     pub origin_source_errors: Option<SourceErrorChain>,
     pub diagnostic_source_errors: Option<SourceErrorChain>,
-    pub context_count: usize,
-    pub system_count: usize,
-    pub attachment_count: usize,
 }
 
 impl<'a, State> DiagnosticIr<'a, State>
@@ -204,9 +201,6 @@ where
             display_causes_state,
             origin_source_errors,
             diagnostic_source_errors,
-            context_count,
-            system_count,
-            attachment_count,
         } = self;
 
         DiagnosticIr {
@@ -223,9 +217,6 @@ where
             display_causes_state,
             origin_source_errors,
             diagnostic_source_errors,
-            context_count,
-            system_count,
-            attachment_count,
         }
     }
 }
@@ -237,10 +228,9 @@ where
     /// Builds the renderer-agnostic diagnostic intermediate representation.
     pub fn to_diagnostic_ir(&self) -> DiagnosticIr<'_, State>
     where
-        E: Error + Display + 'static,
+        E: Error,
     {
         let metadata = self.metadata();
-        let (context_count, system_count, attachment_count) = count_attachments(self);
         let display_causes_state = self
             .visit_causes_ext(self.options().as_cause_options(), |_| Ok(()))
             .unwrap_or_default();
@@ -267,22 +257,8 @@ where
             display_causes_state,
             origin_source_errors: self.origin_src_err_view(self.options().as_cause_options()),
             diagnostic_source_errors: self.diag_src_err_view(self.options().as_cause_options()),
-            context_count,
-            system_count,
-            attachment_count,
         }
     }
-}
-
-fn count_attachments<State>(report: &Report<impl Error + 'static, State>) -> (usize, usize, usize)
-where
-    State: SeverityState,
-{
-    (
-        report.context().len(),
-        report.system().len(),
-        report.attachments().len(),
-    )
 }
 
 #[cfg(feature = "trace")]

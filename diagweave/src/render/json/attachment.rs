@@ -17,7 +17,7 @@ pub(super) fn write_context_object<E, State>(
     report: &Report<E, State>,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let mut first = true;
@@ -38,7 +38,7 @@ pub(super) fn write_system_object<E, State>(
     report: &Report<E, State>,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let mut first = true;
@@ -163,7 +163,7 @@ pub(super) fn write_attachments_array<E, State>(
     report: &Report<E, State>,
 ) -> fmt::Result
 where
-    E: Error + Display + 'static,
+    E: Error,
     State: SeverityState,
 {
     let mut first = true;

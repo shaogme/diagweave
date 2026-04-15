@@ -124,8 +124,8 @@ impl TracingExporterTrait for ConsoleExporter {
             ir.error.message,
             ir.metadata.severity(),
             ir.metadata.required_severity(),
-            ir.context_count,
-            ir.attachment_count,
+            ir.context.len(),
+            ir.attachments.len(),
             ir.metadata.stack_trace().is_some()
         );
         stats
@@ -223,7 +223,7 @@ fn parse_trace_ids() -> Result<(TraceId, SpanId, ParentSpanId), Report<ApiError,
 
 fn print_render_outputs<E, State>(report: &Report<E, State>)
 where
-    E: std::error::Error + Display + 'static,
+    E: std::error::Error,
     State: SeverityState,
 {
     println!("--- Compact Rendering ---");
@@ -274,7 +274,7 @@ where
 
 fn print_display_causes<E, State>(report: &Report<E, State>)
 where
-    E: Display + std::error::Error + 'static,
+    E: Display + std::error::Error,
     State: SeverityState,
 {
     println!("Display Causes:");
@@ -301,7 +301,7 @@ where
 
 fn print_source_errors<E, State>(report: &Report<E, State>)
 where
-    E: std::error::Error + 'static,
+    E: std::error::Error,
     State: SeverityState,
 {
     println!("Origin Source Errors:");
@@ -353,7 +353,7 @@ where
 
 fn print_ir_and_adapters<E>(report: &Report<E, HasSeverity>)
 where
-    E: std::error::Error + Display + 'static,
+    E: std::error::Error,
 {
     let ir = report.to_diagnostic_ir();
     println!("--- Diagnostic IR (Metadata) ---");

@@ -597,8 +597,6 @@ pub struct DiagnosticIr<'a, State = MissingSeverity> {
     pub display_causes_state: CauseTraversalState,
     pub origin_source_errors: Option<SourceErrorChain>,
     pub diagnostic_source_errors: Option<SourceErrorChain>,
-    pub context_count: usize,
-    pub attachment_count: usize,
 }
 ```
 
@@ -631,8 +629,8 @@ use diagweave::render::ReportRenderOptions;
 
 let ir = report.to_diagnostic_ir();
 
-let context_count = ir.context_count;
-let attachment_count = ir.attachment_count;
+let context_count = ir.context.len();
+let attachment_count = ir.attachments.len();
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 

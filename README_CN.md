@@ -451,8 +451,8 @@ use diagweave::render::ReportRenderOptions;
 
 let ir = report.to_diagnostic_ir();
 
-let context_count = ir.context_count;
-let attachment_count = ir.attachment_count;
+let context_count = ir.context.len();
+let attachment_count = ir.attachments.len();
 println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 

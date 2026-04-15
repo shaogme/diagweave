@@ -567,8 +567,8 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         if self.diagnostic_source_errors.is_some() {
             count += 1;
         }
-        count += self.context_count;
-        count += self.system_count;
+        count += self.context.len();
+        count += self.system.len();
         count += self
             .attachments
             .iter()

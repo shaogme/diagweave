@@ -212,7 +212,7 @@ where
     /// let causes = report.display_causes();
     /// assert!(!causes.is_empty());
     /// ```
-    pub fn display_causes(&self) -> &[Arc<dyn Display + Send + Sync + 'static>] {
+    pub fn display_causes(&self) -> &[Arc<dyn Display + Send + Sync>] {
         self.diagnostics()
             .display_causes()
             .map(|v| v.items.as_slice())
@@ -254,7 +254,7 @@ where
     /// ```
     pub fn origin_source_errors<'a>(&'a self) -> impl Iterator<Item = SourceErrorEntry<'a>>
     where
-        E: Error + 'static,
+        E: Error,
     {
         self.diagnostics()
             .origin_src_errors()
@@ -288,7 +288,7 @@ where
     /// ```
     pub fn diag_source_errors<'a>(&'a self) -> impl Iterator<Item = SourceErrorEntry<'a>>
     where
-        E: Error + 'static,
+        E: Error,
     {
         self.diagnostics()
             .diag_src_errors()
@@ -489,7 +489,7 @@ where
     pub fn visit_causes<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(&dyn Display) -> fmt::Result,
-        E: Error + 'static,
+        E: Error,
     {
         self.visit_causes_ext(self.options().as_cause_options(), visit)
     }
@@ -528,7 +528,6 @@ where
     ) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(&dyn Display) -> fmt::Result,
-        E: Error + 'static,
     {
         let mut state = CauseTraversalState::default();
         let diag = self.diagnostics();
@@ -582,7 +581,7 @@ where
     pub fn visit_origin_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
-        E: Error + 'static,
+        E: Error,
     {
         self.visit_origin_src_ext(self.options().as_cause_options(), visit)
     }
@@ -598,7 +597,7 @@ where
     ) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
-        E: Error + 'static,
+        E: Error,
     {
         let mut iter = self.iter_origin_src_ext(options);
         for err in iter.by_ref() {
@@ -614,7 +613,7 @@ where
     pub fn visit_diag_sources<F>(&self, visit: F) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
-        E: Error + 'static,
+        E: Error,
     {
         self.visit_diag_srcs_ext(self.options().as_cause_options(), visit)
     }
@@ -630,7 +629,7 @@ where
     ) -> Result<CauseTraversalState, fmt::Error>
     where
         F: FnMut(SourceErrorEntry) -> fmt::Result,
-        E: Error + 'static,
+        E: Error,
     {
         let mut iter = self.iter_diag_srcs_ext(options);
         for err in iter.by_ref() {
@@ -642,7 +641,7 @@ where
     /// Returns an iterator over origin source errors with custom options.
     pub fn iter_origin_src_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_>
     where
-        E: Error + 'static,
+        E: Error,
     {
         ReportSourceErrorIter::new_origin(self, options)
     }
@@ -650,7 +649,7 @@ where
     /// Returns an iterator over diagnostic source errors with custom options.
     pub fn iter_diag_srcs_ext(&self, options: CauseCollectOptions) -> ReportSourceErrorIter<'_>
     where
-        E: Error + 'static,
+        E: Error,
     {
         ReportSourceErrorIter::new_diagnostic(self, options)
     }
@@ -686,7 +685,7 @@ where
     /// ```
     pub fn iter_origin_sources(&self) -> ReportSourceErrorIter<'_>
     where
-        E: Error + 'static,
+        E: Error,
     {
         self.iter_origin_src_ext(self.options().as_cause_options())
     }
@@ -718,7 +717,7 @@ where
     /// ```
     pub fn iter_diag_sources(&self) -> ReportSourceErrorIter<'_>
     where
-        E: Error + 'static,
+        E: Error,
     {
         self.iter_diag_srcs_ext(self.options().as_cause_options())
     }

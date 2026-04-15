@@ -14,6 +14,13 @@ use crate::report::{
     SourceErrorChain, SpanId, StackTrace, TraceId,
 };
 
+#[cfg(feature = "opentelemetry")]
+#[path = "otel/opentelemetry.rs"]
+pub mod opentelemetry;
+
+#[cfg(feature = "opentelemetry")]
+pub use opentelemetry::{OtelSdkEmitStats, OtelSdkEmitter};
+
 /// Severity numbers allowed by the OTLP log data model.
 ///
 /// This wrapper prevents accidental emission of values outside the OTEL
@@ -346,7 +353,7 @@ pub const REPORT_OTEL_SCHEMA_DRAFT: &str = "https://json-schema.org/draft/2020-1
 
 /// Returns the OTEL schema for the diagnostic envelope.
 pub fn report_otel_schema() -> &'static str {
-    include_str!("../../schemas/report-otel-v0.1.0.schema.json")
+    include_str!("../schemas/report-otel-v0.1.0.schema.json")
 }
 
 impl<'a> DiagnosticIr<'a, HasSeverity> {

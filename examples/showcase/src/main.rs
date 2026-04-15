@@ -371,7 +371,7 @@ where
 
     let tracing_fields = ir.to_tracing_fields();
     let otel = ir.to_otel_envelope(
-        diagweave::adapters::OtelEnvelopeConfig::new().with_namespace("diagweave.otel"),
+        diagweave::otel::OtelEnvelopeConfig::new().with_namespace("diagweave.otel"),
     );
     println!("Tracing fields count: {}", tracing_fields.len());
     println!("OTel records: {}\n", otel.records.len());

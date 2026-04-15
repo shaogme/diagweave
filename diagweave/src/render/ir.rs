@@ -6,7 +6,7 @@ use core::any;
 use core::error::Error;
 use core::fmt::{self, Display, Formatter};
 use ref_str::RefStr;
-#[cfg(feature = "json")]
+#[cfg(any(feature = "trace", feature = "otel", feature = "json"))]
 use ref_str::StaticRefStr;
 use std::borrow::Cow;
 

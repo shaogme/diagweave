@@ -15,6 +15,8 @@ categories = ["rust-patterns", "development-tools::debugging"]
 [dependencies]
 diagweave-macros.workspace = true
 ref_str = { version = "0.1.5", features = ["serde"] }
+opentelemetry = { version = "0.31", default-features = false, optional = true }
+opentelemetry_sdk = { version = "0.31", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc", "rc"], optional = true }
 serde_json = { workspace = true, features = ["alloc"], optional = true }
 tracing = { workspace = true, optional = true }
@@ -31,6 +33,14 @@ std = ["tracing?/std", "ref_str/std"]
 json = ["dep:serde", "dep:serde_json"]
 trace = []
 otel = []
+opentelemetry = [
+    "std",
+    "otel",
+    "dep:opentelemetry",
+    "opentelemetry/logs",
+    "dep:opentelemetry_sdk",
+    "opentelemetry_sdk/logs",
+]
 tracing = ["trace", "dep:tracing"]
 
 [[bench]]

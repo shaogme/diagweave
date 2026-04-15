@@ -1,8 +1,6 @@
-use std::{
-    env, io,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{env, io};
 
+use diagweave::otel::{OtelEnvelopeConfig, OtelSdkEmitter};
 use diagweave::prelude::{
     AttachmentValue, Compact, GlobalContext, HasSeverity, Pretty, Report, ReportRenderOptions,
     ResultReportExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel, TraceId,
@@ -10,11 +8,9 @@ use diagweave::prelude::{
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::TraceFlags;
-use opentelemetry::logs::{
-    AnyValue, LogRecord as _, Logger as _, LoggerProvider as _, Severity as OtelLogSeverity,
-};
+use opentelemetry::KeyValue;
+use opentelemetry::logs::LogRecord as _;
 use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
-use opentelemetry::{Key, KeyValue};
 use opentelemetry_otlp::{Protocol, WithExportConfig};
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
@@ -620,9 +616,7 @@ fn render_report(label: &str, report: ScenarioReport, telemetry: &TelemetryHandl
     println!("{}", report.render(Json::new(json_opts)));
 
     let ir = report.to_diagnostic_ir();
-    let otel = ir.to_otel_envelope(
-        diagweave::adapters::OtelEnvelopeConfig::new().with_namespace(OTEL_ATTR_NAMESPACE),
-    );
+    let otel = ir.to_otel_envelope(OtelEnvelopeConfig::new().with_namespace(OTEL_ATTR_NAMESPACE));
     let Some(report_record) = otel.records.first() else {
         println!("--- {label}: OTel Envelope ---");
         println!("records_count=0");
@@ -674,39 +668,19 @@ fn current_global_trace_context() -> Option<diagweave::report::GlobalTraceContex
 
 fn emit_otel_envelope(
     label: &str,
-    otel: &diagweave::adapters::OtelEnvelope<'_>,
+    otel: &diagweave::otel::OtelEnvelope<'_>,
     telemetry: &TelemetryHandles,
 ) {
-    let logger = telemetry
-        .logger_provider
-        .logger("diagweave.examples.cloud-native-stack");
-    let record_count = otel.records.len();
-
-    for (idx, event) in otel.records.iter().enumerate() {
-        let mut record = logger.create_log_record();
+    let emitter = OtelSdkEmitter::new(
+        &telemetry.logger_provider,
+        "diagweave.examples.cloud-native-stack",
+    );
+    let stats = emitter.emit_envelope_with(otel, |idx, record_count, event, record| {
         record.set_target("diagweave.examples.cloud-native-stack.otel");
         record.add_attribute(OTEL_ATTR_SCENARIO_NAME, label.to_owned());
         record.add_attribute(OTEL_ATTR_ENVELOPE_RECORD_COUNT, record_count as i64);
         record.add_attribute(OTEL_ATTR_ENVELOPE_RECORD_INDEX, idx as i64);
         record.add_attribute(OTEL_ATTR_EVENT_NAME, event.name.as_ref().to_owned());
-        if let Some(timestamp_unix_nano) = event.timestamp_unix_nano {
-            if let Some(timestamp) = unix_nanos_to_system_time(timestamp_unix_nano) {
-                record.set_timestamp(timestamp);
-            }
-        }
-        if let Some(severity_number) = event.severity_number {
-            let log_severity = otel_log_severity(severity_number);
-            record.set_severity_text(log_severity.name());
-            record.set_severity_number(log_severity);
-        }
-        if let (Some(trace_id), Some(span_id)) = (event.trace_id.as_ref(), event.span_id.as_ref()) {
-            let trace_id = opentelemetry::TraceId::from_hex(trace_id.as_ref()).ok();
-            let span_id = opentelemetry::SpanId::from_hex(span_id.as_ref()).ok();
-            if let (Some(trace_id), Some(span_id)) = (trace_id, span_id) {
-                let trace_flags = event.trace_flags.map(opentelemetry::TraceFlags::new);
-                record.set_trace_context(trace_id, span_id, trace_flags);
-            }
-        }
         if let Some(trace_context) = event.trace_context.as_ref() {
             if let Some(parent_span_id) = trace_context.parent_span_id.as_ref() {
                 record.add_attribute(
@@ -721,58 +695,8 @@ fn emit_otel_envelope(
                 );
             }
         }
-        if let Some(body) = event.body.as_ref() {
-            record.add_attribute(OTEL_ATTR_EVENT_BODY, otel_value_to_any_value(body));
-        }
-        for attr in &event.attributes {
-            record.add_attribute(
-                scoped_otel_attr_key(attr.key.as_ref()),
-                otel_value_to_any_value(&attr.value),
-            );
-        }
-        logger.emit(record);
-    }
-}
-
-fn otel_log_severity(number: diagweave::adapters::OtelSeverityNumber) -> OtelLogSeverity {
-    match number.as_u8() {
-        1 => OtelLogSeverity::Trace,
-        5 => OtelLogSeverity::Debug,
-        9 => OtelLogSeverity::Info,
-        13 => OtelLogSeverity::Warn,
-        17 => OtelLogSeverity::Error,
-        21 => OtelLogSeverity::Fatal,
-        _ => OtelLogSeverity::Info,
-    }
-}
-
-fn otel_value_to_any_value(value: &diagweave::adapters::OtelValue<'_>) -> AnyValue {
-    match value {
-        diagweave::adapters::OtelValue::String(v) => AnyValue::from(v.as_ref().to_owned()),
-        diagweave::adapters::OtelValue::Int(v) => AnyValue::from(*v),
-        diagweave::adapters::OtelValue::U64(v) => AnyValue::from(*v as i64),
-        diagweave::adapters::OtelValue::Double(v) => AnyValue::from(*v),
-        diagweave::adapters::OtelValue::Bool(v) => AnyValue::from(*v),
-        diagweave::adapters::OtelValue::Bytes(v) => AnyValue::Bytes(Box::new(v.clone())),
-        diagweave::adapters::OtelValue::Array(values) => AnyValue::ListAny(Box::new(
-            values.iter().map(otel_value_to_any_value).collect(),
-        )),
-        diagweave::adapters::OtelValue::KvList(values) => AnyValue::Map(Box::new(
-            values
-                .iter()
-                .map(|attr| {
-                    (
-                        Key::new(attr.key.as_ref().to_owned()),
-                        otel_value_to_any_value(&attr.value),
-                    )
-                })
-                .collect(),
-        )),
-    }
-}
-
-fn unix_nanos_to_system_time(unix_nanos: u64) -> Option<SystemTime> {
-    UNIX_EPOCH.checked_add(Duration::from_nanos(unix_nanos))
+    });
+    let _ = stats;
 }
 
 const OTEL_ATTR_NAMESPACE: &str = "diagweave.otel";
@@ -780,14 +704,5 @@ const OTEL_ATTR_SCENARIO_NAME: &str = "diagweave.otel.scenario.name";
 const OTEL_ATTR_ENVELOPE_RECORD_COUNT: &str = "diagweave.otel.envelope.record.count";
 const OTEL_ATTR_ENVELOPE_RECORD_INDEX: &str = "diagweave.otel.envelope.record.index";
 const OTEL_ATTR_EVENT_NAME: &str = "diagweave.otel.event.name";
-const OTEL_ATTR_EVENT_BODY: &str = "diagweave.otel.event.body";
 const OTEL_ATTR_TRACE_PARENT_SPAN_ID: &str = "diagweave.otel.trace_context.parent_span_id";
 const OTEL_ATTR_TRACE_STATE: &str = "diagweave.otel.trace_context.trace_state";
-
-fn scoped_otel_attr_key(key: &str) -> String {
-    if key.starts_with(OTEL_ATTR_NAMESPACE) {
-        key.to_owned()
-    } else {
-        format!("diagweave.otel.event.attr.{key}")
-    }
-}

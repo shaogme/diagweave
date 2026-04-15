@@ -1,4 +1,4 @@
-use crate::adapters::{OtelAttribute, OtelEnvelope, OtelEvent, OtelValue};
+use crate::otel::{OtelAttribute, OtelEnvelope, OtelEvent, OtelValue};
 
 pub(crate) fn normalize_otel_envelope(envelope: &mut OtelEnvelope<'_>) {
     for record in &mut envelope.records {

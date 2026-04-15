@@ -405,12 +405,12 @@ let tracing_fields = ir.to_tracing_fields();
 #[cfg(feature = "trace")]
 assert!(!tracing_fields.is_empty());
 #[cfg(feature = "otel")]
-let otel = ir.to_otel_envelope(diagweave::adapters::OtelEnvelopeConfig::new());
+let otel = ir.to_otel_envelope(diagweave::otel::OtelEnvelopeConfig::new());
 ```
 
 `DiagnosticIr` and the tracing/OTEL adapter outputs are borrow-first views: string fields use `RefStr<'a>` where possible and only materialize owned strings when a projected value cannot safely borrow from the source report. OTEL export is intentionally gated to `DiagnosticIr<'_, HasSeverity>`, so reports must set an explicit `severity` before producing an OTEL envelope.
 
-`to_otel_envelope(config)` accepts an [`OtelEnvelopeConfig`](diagweave::adapters::OtelEnvelopeConfig) so callers can keep compatibility output or opt into a shared namespace such as `diagweave.otel`. Diagweave-owned keys are namespaced by the config, while OTEL semantic-convention keys like `exception.type` remain unchanged.
+`to_otel_envelope(config)` accepts an [`OtelEnvelopeConfig`](diagweave::otel::OtelEnvelopeConfig) so callers can keep compatibility output or opt into a shared namespace such as `diagweave.otel`. Diagweave-owned keys are namespaced by the config, while OTEL semantic-convention keys like `exception.type` remain unchanged.
 
 `DiagnosticIr` keeps render-stable header/metadata plus aggregate counters:
 

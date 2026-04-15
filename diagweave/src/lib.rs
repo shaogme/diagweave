@@ -1,8 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 extern crate alloc;
 
-#[path = "adapters.rs"]
-mod adapters_impl;
+#[cfg(feature = "otel")]
+#[path = "otel.rs"]
+mod otel_impl;
 #[path = "render.rs"]
 mod render_impl;
 #[path = "report.rs"]
@@ -31,9 +32,11 @@ pub struct AiDoctests;
 #[doc = include_str!("../../docs/ai/ai_docs_cn.md")]
 pub struct AiCnDoctests;
 
-#[cfg(any(feature = "trace", feature = "otel"))]
-pub mod adapters {
-    pub use crate::adapters_impl::*;
+#[cfg(any(feature = "otel", feature = "opentelemetry"))]
+pub mod otel {
+    #[cfg(feature = "opentelemetry")]
+    pub use crate::otel_impl::opentelemetry;
+    pub use crate::otel_impl::*;
 }
 
 pub mod render {
@@ -77,7 +80,7 @@ pub mod trace {
     pub use crate::trace_impl::TracingExporter;
     pub use crate::trace_impl::TracingExporterTrait;
     pub use crate::trace_impl::{
-        EmitStats, PreparedTraceEvent, PreparedTracingEmission, PreparedTracingLevel,
+        EmitStats, PreparedTraceEvent, PreparedTracingEmission, PreparedTracingLevel, TracingField,
     };
 }
 

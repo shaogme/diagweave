@@ -1,6 +1,6 @@
 mod report_common;
 #[cfg(feature = "otel")]
-use diagweave::adapters::{OtelEnvelopeConfig, OtelSeverityNumber, OtelValue};
+use diagweave::otel::{OtelEnvelopeConfig, OtelSeverityNumber, OtelValue};
 use diagweave::prelude::*;
 use diagweave::report::ReportMetadata;
 use report_common::*;

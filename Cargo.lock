@@ -267,6 +267,8 @@ dependencies = [
  "criterion",
  "diagweave-macros",
  "insta",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "ref_str",
  "serde",
  "serde_json",

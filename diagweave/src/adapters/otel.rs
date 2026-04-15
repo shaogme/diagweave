@@ -83,16 +83,43 @@ impl OtelValue<'_> {
             Self::KvList(v) => Cow::Owned(format!("{v:?}")),
         }
     }
-}
 
-impl core::fmt::Display for OtelValue<'_> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_cow().as_ref())
+    pub fn from_attachment(value: AttachmentValue) -> Self {
+        match value {
+            AttachmentValue::Null => OtelValue::Null,
+            AttachmentValue::String(v) => OtelValue::String(v.into()),
+            AttachmentValue::Integer(v) => OtelValue::Int(v),
+            AttachmentValue::Unsigned(v) => OtelValue::U64(v),
+            AttachmentValue::Float(v) => OtelValue::Double(v),
+            AttachmentValue::Bool(v) => OtelValue::Bool(v),
+            AttachmentValue::Array(values) => {
+                OtelValue::Array(values.into_iter().map(OtelValue::from_attachment).collect())
+            }
+            AttachmentValue::Object(values) => OtelValue::KvList(
+                values
+                    .into_iter()
+                    .map(|(key, value)| OtelAttribute {
+                        key: key.into(),
+                        value: Self::from_attachment(value),
+                    })
+                    .collect(),
+            ),
+            AttachmentValue::Bytes(v) => OtelValue::Bytes(v),
+            AttachmentValue::Redacted { kind, reason } => OtelValue::KvList(
+                [("kind", kind), ("reason", reason)]
+                    .into_iter()
+                    .map(|(key, value)| OtelAttribute {
+                        key: key.into(),
+                        value: value
+                            .map(|v| OtelValue::String(v.into()))
+                            .unwrap_or(OtelValue::Null),
+                    })
+                    .collect(),
+            ),
+        }
     }
-}
 
-impl<'a> From<&'a AttachmentValue> for OtelValue<'a> {
-    fn from(value: &'a AttachmentValue) -> Self {
+    pub fn from_attachment_ref(value: &'_ AttachmentValue) -> Self {
         match value {
             AttachmentValue::Null => Self::Null,
             AttachmentValue::String(v) => Self::String(v.clone().into()),
@@ -101,15 +128,14 @@ impl<'a> From<&'a AttachmentValue> for OtelValue<'a> {
             AttachmentValue::Float(v) => Self::Double(*v),
             AttachmentValue::Bool(v) => Self::Bool(*v),
             AttachmentValue::Array(values) => {
-                Self::Array(values.iter().map(OtelValue::from).collect())
+                Self::Array(values.iter().map(OtelValue::from_attachment_ref).collect())
             }
             AttachmentValue::Object(values) => {
                 let attrs = values
-                    .sorted_entries()
                     .into_iter()
                     .map(|(k, v)| OtelAttribute {
                         key: k.clone().into(),
-                        value: OtelValue::from(v),
+                        value: Self::from_attachment_ref(v),
                     })
                     .collect();
                 Self::KvList(attrs)
@@ -133,10 +159,8 @@ impl<'a> From<&'a AttachmentValue> for OtelValue<'a> {
             ]),
         }
     }
-}
 
-impl<'a> From<&'a ContextValue> for OtelValue<'a> {
-    fn from(value: &'a ContextValue) -> Self {
+    pub fn from_context_ref(value: &'_ ContextValue) -> Self {
         match value {
             ContextValue::String(v) => Self::String(v.clone().into()),
             ContextValue::Integer(v) => Self::Int(*v),
@@ -178,6 +202,12 @@ impl<'a> From<&'a ContextValue> for OtelValue<'a> {
                 },
             ]),
         }
+    }
+}
+
+impl core::fmt::Display for OtelValue<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.as_cow().as_ref())
     }
 }
 
@@ -226,7 +256,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
 
         OtelEvent {
             name: "exception".into(),
-            body: Some(otel_value_from_owned(build_error_value(&self.error))),
+            body: Some(OtelValue::from_attachment(build_error_value(&self.error))),
             timestamp_unix_nano: None,
             observed_timestamp_unix_nano: None,
             severity_text: Some(severity_ref(report_level)),
@@ -258,7 +288,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         if let Some(stack_trace) = self.metadata.stack_trace() {
             attributes.push(OtelAttribute {
                 key: "exception.stacktrace".into(),
-                value: otel_value_from_owned(build_stack_trace_value(stack_trace)),
+                value: OtelValue::from_attachment(build_stack_trace_value(stack_trace)),
             });
         }
         if let Some(error_code) = self.metadata.error_code() {
@@ -325,7 +355,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         if !self.display_causes.is_empty() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.display_causes".into(),
-                value: otel_value_from_owned(build_display_causes(
+                value: OtelValue::from_attachment(build_display_causes(
                     self.display_causes,
                     self.display_causes_state,
                 )),
@@ -334,13 +364,13 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         if let Some(source_errors) = self.origin_source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.origin_source_errors".into(),
-                value: otel_value_from_owned(build_origin_src_errs_val(source_errors)),
+                value: OtelValue::from_attachment(build_origin_src_errs_val(source_errors)),
             });
         }
         if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
             attributes.push(OtelAttribute {
                 key: "diagnostic_bag.diagnostic_source_errors".into(),
-                value: otel_value_from_owned(build_diag_src_errs_val(source_errors)),
+                value: OtelValue::from_attachment(build_diag_src_errs_val(source_errors)),
             });
         }
     }
@@ -349,13 +379,13 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         for (key, value) in self.context {
             attributes.push(OtelAttribute {
                 key: key.as_ref().into(),
-                value: OtelValue::from(value),
+                value: OtelValue::from_context_ref(value),
             });
         }
         for (key, value) in self.system {
             attributes.push(OtelAttribute {
                 key: format!("system.{}", key.as_ref()).into(),
-                value: OtelValue::from(value),
+                value: OtelValue::from_context_ref(value),
             });
         }
         for attachment in self.attachments {
@@ -373,7 +403,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 } => {
                     attributes.push(OtelAttribute {
                         key: format!("attachment.payload.{name}").into(),
-                        value: OtelValue::from(value),
+                        value: OtelValue::from_attachment_ref(value),
                     });
                     if let Some(media_type) = media_type {
                         attributes.push(OtelAttribute {
@@ -410,7 +440,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 .iter()
                 .map(|attr| OtelAttribute {
                     key: attr.key.clone().into(),
-                    value: OtelValue::from(&attr.value),
+                    value: OtelValue::from_attachment_ref(&attr.value),
                 })
                 .collect::<Vec<_>>();
             if let Some(ctx) = context {
@@ -484,41 +514,5 @@ fn severity_ref(level: crate::report::Severity) -> ref_str::StaticRefStr {
         crate::report::Severity::Warn => "warn".into(),
         crate::report::Severity::Error => "error".into(),
         crate::report::Severity::Fatal => "fatal".into(),
-    }
-}
-
-fn otel_value_from_owned(value: AttachmentValue) -> OtelValue<'static> {
-    match value {
-        AttachmentValue::Null => OtelValue::Null,
-        AttachmentValue::String(v) => OtelValue::String(v.to_string().into()),
-        AttachmentValue::Integer(v) => OtelValue::Int(v),
-        AttachmentValue::Unsigned(v) => OtelValue::U64(v),
-        AttachmentValue::Float(v) => OtelValue::Double(v),
-        AttachmentValue::Bool(v) => OtelValue::Bool(v),
-        AttachmentValue::Array(values) => {
-            OtelValue::Array(values.into_iter().map(otel_value_from_owned).collect())
-        }
-        AttachmentValue::Object(values) => OtelValue::KvList(
-            values
-                .into_sorted_entries()
-                .into_iter()
-                .map(|(key, value)| OtelAttribute {
-                    key: key.into(),
-                    value: otel_value_from_owned(value),
-                })
-                .collect(),
-        ),
-        AttachmentValue::Bytes(v) => OtelValue::Bytes(v),
-        AttachmentValue::Redacted { kind, reason } => OtelValue::KvList(
-            [("kind", kind), ("reason", reason)]
-                .into_iter()
-                .map(|(key, value)| OtelAttribute {
-                    key: key.into(),
-                    value: value
-                        .map(|v| OtelValue::String(v.to_string().into()))
-                        .unwrap_or(OtelValue::Null),
-                })
-                .collect(),
-        ),
     }
 }

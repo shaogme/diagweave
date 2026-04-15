@@ -14,7 +14,7 @@ categories = ["rust-patterns", "development-tools::debugging"]
 
 [dependencies]
 diagweave-macros.workspace = true
-ref_str = { version = "0.1.5", features = ["serde"] }
+ref_str = { version = "0.1.6", features = ["serde"] }
 opentelemetry = { version = "0.31", default-features = false, optional = true }
 opentelemetry_sdk = { version = "0.31", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, features = ["derive", "alloc", "rc"], optional = true }

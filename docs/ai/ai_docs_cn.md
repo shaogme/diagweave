@@ -512,7 +512,6 @@ fn process() -> Result<(), Report<io::Error, HasSeverity>> {
 `Report` 附件支持的强类型值，支持自动从基础类型转换：
 | 类型 | Rust 实现类型 | 说明 |
 | :--- | :--- | :--- |
-| `Null` | `None` / `()` | 空值 |
 | `String` | `&str`, `String` | UTF-8 文本 |
 | `Integer` | `i8..i64` | 有符号整数 |
 | `Unsigned` | `u8..u64` | 无符号整数 |
@@ -786,7 +785,7 @@ impl std::error::Error for MyError {}
 #[cfg(feature = "json")]
 let _report = Report::new(MyError).attach_payload(
     "request_meta",
-    json!({ "version": "v1", "retry": 3 }),
+    AttachmentValue::from(json!({ "version": "v1", "retry": 3 })),
     Some("application/json")
 );
 ```

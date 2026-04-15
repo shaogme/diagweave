@@ -137,7 +137,6 @@ pub struct OtelTraceContext {
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
 pub enum OtelValue<'a> {
-    Null,
     String(RefStr<'a>),
     Int(i64),
     U64(u64),
@@ -152,7 +151,6 @@ impl<'a> OtelValue<'a> {
     /// Returns a cow representation for debugging and examples.
     pub fn as_cow(&self) -> Cow<'_, str> {
         match self {
-            Self::Null => Cow::Borrowed("null"),
             Self::String(v) => v.as_ref().into(),
             Self::Int(v) => Cow::Owned(v.to_string()),
             Self::U64(v) => Cow::Owned(v.to_string()),
@@ -166,15 +164,17 @@ impl<'a> OtelValue<'a> {
 
     pub fn from_attachment(value: AttachmentValue) -> Self {
         match value {
-            AttachmentValue::Null => OtelValue::Null,
             AttachmentValue::String(v) => OtelValue::String(v.into()),
             AttachmentValue::Integer(v) => OtelValue::Int(v),
             AttachmentValue::Unsigned(v) => OtelValue::U64(v),
             AttachmentValue::Float(v) => OtelValue::Double(v),
             AttachmentValue::Bool(v) => OtelValue::Bool(v),
-            AttachmentValue::Array(values) => {
-                OtelValue::Array(values.into_iter().map(OtelValue::from_attachment).collect())
-            }
+            AttachmentValue::Array(values) => OtelValue::Array(
+                values
+                    .into_iter()
+                    .map(OtelValue::from_attachment)
+                    .collect(),
+            ),
             AttachmentValue::Object(values) => OtelValue::KvList(
                 values
                     .into_iter()
@@ -185,58 +185,51 @@ impl<'a> OtelValue<'a> {
                     .collect(),
             ),
             AttachmentValue::Bytes(v) => OtelValue::Bytes(v),
-            AttachmentValue::Redacted { kind, reason } => OtelValue::KvList(
-                [("kind", kind), ("reason", reason)]
-                    .into_iter()
-                    .map(|(key, value)| OtelAttribute {
-                        key: key.into(),
-                        value: value
-                            .map(|v| OtelValue::String(v.into()))
-                            .unwrap_or(OtelValue::Null),
-                    })
-                    .collect(),
-            ),
+            AttachmentValue::Redacted { kind, reason } => {
+                let mut attrs = Vec::with_capacity(2);
+                if let Some(kind) = kind {
+                    attrs.push(OtelAttribute {
+                        key: "kind".into(),
+                        value: OtelValue::String(kind.into()),
+                    });
+                }
+                if let Some(reason) = reason {
+                    attrs.push(OtelAttribute {
+                        key: "reason".into(),
+                        value: OtelValue::String(reason.into()),
+                    });
+                }
+                OtelValue::KvList(attrs)
+            }
         }
     }
 
     pub fn from_attachment_ref(value: &'a AttachmentValue) -> Self {
         match value {
-            AttachmentValue::Null => Self::Null,
             AttachmentValue::String(v) => Self::String(v.as_str().into()),
             AttachmentValue::Integer(v) => Self::Int(*v),
             AttachmentValue::Unsigned(v) => Self::U64(*v),
             AttachmentValue::Float(v) => Self::Double(*v),
             AttachmentValue::Bool(v) => Self::Bool(*v),
-            AttachmentValue::Array(values) => {
-                Self::Array(values.iter().map(OtelValue::from_attachment_ref).collect())
-            }
-            AttachmentValue::Object(values) => {
-                let attrs = values
-                    .into_iter()
+            AttachmentValue::Array(values) => Self::Array(
+                values
+                    .iter()
+                    .map(OtelValue::from_attachment_ref)
+                    .collect(),
+            ),
+            AttachmentValue::Object(values) => Self::KvList(
+                values
+                    .iter()
                     .map(|(k, v)| OtelAttribute {
                         key: k.as_str().into(),
                         value: Self::from_attachment_ref(v),
                     })
-                    .collect();
-                Self::KvList(attrs)
-            }
+                    .collect(),
+            ),
             AttachmentValue::Bytes(v) => Self::Bytes(v.clone()),
-            AttachmentValue::Redacted { kind, reason } => Self::KvList(vec![
-                OtelAttribute {
-                    key: "kind".into(),
-                    value: kind
-                        .as_ref()
-                        .map(|v| OtelValue::String(v.as_str().into()))
-                        .unwrap_or(OtelValue::Null),
-                },
-                OtelAttribute {
-                    key: "reason".into(),
-                    value: reason
-                        .as_ref()
-                        .map(|v| OtelValue::String(v.as_str().into()))
-                        .unwrap_or(OtelValue::Null),
-                },
-            ]),
+            AttachmentValue::Redacted { kind, reason } => {
+                Self::KvList(redacted_attrs(kind.as_ref(), reason.as_ref()))
+            }
         }
     }
 
@@ -265,22 +258,9 @@ impl<'a> OtelValue<'a> {
             ContextValue::BoolArray(values) => {
                 Self::Array(values.iter().copied().map(OtelValue::Bool).collect())
             }
-            ContextValue::Redacted { kind, reason } => Self::KvList(vec![
-                OtelAttribute {
-                    key: "kind".into(),
-                    value: kind
-                        .as_ref()
-                        .map(|v| OtelValue::String(v.as_str().into()))
-                        .unwrap_or(OtelValue::Null),
-                },
-                OtelAttribute {
-                    key: "reason".into(),
-                    value: reason
-                        .as_ref()
-                        .map(|v| OtelValue::String(v.as_str().into()))
-                        .unwrap_or(OtelValue::Null),
-                },
-            ]),
+            ContextValue::Redacted { kind, reason } => {
+                Self::KvList(redacted_attrs(kind.as_ref(), reason.as_ref()))
+            }
         }
     }
 }
@@ -692,76 +672,86 @@ fn otel_error_raw_data<'a>(message: OtelValue<'a>, error_type: RefStr<'a>) -> Ot
     ])
 }
 
+fn redacted_attrs<'a>(
+    kind: Option<&'a ref_str::StaticRefStr>,
+    reason: Option<&'a ref_str::StaticRefStr>,
+) -> Vec<OtelAttribute<'a>> {
+    let mut attrs = Vec::with_capacity(2);
+    if let Some(kind) = kind {
+        attrs.push(OtelAttribute {
+            key: "kind".into(),
+            value: OtelValue::String(kind.as_str().into()),
+        });
+    }
+    if let Some(reason) = reason {
+        attrs.push(OtelAttribute {
+            key: "reason".into(),
+            value: OtelValue::String(reason.as_str().into()),
+        });
+    }
+    attrs
+}
+
 fn otel_stack_trace_value<'a>(stack_trace: &'a StackTrace) -> OtelValue<'a> {
     let format = match stack_trace.format {
         crate::report::StackTraceFormat::Native => "native",
         crate::report::StackTraceFormat::Raw => "raw",
     };
-    OtelValue::KvList(vec![
+    let frames = stack_trace
+        .frames
+        .iter()
+        .map(|frame| {
+            let mut attrs = Vec::with_capacity(5);
+            if let Some(symbol) = frame.symbol.as_ref() {
+                attrs.push(OtelAttribute {
+                    key: "symbol".into(),
+                    value: OtelValue::String(symbol.as_str().into()),
+                });
+            }
+            if let Some(module_path) = frame.module_path.as_ref() {
+                attrs.push(OtelAttribute {
+                    key: "module_path".into(),
+                    value: OtelValue::String(module_path.as_str().into()),
+                });
+            }
+            if let Some(file) = frame.file.as_ref() {
+                attrs.push(OtelAttribute {
+                    key: "file".into(),
+                    value: OtelValue::String(file.as_str().into()),
+                });
+            }
+            if let Some(line) = frame.line {
+                attrs.push(OtelAttribute {
+                    key: "line".into(),
+                    value: OtelValue::U64(line as u64),
+                });
+            }
+            if let Some(column) = frame.column {
+                attrs.push(OtelAttribute {
+                    key: "column".into(),
+                    value: OtelValue::U64(column as u64),
+                });
+            }
+            OtelValue::KvList(attrs)
+        })
+        .collect();
+    let mut attrs = vec![
         OtelAttribute {
             key: "format".into(),
             value: OtelValue::String(format.into()),
         },
         OtelAttribute {
             key: "frames".into(),
-            value: OtelValue::Array(
-                stack_trace
-                    .frames
-                    .iter()
-                    .map(|frame| {
-                        OtelValue::KvList(vec![
-                            OtelAttribute {
-                                key: "symbol".into(),
-                                value: frame
-                                    .symbol
-                                    .as_ref()
-                                    .map(|v| OtelValue::String(v.as_str().into()))
-                                    .unwrap_or(OtelValue::Null),
-                            },
-                            OtelAttribute {
-                                key: "module_path".into(),
-                                value: frame
-                                    .module_path
-                                    .as_ref()
-                                    .map(|v| OtelValue::String(v.as_str().into()))
-                                    .unwrap_or(OtelValue::Null),
-                            },
-                            OtelAttribute {
-                                key: "file".into(),
-                                value: frame
-                                    .file
-                                    .as_ref()
-                                    .map(|v| OtelValue::String(v.as_str().into()))
-                                    .unwrap_or(OtelValue::Null),
-                            },
-                            OtelAttribute {
-                                key: "line".into(),
-                                value: frame
-                                    .line
-                                    .map(|v| OtelValue::U64(v as u64))
-                                    .unwrap_or(OtelValue::Null),
-                            },
-                            OtelAttribute {
-                                key: "column".into(),
-                                value: frame
-                                    .column
-                                    .map(|v| OtelValue::U64(v as u64))
-                                    .unwrap_or(OtelValue::Null),
-                            },
-                        ])
-                    })
-                    .collect(),
-            ),
+            value: OtelValue::Array(frames),
         },
-        OtelAttribute {
+    ];
+    if let Some(raw) = stack_trace.raw.as_ref() {
+        attrs.push(OtelAttribute {
             key: "raw".into(),
-            value: stack_trace
-                .raw
-                .as_ref()
-                .map(|v| OtelValue::String(v.as_str().into()))
-                .unwrap_or(OtelValue::Null),
-        },
-    ])
+            value: OtelValue::String(raw.as_str().into()),
+        });
+    }
+    OtelValue::KvList(attrs)
 }
 
 fn otel_display_causes_value<'a>(
@@ -794,6 +784,34 @@ fn otel_source_errors_value<'a>(
     hide_report_wrapper_types: bool,
 ) -> OtelValue<'a> {
     let exported = source_errors.export_with_options(hide_report_wrapper_types);
+    let nodes = exported
+        .nodes
+        .into_iter()
+        .map(|node| {
+            let mut attrs = Vec::with_capacity(3);
+            attrs.push(OtelAttribute {
+                key: "message".into(),
+                value: OtelValue::String(node.message.into()),
+            });
+            if let Some(type_name) = node.type_name.as_ref() {
+                attrs.push(OtelAttribute {
+                    key: "type".into(),
+                    value: OtelValue::String(type_name.clone().into()),
+                });
+            }
+            attrs.push(OtelAttribute {
+                key: "source_roots".into(),
+                value: OtelValue::Array(
+                    node.source_roots
+                        .iter()
+                        .copied()
+                        .map(|id| OtelValue::Int(id as i64))
+                        .collect(),
+                ),
+            });
+            OtelValue::KvList(attrs)
+        })
+        .collect();
     OtelValue::KvList(vec![
         OtelAttribute {
             key: "roots".into(),
@@ -808,38 +826,7 @@ fn otel_source_errors_value<'a>(
         },
         OtelAttribute {
             key: "nodes".into(),
-            value: OtelValue::Array(
-                exported
-                    .nodes
-                    .iter()
-                    .map(|node| {
-                        OtelValue::KvList(vec![
-                            OtelAttribute {
-                                key: "message".into(),
-                                value: OtelValue::String(node.message.to_string().into()),
-                            },
-                            OtelAttribute {
-                                key: "type".into(),
-                                value: node
-                                    .type_name
-                                    .clone()
-                                    .map(|v| OtelValue::String(v.into()))
-                                    .unwrap_or(OtelValue::Null),
-                            },
-                            OtelAttribute {
-                                key: "source_roots".into(),
-                                value: OtelValue::Array(
-                                    node.source_roots
-                                        .iter()
-                                        .copied()
-                                        .map(|id| OtelValue::Int(id as i64))
-                                        .collect(),
-                                ),
-                            },
-                        ])
-                    })
-                    .collect(),
-            ),
+            value: OtelValue::Array(nodes),
         },
         OtelAttribute {
             key: "truncated".into(),

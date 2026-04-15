@@ -40,10 +40,6 @@
     "otel_value": {
       "oneOf": [
         {
-          "type": "string",
-          "const": "Null"
-        },
-        {
           "type": "object",
           "additionalProperties": false,
           "required": ["String"],
@@ -125,44 +121,29 @@
       "properties": {
         "name": { "type": "string" },
         "body": {
-          "description": "Human-readable error message string for the primary exception record, or null for trace-event records. Per OTel Semantic Conventions, this should be a plain string rather than a structured object.",
-          "oneOf": [
-              { "$ref": "#/$defs/otel_value" },
-              { "type": "null" }
-          ]
+          "description": "Human-readable error message string for the primary exception record, or omitted for trace-event records. Per OTel Semantic Conventions, this should be a plain string rather than a structured object.",
+          "$ref": "#/$defs/otel_value"
         },
-        "timestamp_unix_nano": { "type": ["integer", "null"], "minimum": 0 },
-        "observed_timestamp_unix_nano": { "type": ["integer", "null"], "minimum": 0 },
-        "severity_text": { "type": ["string", "null"] },
+        "timestamp_unix_nano": { "type": "integer", "minimum": 0 },
+        "observed_timestamp_unix_nano": { "type": "integer", "minimum": 0 },
+        "severity_text": { "type": "string" },
         "severity_number": {
-          "oneOf": [
-            { "$ref": "#/$defs/severity_number" },
-            { "type": "null" }
-          ]
+          "$ref": "#/$defs/severity_number"
         },
         "trace_id": {
-          "oneOf": [
-            { "$ref": "#/$defs/trace_id" },
-            { "type": "null" }
-          ]
+          "$ref": "#/$defs/trace_id"
         },
         "span_id": {
-          "oneOf": [
-            { "$ref": "#/$defs/span_id" },
-            { "type": "null" }
-          ]
+          "$ref": "#/$defs/span_id"
         },
         "trace_flags": {
-          "type": ["integer", "null"],
+          "type": "integer",
           "minimum": 0,
           "maximum": 255
         },
         "trace_context": {
           "description": "Fixed top-level trace-context object for the record. When present, it carries parent span metadata and trace state directly on the event.",
-          "oneOf": [
-            { "$ref": "#/$defs/trace_context" },
-            { "type": "null" }
-          ]
+          "$ref": "#/$defs/trace_context"
         },
         "attributes": {
           "type": "array",

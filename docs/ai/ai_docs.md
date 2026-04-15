@@ -514,7 +514,6 @@ Manages the chain of triggers for a diagnostic. `diagweave` supports not only `s
 Strongly typed values supported by `Report` attachments, converted automatically from base types:
 | Type | Rust Implementation Type | Description |
 | :--- | :--- | :--- |
-| `Null` | `None` / `()` | Null value |
 | `String` | `&str`, `String` | UTF-8 Text |
 | `Integer` | `i8..i64` | Signed Integer |
 | `Unsigned` | `u8..u64` | Unsigned Integer |
@@ -788,7 +787,7 @@ impl std::error::Error for MyError {}
 #[cfg(feature = "json")]
 let _report = Report::new(MyError).attach_payload(
     "request_meta",
-    json!({ "version": "v1", "retry": 3 }),
+    AttachmentValue::from(json!({ "version": "v1", "retry": 3 })),
     Some("application/json")
 );
 ```

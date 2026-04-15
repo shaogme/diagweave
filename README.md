@@ -475,7 +475,7 @@ The OTEL adapter keeps the report tree structured where possible:
 
 - the main `exception` record carries a structured `body` instead of a plain string
 - `exception.stacktrace` is exported as a `KvList`
-- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` preserve `message`; both `origin.type` and `diagnostic.type` are `string | null` in the JSON contract
+- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` preserve `message`; `type` is emitted only when present
 - empty `trace` / `context` / `attachments` sections are omitted
 
 Tracing export:

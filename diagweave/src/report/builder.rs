@@ -184,11 +184,8 @@ where
         value: impl Into<AttachmentValue>,
         media_type: Option<impl Into<StaticRefStr>>,
     ) -> Self {
-        self.diagnostics_mut().add_attachment(Attachment::payload(
-            name,
-            value,
-            media_type.map(|m| m.into()),
-        ));
+        self.diagnostics_mut()
+            .add_attachment(Attachment::payload(name, value, media_type));
         self
     }
 

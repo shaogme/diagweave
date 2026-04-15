@@ -266,8 +266,7 @@ pub(super) fn write_attachment_value(
     }
 
     match value {
-        AttachmentValue::Null
-        | AttachmentValue::String(_)
+        AttachmentValue::String(_)
         | AttachmentValue::Integer(_)
         | AttachmentValue::Unsigned(_)
         | AttachmentValue::Float(_)
@@ -343,7 +342,6 @@ fn write_scalar_value(
     value: &AttachmentValue,
 ) -> Option<fmt::Result> {
     match value {
-        AttachmentValue::Null => Some(write_kind_only(f, pretty, depth, "null")),
         AttachmentValue::String(v) => Some(write_kind_and_value(f, pretty, depth, "string", |f| {
             write_json_string(f, v.as_ref())
         })),
@@ -371,15 +369,6 @@ fn write_scalar_value(
         })),
         _ => None,
     }
-}
-
-fn write_kind_only(f: &mut Formatter<'_>, pretty: bool, depth: usize, kind: &str) -> fmt::Result {
-    let mut first = true;
-    f.write_char('{')?;
-    write_object_field(f, pretty, depth, &mut first, "kind", |f| {
-        write_json_string(f, kind)
-    })?;
-    close_object(f, pretty, depth, first)
 }
 
 fn write_kind_and_value<F>(

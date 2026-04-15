@@ -173,7 +173,10 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
         r.with_ctx("request_id", request_id)
             .attach_payload(
                 "request_meta",
-                serde_json::json!({ "version": "v1", "retry": 3 }),
+                serde_json::json!({
+                    "version": "v1",
+                    "retry": 3
+                }),
                 Some("application/json"),
             )
             .with_error_code("ERR_AUTH_001")

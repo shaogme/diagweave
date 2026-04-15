@@ -491,7 +491,7 @@ OTEL 适配器会尽量保留树状结构：
 
 - 主 `exception` 记录的 `body` 保持为结构化值，而不是纯字符串
 - `exception.stacktrace` 以 `KvList` 形式输出
-- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` 都保留 `message`；在 JSON 契约中，`origin.type` 与 `diagnostic.type` 都是 `string | null`
+- `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` 都保留 `message`；`type` 仅在有值时输出
 - 空的 `trace` / `context` / `attachments` 部分默认会省略
 
 tracing 导出：

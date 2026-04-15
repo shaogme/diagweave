@@ -1,11 +1,26 @@
-use std::io;
+use std::{
+    env, io,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use diagweave::prelude::{
-    AttachmentValue, Compact, GlobalContext, HasSeverity, ParentSpanId, Pretty, Report,
-    ReportRenderOptions, ResultReportExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel,
-    TraceId, register_global_injector, set, union,
+    AttachmentValue, Compact, GlobalContext, HasSeverity, Pretty, Report, ReportRenderOptions,
+    ResultReportExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel, TraceId,
+    register_global_injector, set, union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
+use diagweave::report::TraceFlags;
+use opentelemetry::logs::{
+    AnyValue, LogRecord as _, Logger as _, LoggerProvider as _, Severity as OtelLogSeverity,
+};
+use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
+use opentelemetry::{Key, KeyValue};
+use opentelemetry_otlp::{Protocol, WithExportConfig};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::logs::SdkLoggerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing_subscriber::prelude::*;
 
 mod payment {
     use super::*;
@@ -360,39 +375,185 @@ mod gateway {
     }
 }
 
-fn init_tracing() {
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
+struct TelemetryHandles {
+    mode: TelemetryMode,
+    tracer_provider: SdkTracerProvider,
+    logger_provider: SdkLoggerProvider,
+}
+
+#[derive(Debug, Clone)]
+enum TelemetryMode {
+    Stdout,
+    Otlp {
+        traces_endpoint: String,
+        logs_endpoint: String,
+    },
+}
+
+#[derive(Debug, Clone, Default)]
+struct TelemetryConfig {
+    traces_endpoint: Option<String>,
+    logs_endpoint: Option<String>,
+}
+
+impl TelemetryConfig {
+    fn from_env() -> Self {
+        let shared = env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok();
+        let traces_endpoint = env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+            .ok()
+            .or_else(|| shared.clone());
+        let logs_endpoint = env::var("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT").ok().or(shared);
+
+        Self {
+            traces_endpoint,
+            logs_endpoint,
+        }
+    }
+}
+
+impl Drop for TelemetryHandles {
+    fn drop(&mut self) {
+        let _ = self.logger_provider.shutdown();
+        let _ = self.tracer_provider.shutdown();
+    }
+}
+
+fn init_telemetry() -> TelemetryHandles {
+    let resource = Resource::builder_empty()
+        .with_attributes([
+            KeyValue::new("service.name", "cloud-native-stack"),
+            KeyValue::new("deployment.environment", "staging"),
+        ])
+        .build();
+
+    let config = TelemetryConfig::from_env();
+    let traces_endpoint = config
+        .traces_endpoint
+        .clone()
+        .or_else(|| config.logs_endpoint.clone());
+    let logs_endpoint = config
+        .logs_endpoint
+        .clone()
+        .or_else(|| config.traces_endpoint.clone());
+
+    let handles = match (traces_endpoint.as_deref(), logs_endpoint.as_deref()) {
+        (Some(traces_endpoint), Some(logs_endpoint)) => {
+            match build_otlp_telemetry(&resource, traces_endpoint, logs_endpoint) {
+                Ok(handles) => handles,
+                Err(err) => {
+                    eprintln!(
+                        "[otel] collector init failed, falling back to stdout exporter: {err}"
+                    );
+                    build_stdout_telemetry(&resource)
+                }
+            }
+        }
+        _ => build_stdout_telemetry(&resource),
+    };
+
+    let tracer = handles
+        .tracer_provider
+        .tracer("diagweave.examples.cloud-native-stack");
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+    let fmt_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
         .without_time()
-        .try_init();
+        .with_filter(tracing_subscriber::filter::LevelFilter::INFO);
+    let subscriber = tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(otel_layer);
+    let _ = tracing::subscriber::set_global_default(subscriber);
+
+    handles
+}
+
+fn build_stdout_telemetry(resource: &Resource) -> TelemetryHandles {
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_resource(resource.clone())
+        .with_simple_exporter(opentelemetry_stdout::SpanExporter::default())
+        .build();
+
+    let logger_provider = SdkLoggerProvider::builder()
+        .with_resource(resource.clone())
+        .with_simple_exporter(opentelemetry_stdout::LogExporter::default())
+        .build();
+
+    TelemetryHandles {
+        mode: TelemetryMode::Stdout,
+        tracer_provider,
+        logger_provider,
+    }
+}
+
+fn build_otlp_telemetry(
+    resource: &Resource,
+    traces_endpoint: &str,
+    logs_endpoint: &str,
+) -> Result<TelemetryHandles, String> {
+    let tracer_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(traces_endpoint)
+        .build()
+        .map_err(|err| err.to_string())?;
+
+    let log_exporter = opentelemetry_otlp::LogExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(logs_endpoint)
+        .build()
+        .map_err(|err| err.to_string())?;
+
+    let tracer_provider = SdkTracerProvider::builder()
+        .with_resource(resource.clone())
+        .with_simple_exporter(tracer_exporter)
+        .build();
+
+    let logger_provider = SdkLoggerProvider::builder()
+        .with_resource(resource.clone())
+        .with_simple_exporter(log_exporter)
+        .build();
+
+    Ok(TelemetryHandles {
+        mode: TelemetryMode::Otlp {
+            traces_endpoint: traces_endpoint.to_owned(),
+            logs_endpoint: logs_endpoint.to_owned(),
+        },
+        tracer_provider,
+        logger_provider,
+    })
 }
 
 fn init_global_context() {
     const REQUEST_ID: &str = "req-20260327-0001";
-    const SPAN_ID: &str = "00f067aa0ba902b7";
-    const PARENT_SPAN_ID: &str = "1111111111111111";
-    const TRACE_ID: &str = "4bf92f3577b34da6a3ce929d0e0e4736";
 
     let _ = register_global_injector(|| {
         let mut ctx = GlobalContext::default();
         ctx.context.insert("request_id", REQUEST_ID);
         ctx.system.insert("service.name", "cloud-native-stack");
         ctx.system.insert("deployment.environment", "staging");
-        ctx.trace = Some(diagweave::report::GlobalTraceContext {
-            trace_id: TraceId::new(TRACE_ID).ok(),
-            span_id: SpanId::new(SPAN_ID).ok(),
-            parent_span_id: ParentSpanId::new(PARENT_SPAN_ID).ok(),
-            ..diagweave::report::GlobalTraceContext::default()
-        });
+        if let Some(trace) = current_global_trace_context() {
+            ctx.trace = Some(trace);
+        }
         Some(ctx)
     });
 }
 
 fn main() {
-    init_tracing();
+    let telemetry = init_telemetry();
     init_global_context();
     println!("diagweave report json schema version = {REPORT_JSON_SCHEMA_VERSION}");
+    match &telemetry.mode {
+        TelemetryMode::Stdout => println!("otel transport = stdout"),
+        TelemetryMode::Otlp {
+            traces_endpoint,
+            logs_endpoint,
+        } => {
+            println!(
+                "otel transport = otlp, traces_endpoint={traces_endpoint}, logs_endpoint={logs_endpoint}"
+            );
+        }
+    }
 
     let scenarios = [
         ("api:bad_request", Scenario::Api("bad-request")),
@@ -409,9 +570,11 @@ fn main() {
     ];
 
     for (label, scenario) in scenarios {
+        let span = tracing::info_span!("scenario", scenario = label);
+        let _entered = span.enter();
         match scenario.run() {
             Ok(value) => println!("[{label}] OK: {value}"),
-            Err(report) => render_report(label, report),
+            Err(report) => render_report(label, report, &telemetry),
         }
     }
 }
@@ -436,7 +599,7 @@ impl<'a> Scenario<'a> {
     }
 }
 
-fn render_report(label: &str, report: ScenarioReport) {
+fn render_report(label: &str, report: ScenarioReport, telemetry: &TelemetryHandles) {
     let pretty_opts = ReportRenderOptions {
         pretty_indent: PrettyIndent::Spaces(2),
         show_empty_sections: false,
@@ -480,4 +643,149 @@ fn render_report(label: &str, report: ScenarioReport) {
         "diagnostic_source_errors_count={}",
         report.iter_diag_sources().count()
     );
+
+    emit_otel_envelope(label, &otel, telemetry);
+}
+
+fn current_global_trace_context() -> Option<diagweave::report::GlobalTraceContext> {
+    let current_span = tracing::Span::current();
+    let otel_context = current_span.context();
+    let span_context = otel_context.span().span_context().clone();
+
+    if !span_context.is_valid() {
+        return None;
+    }
+
+    let trace_id = TraceId::new(span_context.trace_id().to_string()).ok();
+    let span_id = SpanId::new(span_context.span_id().to_string()).ok();
+    let sampled = span_context.is_sampled();
+
+    Some(diagweave::report::GlobalTraceContext {
+        trace_id,
+        span_id,
+        parent_span_id: None,
+        sampled: Some(sampled),
+        trace_state: None,
+        flags: Some(TraceFlags::new(if sampled { 1 } else { 0 })),
+    })
+}
+
+fn emit_otel_envelope(
+    label: &str,
+    otel: &diagweave::adapters::OtelEnvelope<'_>,
+    telemetry: &TelemetryHandles,
+) {
+    let logger = telemetry
+        .logger_provider
+        .logger("diagweave.examples.cloud-native-stack");
+    let record_count = otel.records.len();
+
+    for (idx, event) in otel.records.iter().enumerate() {
+        let mut record = logger.create_log_record();
+        record.set_target("diagweave.examples.cloud-native-stack.otel");
+        record.add_attribute(OTEL_ATTR_SCENARIO_NAME, label.to_owned());
+        record.add_attribute(OTEL_ATTR_ENVELOPE_RECORD_COUNT, record_count as i64);
+        record.add_attribute(OTEL_ATTR_ENVELOPE_RECORD_INDEX, idx as i64);
+        record.add_attribute(OTEL_ATTR_EVENT_NAME, event.name.as_ref().to_owned());
+        if let Some(timestamp_unix_nano) = event.timestamp_unix_nano {
+            if let Some(timestamp) = unix_nanos_to_system_time(timestamp_unix_nano) {
+                record.set_timestamp(timestamp);
+            }
+        }
+        if let Some(severity_number) = event.severity_number {
+            let log_severity = otel_log_severity(severity_number);
+            record.set_severity_text(log_severity.name());
+            record.set_severity_number(log_severity);
+        }
+        if let (Some(trace_id), Some(span_id)) = (event.trace_id.as_ref(), event.span_id.as_ref()) {
+            let trace_id = opentelemetry::TraceId::from_hex(trace_id.as_ref()).ok();
+            let span_id = opentelemetry::SpanId::from_hex(span_id.as_ref()).ok();
+            if let (Some(trace_id), Some(span_id)) = (trace_id, span_id) {
+                let trace_flags = event.trace_flags.map(opentelemetry::TraceFlags::new);
+                record.set_trace_context(trace_id, span_id, trace_flags);
+            }
+        }
+        if let Some(trace_context) = event.trace_context.as_ref() {
+            if let Some(parent_span_id) = trace_context.parent_span_id.as_ref() {
+                record.add_attribute(
+                    OTEL_ATTR_TRACE_PARENT_SPAN_ID,
+                    parent_span_id.as_ref().to_owned(),
+                );
+            }
+            if let Some(trace_state) = trace_context.trace_state.as_ref() {
+                record.add_attribute(
+                    OTEL_ATTR_TRACE_STATE,
+                    trace_state.as_static_ref().as_ref().to_owned(),
+                );
+            }
+        }
+        if let Some(body) = event.body.as_ref() {
+            record.add_attribute(OTEL_ATTR_EVENT_BODY, otel_value_to_any_value(body));
+        }
+        for attr in &event.attributes {
+            record.add_attribute(
+                scoped_otel_attr_key(attr.key.as_ref()),
+                otel_value_to_any_value(&attr.value),
+            );
+        }
+        logger.emit(record);
+    }
+}
+
+fn otel_log_severity(number: diagweave::adapters::OtelSeverityNumber) -> OtelLogSeverity {
+    match number.as_u8() {
+        1 => OtelLogSeverity::Trace,
+        5 => OtelLogSeverity::Debug,
+        9 => OtelLogSeverity::Info,
+        13 => OtelLogSeverity::Warn,
+        17 => OtelLogSeverity::Error,
+        21 => OtelLogSeverity::Fatal,
+        _ => OtelLogSeverity::Info,
+    }
+}
+
+fn otel_value_to_any_value(value: &diagweave::adapters::OtelValue<'_>) -> AnyValue {
+    match value {
+        diagweave::adapters::OtelValue::String(v) => AnyValue::from(v.as_ref().to_owned()),
+        diagweave::adapters::OtelValue::Int(v) => AnyValue::from(*v),
+        diagweave::adapters::OtelValue::U64(v) => AnyValue::from(*v as i64),
+        diagweave::adapters::OtelValue::Double(v) => AnyValue::from(*v),
+        diagweave::adapters::OtelValue::Bool(v) => AnyValue::from(*v),
+        diagweave::adapters::OtelValue::Bytes(v) => AnyValue::Bytes(Box::new(v.clone())),
+        diagweave::adapters::OtelValue::Array(values) => AnyValue::ListAny(Box::new(
+            values.iter().map(otel_value_to_any_value).collect(),
+        )),
+        diagweave::adapters::OtelValue::KvList(values) => AnyValue::Map(Box::new(
+            values
+                .iter()
+                .map(|attr| {
+                    (
+                        Key::new(attr.key.as_ref().to_owned()),
+                        otel_value_to_any_value(&attr.value),
+                    )
+                })
+                .collect(),
+        )),
+    }
+}
+
+fn unix_nanos_to_system_time(unix_nanos: u64) -> Option<SystemTime> {
+    UNIX_EPOCH.checked_add(Duration::from_nanos(unix_nanos))
+}
+
+const OTEL_ATTR_NAMESPACE: &str = "diagweave.otel";
+const OTEL_ATTR_SCENARIO_NAME: &str = "diagweave.otel.scenario.name";
+const OTEL_ATTR_ENVELOPE_RECORD_COUNT: &str = "diagweave.otel.envelope.record.count";
+const OTEL_ATTR_ENVELOPE_RECORD_INDEX: &str = "diagweave.otel.envelope.record.index";
+const OTEL_ATTR_EVENT_NAME: &str = "diagweave.otel.event.name";
+const OTEL_ATTR_EVENT_BODY: &str = "diagweave.otel.event.body";
+const OTEL_ATTR_TRACE_PARENT_SPAN_ID: &str = "diagweave.otel.trace_context.parent_span_id";
+const OTEL_ATTR_TRACE_STATE: &str = "diagweave.otel.trace_context.trace_state";
+
+fn scoped_otel_attr_key(key: &str) -> String {
+    if key.starts_with(OTEL_ATTR_NAMESPACE) {
+        key.to_owned()
+    } else {
+        format!("diagweave.otel.event.attr.{key}")
+    }
 }

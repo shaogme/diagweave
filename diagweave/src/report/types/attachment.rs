@@ -8,7 +8,7 @@ use ref_str::StaticRefStr;
 
 use crate::utils::FastMap;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(
     feature = "json",
@@ -16,8 +16,6 @@ use crate::utils::FastMap;
 )]
 /// Represents a value that can be attached to a diagnostic report payload.
 pub enum AttachmentValue {
-    #[default]
-    Null,
     String(StaticRefStr),
     Integer(i64),
     Unsigned(u64),
@@ -35,7 +33,6 @@ pub enum AttachmentValue {
 impl Display for AttachmentValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Null => write!(f, "null"),
             Self::String(value) => write!(f, "{value}"),
             Self::Integer(value) => write!(f, "{value}"),
             Self::Unsigned(value) => write!(f, "{value}"),
@@ -174,18 +171,6 @@ impl From<Vec<u8>> for AttachmentValue {
     }
 }
 
-impl<T> From<Option<T>> for AttachmentValue
-where
-    T: Into<AttachmentValue>,
-{
-    fn from(value: Option<T>) -> Self {
-        match value {
-            Some(v) => v.into(),
-            None => Self::Null,
-        }
-    }
-}
-
 impl<V, K: Into<StaticRefStr>> From<FastMap<K, V>> for AttachmentValue
 where
     V: Into<AttachmentValue>,
@@ -216,9 +201,12 @@ where
 
 #[cfg(feature = "json")]
 impl From<serde_json::Value> for AttachmentValue {
+    /// Converts a JSON value into an attachment value when it has a supported shape.
+    ///
+    /// `null` is preserved as an empty object for compatibility with older payloads.
     fn from(value: serde_json::Value) -> Self {
         match value {
-            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Null => Self::Object(FastMap::new()),
             serde_json::Value::Bool(b) => Self::Bool(b),
             serde_json::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
@@ -230,13 +218,15 @@ impl From<serde_json::Value> for AttachmentValue {
                 }
             }
             serde_json::Value::String(s) => Self::String(s.into()),
-            serde_json::Value::Array(arr) => {
-                Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
-            }
+            serde_json::Value::Array(arr) => Self::Array(
+                arr.into_iter()
+                    .map(AttachmentValue::from)
+                    .collect(),
+            ),
             serde_json::Value::Object(obj) => {
                 let mut map = FastMap::with_capacity(obj.len());
                 for (k, v) in obj {
-                    map.insert(k.into(), AttachmentValue::from(v));
+                    map.insert(k.into(), Self::from(v));
                 }
                 Self::Object(map)
             }

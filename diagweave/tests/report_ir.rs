@@ -410,11 +410,6 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     let otel = ir.to_otel_envelope();
     let json = serde_json::to_value(&otel).expect("otel envelope should serialize");
 
-    assert_eq!(
-        serde_json::to_value(OtelValue::Null).expect("null value should serialize"),
-        serde_json::json!("Null")
-    );
-
     let records = json["records"].as_array().expect("records should be array");
     assert_eq!(records.len(), 2);
     assert_eq!(records[0]["name"], "exception");

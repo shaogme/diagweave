@@ -322,13 +322,12 @@ pub(crate) fn build_ctx_and_attachments(
                 map.insert("kind".into(), AttachmentValue::String("payload".into()));
                 map.insert("name".into(), AttachmentValue::String(name.clone()));
                 map.insert("value".into(), value.clone());
-                map.insert(
-                    "media_type".into(),
-                    media_type
-                        .as_ref()
-                        .map(|v| AttachmentValue::String(v.clone()))
-                        .unwrap_or(AttachmentValue::Null),
-                );
+                if let Some(media_type) = media_type.as_ref() {
+                    map.insert(
+                        "media_type".into(),
+                        AttachmentValue::String(media_type.clone()),
+                    );
+                }
                 attachment_items.push(AttachmentValue::Object(map));
             }
         }
@@ -386,52 +385,33 @@ fn build_trace_ctx_value_opt(context: Option<&TraceContext>) -> AttachmentValue 
 #[cfg(feature = "trace")]
 fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
     let mut ctx = FastMap::new();
-    ctx.insert(
-        "trace_id".into(),
-        context
-            .trace_id
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone().into_inner()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "span_id".into(),
-        context
-            .span_id
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone().into_inner()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "parent_span_id".into(),
-        context
-            .parent_span_id
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone().into_inner()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "sampled".into(),
-        context
-            .sampled
-            .map(AttachmentValue::Bool)
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "trace_state".into(),
-        context
-            .trace_state
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.as_static_ref().clone()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    ctx.insert(
-        "flags".into(),
-        context
-            .flags
-            .map(|v| AttachmentValue::Unsigned(v.bits() as u64))
-            .unwrap_or(AttachmentValue::Null),
-    );
+    if let Some(value) = context.trace_id.as_ref() {
+        ctx.insert("trace_id".into(), AttachmentValue::String(value.clone().into_inner()));
+    }
+    if let Some(value) = context.span_id.as_ref() {
+        ctx.insert("span_id".into(), AttachmentValue::String(value.clone().into_inner()));
+    }
+    if let Some(value) = context.parent_span_id.as_ref() {
+        ctx.insert(
+            "parent_span_id".into(),
+            AttachmentValue::String(value.clone().into_inner()),
+        );
+    }
+    if let Some(value) = context.sampled {
+        ctx.insert("sampled".into(), AttachmentValue::Bool(value));
+    }
+    if let Some(value) = context.trace_state.as_ref() {
+        ctx.insert(
+            "trace_state".into(),
+            AttachmentValue::String(value.as_static_ref().clone()),
+        );
+    }
+    if let Some(value) = context.flags {
+        ctx.insert(
+            "flags".into(),
+            AttachmentValue::Unsigned(value.bits() as u64),
+        );
+    }
     AttachmentValue::Object(ctx)
 }
 
@@ -439,20 +419,12 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
 fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert("name".into(), AttachmentValue::String(event.name.clone()));
-    map.insert(
-        "level".into(),
-        event
-            .level
-            .map(|v| AttachmentValue::String(v.as_str().into()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    map.insert(
-        "timestamp_unix_nano".into(),
-        event
-            .timestamp_unix_nano
-            .map(AttachmentValue::Unsigned)
-            .unwrap_or(AttachmentValue::Null),
-    );
+    if let Some(value) = event.level {
+        map.insert("level".into(), AttachmentValue::String(value.as_str().into()));
+    }
+    if let Some(value) = event.timestamp_unix_nano {
+        map.insert("timestamp_unix_nano".into(), AttachmentValue::Unsigned(value));
+    }
     map.insert(
         "attributes".into(),
         AttachmentValue::Array(
@@ -489,58 +461,30 @@ pub(crate) fn build_stack_trace_value(stack_trace: &StackTrace) -> AttachmentVal
                 .collect(),
         ),
     );
-    map.insert(
-        "raw".into(),
-        stack_trace
-            .raw
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
-            .unwrap_or(AttachmentValue::Null),
-    );
+    if let Some(value) = stack_trace.raw.as_ref() {
+        map.insert("raw".into(), AttachmentValue::String(value.clone()));
+    }
     AttachmentValue::Object(map)
 }
 
 #[cfg(any(feature = "trace", feature = "otel"))]
 fn build_stack_frame_value(frame: &StackFrame) -> AttachmentValue {
     let mut map = FastMap::new();
-    map.insert(
-        "symbol".into(),
-        frame
-            .symbol
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    map.insert(
-        "module_path".into(),
-        frame
-            .module_path
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    map.insert(
-        "file".into(),
-        frame
-            .file
-            .as_ref()
-            .map(|v| AttachmentValue::String(v.clone()))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    map.insert(
-        "line".into(),
-        frame
-            .line
-            .map(|v| AttachmentValue::Unsigned(v as u64))
-            .unwrap_or(AttachmentValue::Null),
-    );
-    map.insert(
-        "column".into(),
-        frame
-            .column
-            .map(|v| AttachmentValue::Unsigned(v as u64))
-            .unwrap_or(AttachmentValue::Null),
-    );
+    if let Some(value) = frame.symbol.as_ref() {
+        map.insert("symbol".into(), AttachmentValue::String(value.clone()));
+    }
+    if let Some(value) = frame.module_path.as_ref() {
+        map.insert("module_path".into(), AttachmentValue::String(value.clone()));
+    }
+    if let Some(value) = frame.file.as_ref() {
+        map.insert("file".into(), AttachmentValue::String(value.clone()));
+    }
+    if let Some(value) = frame.line {
+        map.insert("line".into(), AttachmentValue::Unsigned(value as u64));
+    }
+    if let Some(value) = frame.column {
+        map.insert("column".into(), AttachmentValue::Unsigned(value as u64));
+    }
     AttachmentValue::Object(map)
 }
 
@@ -633,12 +577,9 @@ fn build_source_err_node(
         "message".into(),
         AttachmentValue::String(message.to_string().into()),
     );
-    map.insert(
-        "type".into(),
-        type_name
-            .map(AttachmentValue::String)
-            .unwrap_or(AttachmentValue::Null),
-    );
+    if let Some(value) = type_name {
+        map.insert("type".into(), AttachmentValue::String(value));
+    }
     map.insert(
         "source_roots".into(),
         AttachmentValue::Array(

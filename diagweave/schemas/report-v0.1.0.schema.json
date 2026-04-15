@@ -309,11 +309,26 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "trace_id": { "type": "string", "pattern": "^[0-9A-Fa-f]{32}$" },
-        "span_id": { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
-        "parent_span_id": { "type": "string", "pattern": "^[0-9A-Fa-f]{16}$" },
+        "trace_id": {
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]{32}$",
+          "description": "16-byte trace ID encoded as 32 hex chars. The OTEL adapter uses this directly as TraceId."
+        },
+        "span_id": {
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]{16}$",
+          "description": "8-byte span ID encoded as 16 hex chars. The OTEL adapter uses this directly as SpanId."
+        },
+        "parent_span_id": {
+          "type": "string",
+          "pattern": "^[0-9A-Fa-f]{16}$",
+          "description": "Parent span ID encoded as 16 hex chars. The OTEL adapter uses this directly as ParentSpanId."
+        },
         "sampled": { "type": "boolean" },
-        "trace_state": { "type": "string" },
+        "trace_state": {
+          "type": "string",
+          "description": "W3C trace state string. The OTEL adapter uses this directly as TraceState."
+        },
         "flags": { "type": "integer", "minimum": 0, "maximum": 255 }
       }
     },

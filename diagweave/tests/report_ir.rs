@@ -315,6 +315,24 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
             .iter()
             .any(|a| a.key == "diagnostic_bag.display_causes")
     );
+    let report_trace_context = report_record
+        .trace_context
+        .as_ref()
+        .expect("report trace context should be present");
+    assert_eq!(
+        report_trace_context
+            .parent_span_id
+            .as_ref()
+            .map(|v| v.as_ref()),
+        Some("1111111111111111")
+    );
+    assert_eq!(
+        report_trace_context
+            .trace_state
+            .as_ref()
+            .map(|v| v.as_ref()),
+        Some("vendor=blue")
+    );
     let trace_record = otel
         .records
         .iter()
@@ -327,8 +345,20 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
     assert_eq!(trace_record.severity_text.as_deref(), Some("warn"));
     assert_eq!(trace_record.severity_number, Some(OtelSeverityNumber::WARN));
     assert!(trace_record.trace_id.as_ref().map(|v| v.as_ref()).is_some());
+    let trace_context = trace_record
+        .trace_context
+        .as_ref()
+        .expect("trace context should be present");
+    assert_eq!(
+        trace_context.parent_span_id.as_ref().map(|v| v.as_ref()),
+        Some("1111111111111111")
+    );
+    assert_eq!(
+        trace_context.trace_state.as_ref().map(|v| v.as_ref()),
+        Some("vendor=blue")
+    );
     assert!(
-        trace_record
+        !trace_record
             .attributes
             .iter()
             .any(|a| a.key == "trace.parent_span_id")
@@ -390,7 +420,8 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     assert_eq!(records[0]["name"], "exception");
     assert_eq!(records[0]["severity_text"], "error");
     assert_eq!(records[0]["severity_number"], 17);
-    assert!(records[0].get("parent_span_id").is_none());
+    assert!(records[0]["trace_flags"].is_null());
+    assert!(records[0]["trace_context"].is_null());
     // Body is now a plain string per OTel semantic conventions
     assert_eq!(
         records[0]["body"],
@@ -399,7 +430,8 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     assert_eq!(records[1]["name"], "db.query");
     assert_eq!(records[1]["severity_text"], "info");
     assert_eq!(records[1]["severity_number"], 9);
-    assert!(records[1].get("parent_span_id").is_none());
+    assert!(records[1]["trace_flags"].is_null());
+    assert!(records[1]["trace_context"].is_null());
     assert!(records[1]["body"].is_null());
 }
 
@@ -408,4 +440,38 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
 fn otel_severity_number_rejects_invalid_values_on_deserialize() {
     let parsed = serde_json::from_value::<OtelSeverityNumber>(serde_json::json!(99));
     assert!(parsed.is_err());
+}
+
+#[cfg(all(feature = "json", feature = "otel"))]
+#[test]
+fn otel_trace_and_span_ids_validate_on_deserialize() {
+    let valid_trace =
+        serde_json::from_value::<TraceId>(serde_json::json!("4bf92f3577b34da6a3ce929d0e0e4736"))
+            .expect("valid trace id should deserialize");
+    assert_eq!(valid_trace.as_ref(), "4bf92f3577b34da6a3ce929d0e0e4736");
+
+    let valid_span = serde_json::from_value::<SpanId>(serde_json::json!("00f067aa0ba902b7"))
+        .expect("valid span id should deserialize");
+    assert_eq!(valid_span.as_ref(), "00f067aa0ba902b7");
+
+    let valid_parent =
+        serde_json::from_value::<ParentSpanId>(serde_json::json!("00f067aa0ba902b7"))
+            .expect("valid parent span id should deserialize");
+    assert_eq!(valid_parent.as_ref(), "00f067aa0ba902b7");
+
+    assert!(serde_json::from_value::<TraceId>(serde_json::json!("not-hex")).is_err());
+    assert!(serde_json::from_value::<SpanId>(serde_json::json!("123")).is_err());
+    assert!(serde_json::from_value::<ParentSpanId>(serde_json::json!("xyz")).is_err());
+}
+
+#[cfg(all(feature = "json", feature = "otel"))]
+#[test]
+fn trace_state_round_trips_through_deserialize() {
+    let parsed = serde_json::from_value::<TraceState>(serde_json::json!("vendor=blue"))
+        .expect("trace state should deserialize");
+    assert_eq!(parsed.as_ref(), "vendor=blue");
+    assert_eq!(
+        serde_json::to_value(&parsed).expect("trace state should serialize"),
+        serde_json::json!("vendor=blue")
+    );
 }

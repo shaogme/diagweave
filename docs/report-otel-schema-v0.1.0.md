@@ -19,9 +19,10 @@ This document defines the machine-consumable OpenTelemetry envelope emitted by `
 - `observed_timestamp_unix_nano: integer|null`
 - `severity_text: string|null`
 - `severity_number: OtelSeverityNumber|null` (`1|5|9|13|17|21` on the wire)
-- `trace_id: 32-hex-string|null`
-- `span_id: 16-hex-string|null`
+- `trace_id: TraceId|null` (`32-hex-string|null`)
+- `span_id: SpanId|null` (`16-hex-string|null`)
 - `trace_flags: integer|null`
+- `trace_context: { parent_span_id?: ParentSpanId, trace_state?: TraceState } | null`
 - `attributes: Array<OtelAttribute>`
 
 Record semantics:
@@ -32,7 +33,7 @@ Record semantics:
 - Trace-event records keep `body: null` and carry their data in top-level fields and attributes.
 - For trace-event records, top-level severity comes from `trace.events[*].level`; when an event level is absent, the exporter falls back to the report `metadata.severity`.
 - `to_otel_envelope()` is only available on `DiagnosticIr<'_, HasSeverity>`, so export always carries a report-level severity fallback and event severity fields are always populated.
-- `parent_span_id` is emitted as the `trace.parent_span_id` attribute rather than a top-level event field.
+- `trace_context` is a fixed top-level object on each `OtelEvent` record. It carries `parent_span_id` and `trace_state` when trace metadata is present.
 
 ## OtelAttribute model
 
@@ -64,8 +65,6 @@ Current exporters populate these keys:
 - `error.code`
 - `error.category`
 - `error.retryable`
-- `trace.parent_span_id`
-- `trace.state`
 - `diagnostic_bag.display_causes`
 - `diagnostic_bag.origin_source_errors`
 - `diagnostic_bag.diagnostic_source_errors`
@@ -91,8 +90,13 @@ When `feature = "otel"` is enabled, `diagweave` exports:
 
 - `OtelEnvelope`
 - `OtelEvent`
+- `OtelTraceContext`
 - `OtelAttribute`
 - `OtelSeverityNumber`
+- `TraceId`
+- `SpanId`
+- `ParentSpanId`
+- `TraceState`
 - `OtelValue`
 - `REPORT_OTEL_SCHEMA_VERSION`
 - `REPORT_OTEL_SCHEMA_DRAFT`

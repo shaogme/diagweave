@@ -15,6 +15,15 @@
       "type": "integer",
       "enum": [1, 5, 9, 13, 17, 21]
     },
+    "trace_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Fixed top-level trace-context object on each OtelEvent. This is not emitted as an attribute.",
+      "properties": {
+        "parent_span_id": { "$ref": "#/$defs/span_id" },
+        "trace_state": { "type": "string" }
+      }
+    },
     "otel_attribute": {
       "type": "object",
       "description": "OTEL attribute key/value pair. For diagnostic source chains, diagweave emits `diagnostic_bag.origin_source_errors` and `diagnostic_bag.diagnostic_source_errors` as structured OtelValue objects with roots/nodes/source_roots/truncated/cycle_detected fields. The `exception.raw_data` attribute contains the full structured error data (message + type) for complete context preservation.",
@@ -147,6 +156,13 @@
           "type": ["integer", "null"],
           "minimum": 0,
           "maximum": 255
+        },
+        "trace_context": {
+          "description": "Fixed top-level trace-context object for the record. When present, it carries parent span metadata and trace state directly on the event.",
+          "oneOf": [
+            { "$ref": "#/$defs/trace_context" },
+            { "type": "null" }
+          ]
         },
         "attributes": {
           "type": "array",

@@ -1,4 +1,6 @@
 use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
@@ -393,9 +395,43 @@ impl<const N: usize> TryFrom<&'static str> for HexId<N> {
     }
 }
 
+#[cfg(feature = "json")]
+impl<const N: usize> serde::Serialize for HexId<N> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_ref())
+    }
+}
+
+#[cfg(feature = "json")]
+impl<'de, const N: usize> serde::Deserialize<'de> for HexId<N> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(|_| {
+            serde::de::Error::custom(format!(
+                "hex id must be a {}-character non-zero hex string",
+                N
+            ))
+        })
+    }
+}
+
 impl<const N: usize> AsRef<str> for HexId<N> {
     fn as_ref(&self) -> &str {
         self.0.as_str()
+    }
+}
+
+impl<const N: usize> core::ops::Deref for HexId<N> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
     }
 }
 
@@ -428,11 +464,29 @@ impl TraceState {
     pub fn as_static_ref(&self) -> &StaticRefStr {
         &self.0
     }
+
+    pub fn into_inner(self) -> StaticRefStr {
+        self.0
+    }
 }
 
 impl From<StaticRefStr> for TraceState {
     fn from(value: StaticRefStr) -> Self {
         Self(value)
+    }
+}
+
+impl AsRef<str> for TraceState {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl core::ops::Deref for TraceState {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
     }
 }
 

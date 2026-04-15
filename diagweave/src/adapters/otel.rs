@@ -95,6 +95,73 @@ pub struct OtelAttribute<'a> {
     pub value: OtelValue<'a>,
 }
 
+/// Naming configuration for diagweave-owned OTEL keys.
+///
+/// When `namespace` is `None`, the current compatibility naming is preserved.
+/// When it is set, all diagweave-owned keys are emitted beneath that prefix.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "json", serde(bound(deserialize = "'de: 'a")))]
+pub struct OtelEnvelopeConfig<'a> {
+    namespace: Option<RefStr<'a>>,
+}
+
+impl<'a> OtelEnvelopeConfig<'a> {
+    /// Creates a config that preserves the compatibility naming behavior.
+    pub const fn new() -> Self {
+        Self { namespace: None }
+    }
+
+    /// Sets the root namespace used for diagweave-owned OTEL keys.
+    pub fn with_namespace(mut self, namespace: impl Into<RefStr<'a>>) -> Self {
+        self.namespace = Some(namespace.into());
+        self
+    }
+
+    /// Returns the configured namespace, if any.
+    pub fn namespace(&self) -> Option<&str> {
+        self.namespace.as_ref().map(RefStr::as_ref)
+    }
+
+    fn namespace_ref(&self) -> Option<&str> {
+        self.namespace.as_ref().map(RefStr::as_ref)
+    }
+
+    fn context_key(&self, key: &'a str) -> RefStr<'a> {
+        match self.namespace_ref() {
+            Some(namespace) => format!("{namespace}.context.{key}").into(),
+            None => key.into(),
+        }
+    }
+
+    fn system_key(&self, key: &str) -> RefStr<'a> {
+        match self.namespace_ref() {
+            Some(namespace) => format!("{namespace}.system.{key}").into(),
+            None => format!("system.{key}").into(),
+        }
+    }
+
+    fn diagnostic_bag_key(&self, key: &str) -> RefStr<'a> {
+        match self.namespace_ref() {
+            Some(namespace) => format!("{namespace}.diagnostic_bag.{key}").into(),
+            None => format!("diagnostic_bag.{key}").into(),
+        }
+    }
+
+    fn attachment_key(&self, key: &str) -> RefStr<'a> {
+        match self.namespace_ref() {
+            Some(namespace) => format!("{namespace}.attachment.{key}").into(),
+            None => format!("attachment.{key}").into(),
+        }
+    }
+}
+
+impl Default for OtelEnvelopeConfig<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// An OpenTelemetry log/event record shaped like the OTLP log data model.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
@@ -169,12 +236,9 @@ impl<'a> OtelValue<'a> {
             AttachmentValue::Unsigned(v) => OtelValue::U64(v),
             AttachmentValue::Float(v) => OtelValue::Double(v),
             AttachmentValue::Bool(v) => OtelValue::Bool(v),
-            AttachmentValue::Array(values) => OtelValue::Array(
-                values
-                    .into_iter()
-                    .map(OtelValue::from_attachment)
-                    .collect(),
-            ),
+            AttachmentValue::Array(values) => {
+                OtelValue::Array(values.into_iter().map(OtelValue::from_attachment).collect())
+            }
             AttachmentValue::Object(values) => OtelValue::KvList(
                 values
                     .into_iter()
@@ -211,12 +275,9 @@ impl<'a> OtelValue<'a> {
             AttachmentValue::Unsigned(v) => Self::U64(*v),
             AttachmentValue::Float(v) => Self::Double(*v),
             AttachmentValue::Bool(v) => Self::Bool(*v),
-            AttachmentValue::Array(values) => Self::Array(
-                values
-                    .iter()
-                    .map(OtelValue::from_attachment_ref)
-                    .collect(),
-            ),
+            AttachmentValue::Array(values) => {
+                Self::Array(values.iter().map(OtelValue::from_attachment_ref).collect())
+            }
             AttachmentValue::Object(values) => Self::KvList(
                 values
                     .iter()
@@ -293,31 +354,43 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     ///
     /// This API is only available once the diagnostic IR carries an explicit
     /// severity in its typestate.
-    #[cfg(feature = "trace")]
-    pub fn to_otel_envelope(&'a self) -> OtelEnvelope<'a> {
+    pub fn to_otel_envelope(&'a self, config: OtelEnvelopeConfig<'a>) -> OtelEnvelope<'a> {
         let trace_ids = self.otel_trace_ids();
         let trace_context = self.otel_trace_context();
-        let trace_event_count = self.trace.events().map_or(0, |events| events.len());
-        let mut records = Vec::with_capacity(1 + trace_event_count);
-        records.push(self.otel_report_ev(trace_ids.clone(), trace_context.clone()));
-        self.otel_trace_ev(&mut records, trace_ids, trace_context);
 
-        OtelEnvelope { records }
+        #[cfg(feature = "trace")]
+        {
+            let trace_event_count = self.trace.events().map_or(0, |events| events.len());
+            let mut records = Vec::with_capacity(1 + trace_event_count);
+            records.push(self.otel_report_ev(&config, trace_ids.clone(), trace_context.clone()));
+            self.otel_trace_ev(&config, &mut records, trace_ids, trace_context);
+
+            OtelEnvelope { records }
+        }
+
+        #[cfg(not(feature = "trace"))]
+        {
+            let mut records = Vec::with_capacity(1);
+            records.push(self.otel_report_ev(&config, trace_ids, trace_context));
+
+            OtelEnvelope { records }
+        }
+    }
+
+    #[cfg(feature = "trace")]
+    pub fn to_otel_envelope_default(&'a self) -> OtelEnvelope<'a> {
+        self.to_otel_envelope(OtelEnvelopeConfig::default())
     }
 
     #[cfg(not(feature = "trace"))]
-    pub fn to_otel_envelope(&'a self) -> OtelEnvelope<'a> {
-        let trace_ids = self.otel_trace_ids();
-        let trace_context = self.otel_trace_context();
-        let mut records = Vec::with_capacity(1);
-        records.push(self.otel_report_ev(trace_ids, trace_context));
-
-        OtelEnvelope { records }
+    pub fn to_otel_envelope_default(&'a self) -> OtelEnvelope<'a> {
+        self.to_otel_envelope(OtelEnvelopeConfig::default())
     }
 
     #[cfg(feature = "trace")]
     fn otel_report_ev(
         &'a self,
+        config: &OtelEnvelopeConfig<'a>,
         trace_ids: (Option<TraceId>, Option<SpanId>, Option<u8>),
         trace_context: Option<OtelTraceContext>,
     ) -> OtelEvent<'a> {
@@ -331,8 +404,8 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         let error_type_value = OtelValue::String(error_type.clone());
         let mut attributes = Vec::with_capacity(self.otel_report_attr_capacity());
 
-        self.otel_diagnostic_bag(&mut attributes);
-        self.otel_attach_attrs(&mut attributes);
+        self.otel_diagnostic_bag(config, &mut attributes);
+        self.otel_attach_attrs(config, &mut attributes);
         let (trace_id, span_id, trace_flags) = trace_ids;
 
         OtelEvent {
@@ -388,6 +461,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     #[cfg(not(feature = "trace"))]
     fn otel_report_ev(
         &'a self,
+        config: &OtelEnvelopeConfig<'a>,
         trace_ids: (Option<TraceId>, Option<SpanId>, Option<u8>),
         trace_context: Option<OtelTraceContext>,
     ) -> OtelEvent<'a> {
@@ -402,8 +476,8 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         let mut attributes = Vec::with_capacity(self.otel_report_attr_capacity());
         let (trace_id, span_id, trace_flags) = trace_ids;
 
-        self.otel_diagnostic_bag(&mut attributes);
-        self.otel_attach_attrs(&mut attributes);
+        self.otel_diagnostic_bag(config, &mut attributes);
+        self.otel_attach_attrs(config, &mut attributes);
         attributes.push(OtelAttribute {
             key: "exception.type".into(),
             value: error_type_value,
@@ -532,37 +606,45 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         None
     }
 
-    fn otel_diagnostic_bag(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
+    fn otel_diagnostic_bag(
+        &'a self,
+        config: &OtelEnvelopeConfig<'a>,
+        attributes: &mut Vec<OtelAttribute<'a>>,
+    ) {
         if !self.display_causes.is_empty() {
             attributes.push(OtelAttribute {
-                key: "diagnostic_bag.display_causes".into(),
+                key: config.diagnostic_bag_key("display_causes"),
                 value: otel_display_causes_value(self.display_causes, self.display_causes_state),
             });
         }
         if let Some(source_errors) = self.origin_source_errors.as_ref() {
             attributes.push(OtelAttribute {
-                key: "diagnostic_bag.origin_source_errors".into(),
+                key: config.diagnostic_bag_key("origin_source_errors"),
                 value: otel_source_errors_value(source_errors, true),
             });
         }
         if let Some(source_errors) = self.diagnostic_source_errors.as_ref() {
             attributes.push(OtelAttribute {
-                key: "diagnostic_bag.diagnostic_source_errors".into(),
+                key: config.diagnostic_bag_key("diagnostic_source_errors"),
                 value: otel_source_errors_value(source_errors, false),
             });
         }
     }
 
-    fn otel_attach_attrs(&'a self, attributes: &mut Vec<OtelAttribute<'a>>) {
+    fn otel_attach_attrs(
+        &'a self,
+        config: &OtelEnvelopeConfig<'a>,
+        attributes: &mut Vec<OtelAttribute<'a>>,
+    ) {
         for (key, value) in self.context {
             attributes.push(OtelAttribute {
-                key: key.as_ref().into(),
+                key: config.context_key(key.as_ref()),
                 value: OtelValue::from_context_ref(value),
             });
         }
         for (key, value) in self.system {
             attributes.push(OtelAttribute {
-                key: format!("system.{}", key.as_ref()).into(),
+                key: config.system_key(key.as_ref()),
                 value: OtelValue::from_context_ref(value),
             });
         }
@@ -570,7 +652,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
             match attachment {
                 Attachment::Note { message } => {
                     attributes.push(OtelAttribute {
-                        key: "attachment.note".into(),
+                        key: config.attachment_key("note"),
                         value: OtelValue::String(message.to_string().into()),
                     });
                 }
@@ -580,12 +662,12 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                     media_type,
                 } => {
                     attributes.push(OtelAttribute {
-                        key: format!("attachment.payload.{name}").into(),
+                        key: config.attachment_key(&format!("payload.{name}")),
                         value: OtelValue::from_attachment_ref(value),
                     });
                     if let Some(media_type) = media_type {
                         attributes.push(OtelAttribute {
-                            key: format!("attachment.payload.{name}.media_type").into(),
+                            key: config.attachment_key(&format!("payload.{name}.media_type")),
                             value: OtelValue::String(media_type.as_str().into()),
                         });
                     }
@@ -597,6 +679,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     #[cfg(feature = "trace")]
     fn otel_trace_ev(
         &'a self,
+        _config: &OtelEnvelopeConfig<'a>,
         records: &mut Vec<OtelEvent<'a>>,
         trace_ids: (Option<TraceId>, Option<SpanId>, Option<u8>),
         trace_context: Option<OtelTraceContext>,

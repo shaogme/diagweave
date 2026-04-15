@@ -421,10 +421,12 @@ let tracing_fields = ir.to_tracing_fields();
 #[cfg(feature = "trace")]
 assert!(!tracing_fields.is_empty());
 #[cfg(feature = "otel")]
-let otel = ir.to_otel_envelope();
+let otel = ir.to_otel_envelope(diagweave::adapters::OtelEnvelopeConfig::new());
 ```
 
 `DiagnosticIr` 以及 tracing/OTEL 适配器输出现在优先采用借用视图：能借用 report 内部字符串时使用 `RefStr<'a>`，只有在无法安全借用的投影值上才物化 owned 字符串。OTEL 导出被有意限制在 `DiagnosticIr<'_, HasSeverity>` 上，因此在生成 OTEL envelope 之前必须先显式设置 `severity`。
+
+`to_otel_envelope(config)` 接受 [`OtelEnvelopeConfig`](diagweave::adapters::OtelEnvelopeConfig)，因此调用方既可以保留兼容输出，也可以切换到统一命名空间，例如 `diagweave.otel`。diagweave 自有 key 会按 config 加 namespace，而 `exception.type` 这类 OTEL 语义约定字段保持不变。
 
 `DiagnosticIr` 主要包含稳定的头部/元数据和聚合计数：
 
@@ -494,6 +496,8 @@ OTEL 适配器会尽量保留树状结构：
 - `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` 都保留 `message`；`type` 仅在有值时输出
 - 空的 `trace` / `context` / `attachments` 部分默认会省略
 
+当你在 `OtelEnvelopeConfig` 里设置 namespace 时，`context`、`system`、`attachment`、`diagnostic_bag` 这些 diagweave 自有 key 会统一挂到这个 namespace 下。
+
 tracing 导出：
 
 ```rust
@@ -548,7 +552,7 @@ cargo run -p showcase
 - `std`（默认）：标准库能力
 - `json`：`Json` 渲染器（`serde` / `serde_json`）
 - `trace`：trace 数据模型（`ReportTrace` 等）、预校验后的发射 typestate（`PreparedTracingEmission`）与可插拔导出器 Trait（`TracingExporterTrait`）
-- `otel`：OTLP envelope 模型（`OtelEnvelope`、`OtelEvent`、`OtelValue`）与仅在 `DiagnosticIr<'_, HasSeverity>` 上提供的 `to_otel_envelope()`
+- `otel`：OTLP envelope 模型（`OtelEnvelope`、`OtelEvent`、`OtelValue`）、`OtelEnvelopeConfig`，以及 `DiagnosticIr<'_, HasSeverity>` 上的 `to_otel_envelope(config)` / `to_otel_envelope_default()`
 - `tracing`：默认 `tracing` 生态集成（`TracingExporter`、`prepare_tracing`、`emit_tracing`）
 
 ## 仓库结构

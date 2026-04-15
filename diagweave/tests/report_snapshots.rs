@@ -303,7 +303,7 @@ fn snap_otel_record_count() {
     let report = Report::new(ApiError::Unauthorized).with_severity(Severity::Error);
 
     let ir = report.to_diagnostic_ir();
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope_default();
     assert_eq!(
         otel.records.len(),
         1,
@@ -330,7 +330,7 @@ fn snap_otel_record_count_with_trace() {
         });
 
     let ir = report.to_diagnostic_ir();
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope_default();
     assert_eq!(
         otel.records.len(),
         2,

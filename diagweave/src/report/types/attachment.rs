@@ -218,11 +218,9 @@ impl From<serde_json::Value> for AttachmentValue {
                 }
             }
             serde_json::Value::String(s) => Self::String(s.into()),
-            serde_json::Value::Array(arr) => Self::Array(
-                arr.into_iter()
-                    .map(AttachmentValue::from)
-                    .collect(),
-            ),
+            serde_json::Value::Array(arr) => {
+                Self::Array(arr.into_iter().map(AttachmentValue::from).collect())
+            }
             serde_json::Value::Object(obj) => {
                 let mut map = FastMap::with_capacity(obj.len());
                 for (k, v) in obj {

@@ -32,7 +32,8 @@ Record semantics:
 - For the primary record, `severity_text` / `severity_number` are projected from `metadata.severity`.
 - Trace-event records omit `body` and carry their data in top-level fields and attributes.
 - For trace-event records, top-level severity comes from `trace.events[*].level`; when an event level is absent, the exporter falls back to the report `metadata.severity`.
-- `to_otel_envelope()` is only available on `DiagnosticIr<'_, HasSeverity>`, so export always carries a report-level severity fallback and event severity fields are always populated.
+- `to_otel_envelope(config)` accepts an `OtelEnvelopeConfig`; `to_otel_envelope_default()` is the compatibility shortcut that uses an empty config.
+- `to_otel_envelope_default()` is only available on `DiagnosticIr<'_, HasSeverity>`, so export always carries a report-level severity fallback and event severity fields are always populated.
 - `trace_context` is a fixed top-level object on each `OtelEvent` record. It carries `parent_span_id` and `trace_state` when trace metadata is present.
 
 ## OtelAttribute model
@@ -71,6 +72,8 @@ Current exporters populate these keys:
 - `attachment.payload.{name}`
 - `attachment.payload.{name}.media_type`
 
+When `OtelEnvelopeConfig::with_namespace(...)` is used, diagweave-owned keys such as `context`, `system`, `attachment`, and `diagnostic_bag` are emitted under that namespace, while OTEL semantic-convention keys like `exception.type` remain unchanged.
+
 Notes:
 
 - `exception.stacktrace` is emitted as a structured `KvList` value, not a flattened string.
@@ -92,6 +95,7 @@ When `feature = "otel"` is enabled, `diagweave` exports:
 - `OtelEvent`
 - `OtelTraceContext`
 - `OtelAttribute`
+- `OtelEnvelopeConfig`
 - `OtelSeverityNumber`
 - `TraceId`
 - `SpanId`

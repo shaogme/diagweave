@@ -405,10 +405,12 @@ let tracing_fields = ir.to_tracing_fields();
 #[cfg(feature = "trace")]
 assert!(!tracing_fields.is_empty());
 #[cfg(feature = "otel")]
-let otel = ir.to_otel_envelope();
+let otel = ir.to_otel_envelope(diagweave::adapters::OtelEnvelopeConfig::new());
 ```
 
 `DiagnosticIr` and the tracing/OTEL adapter outputs are borrow-first views: string fields use `RefStr<'a>` where possible and only materialize owned strings when a projected value cannot safely borrow from the source report. OTEL export is intentionally gated to `DiagnosticIr<'_, HasSeverity>`, so reports must set an explicit `severity` before producing an OTEL envelope.
+
+`to_otel_envelope(config)` accepts an [`OtelEnvelopeConfig`](diagweave::adapters::OtelEnvelopeConfig) so callers can keep compatibility output or opt into a shared namespace such as `diagweave.otel`. Diagweave-owned keys are namespaced by the config, while OTEL semantic-convention keys like `exception.type` remain unchanged.
 
 `DiagnosticIr` keeps render-stable header/metadata plus aggregate counters:
 
@@ -478,6 +480,8 @@ The OTEL adapter keeps the report tree structured where possible:
 - `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` preserve `message`; `type` is emitted only when present
 - empty `trace` / `context` / `attachments` sections are omitted
 
+When you pass a namespace in `OtelEnvelopeConfig`, diagweave-owned keys such as `context`, `system`, `attachment`, and `diagnostic_bag` are emitted under that namespace.
+
 Tracing export:
 
 ```rust
@@ -532,7 +536,7 @@ cargo run -p showcase
 - `std` (default): std integrations
 - `json`: `Json` renderer (`serde` / `serde_json`)
 - `trace`: trace data model (`ReportTrace`, etc.), prepared emission typestate (`PreparedTracingEmission`), and pluggable exporter trait (`TracingExporterTrait`)
-- `otel`: OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` on `DiagnosticIr<'_, HasSeverity>`
+- `otel`: OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`), `OtelEnvelopeConfig`, and `to_otel_envelope(config)` / `to_otel_envelope_default()` on `DiagnosticIr<'_, HasSeverity>`
 - `tracing`: default `tracing` crate integration (`TracingExporter`, `prepare_tracing`, `emit_tracing`)
 
 ## Workspace layout

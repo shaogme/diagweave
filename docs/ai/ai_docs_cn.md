@@ -637,7 +637,7 @@ println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
 `DiagnosticIr` 会保留 `display_causes` 以及两条 source 链作为结构化数据。在 JSON 契约中，`origin_source_errors.type` 与 `diagnostic_source_errors.type` 都是 `string | null`；其中 `origin` 更常见 `null`，因为自然 `Error::source()` 会有信息损耗。
-IR 与适配器层采用借用优先策略：错误/type/trace 等字符串投影尽量使用 `RefStr<'a>`，因此 `to_tracing_fields()` 和 `to_otel_envelope()` 在热点路径上会减少不必要的 `String` 物化。OTEL 导出被有意限制在 `DiagnosticIr<'a, HasSeverity>` 上。
+IR 与适配器层采用借用优先策略：错误/type/trace 等字符串投影尽量使用 `RefStr<'a>`，因此 `to_tracing_fields()` 和 `to_otel_envelope_default()` 在热点路径上会减少不必要的 `String` 物化。OTEL 导出被有意限制在 `DiagnosticIr<'a, HasSeverity>` 上。
 
 ### 用法示例
 ```rust
@@ -749,12 +749,13 @@ report
 ### 转换 API
 | 方法声明 | 返回类型 | 说明 |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | 仅在 `DiagnosticIr<'a, HasSeverity>` 上可用；转换为 OTLP 风格的日志/事件记录批次 |
+| `ir.to_otel_envelope(config)` | `OtelEnvelope<'a>` | 仅在 `DiagnosticIr<'a, HasSeverity>` 上可用；转换为 OTLP 风格的日志/事件记录批次，并支持 `OtelEnvelopeConfig` 的命名空间控制 |
+| `ir.to_otel_envelope_default()` | `OtelEnvelope<'a>` | 兼容性快捷入口，使用默认 OTEL 命名行为 |
 | `ir.to_tracing_fields()` | `Vec<TracingField<'a>>`| 转换为 KV 形式的 Tracing/Logging 字段 |
 
 ### OTel 映射逻辑
 1. **记录字段**: 主报告会变成一个日志记录，严重程度、时间戳相关元数据、trace 关联字段和结构化 `body` 错误节点会放在顶层。
-2. **属性**: 错误核心字段、重试/分类标记、原因链摘要以及附件/上下文数据会以结构化 OTEL 属性输出。
+2. **属性**: 错误核心字段、重试/分类标记、原因链摘要以及附件/上下文数据会以结构化 OTEL 属性输出。diagweave 自有 key 可通过 `OtelEnvelopeConfig` 统一加 namespace，而 `exception.type` 这类 OTEL 语义约定字段保持不变。
 3. **Trace 事件**: `Report` 内部的 `TraceEvent` 会转换成额外的 OTLP 风格日志/事件记录，带各自的时间戳、严重程度和 trace 关联字段。
 4. **结构保留**: `exception.stacktrace` 和 `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` 不再被字符串扁平化。
 
@@ -865,7 +866,7 @@ where
 | `std` | 是 | 标准库集成 (捕获堆栈、全局注入器等) |
 | `json` | 否 | `Json` 渲染器支持 (依赖 `serde` 和 `serde_json`) |
 | `trace` | 否 | Trace 数据模型 (`ReportTrace` 等)、预校验后的发射 typestate (`PreparedTracingEmission`) 与可插拔导出器 Trait (`TracingExporterTrait`) |
-| `otel` | 否 | OTLP envelope 模型 (`OtelEnvelope`、`OtelEvent`、`OtelValue`) 与仅在 `DiagnosticIr<'_, HasSeverity>` 上提供的 `to_otel_envelope()` |
+| `otel` | 否 | OTLP envelope 模型 (`OtelEnvelope`、`OtelEvent`、`OtelValue`)、`OtelEnvelopeConfig`，以及 `DiagnosticIr<'_, HasSeverity>` 上的 `to_otel_envelope(config)` / `to_otel_envelope_default()` |
 | `tracing` | 否 | 默认 `tracing` 生态集成 (`TracingExporter`、`prepare_tracing`、`emit_tracing`)。会自动开启 `trace`。 |
 
 ### 依赖矩阵

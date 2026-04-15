@@ -1,6 +1,6 @@
 mod report_common;
 #[cfg(feature = "otel")]
-use diagweave::adapters::{OtelSeverityNumber, OtelValue};
+use diagweave::adapters::{OtelEnvelopeConfig, OtelSeverityNumber, OtelValue};
 use diagweave::prelude::*;
 use diagweave::report::ReportMetadata;
 use report_common::*;
@@ -149,7 +149,7 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
         .attach_payload("nested", nested, Some("application/json"));
 
     let ir = report.to_diagnostic_ir().with_severity(Severity::Error);
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope_default();
     let record = otel.records.first().expect("report record should exist");
     assert_eq!(record.name, "exception");
     assert_eq!(record.severity_text.as_deref(), Some("error"));
@@ -207,12 +207,69 @@ fn otel_value_conversion_handles_unsigned_overflow_redacted_and_nested_object() 
 
 #[cfg(feature = "otel")]
 #[test]
+fn otel_envelope_can_namespace_diagweave_keys() {
+    let _guard = init_test();
+
+    let report = Report::new(ApiError::Unauthorized)
+        .with_severity(Severity::Error)
+        .with_ctx("request_id", "req-otel-2")
+        .with_system("hostname", "prod-web-01")
+        .attach_note("otel note")
+        .attach_payload(
+            "response",
+            AttachmentValue::from(BTreeMap::from([(
+                "status".to_owned(),
+                AttachmentValue::Unsigned(401),
+            )])),
+            Some("application/json"),
+        )
+        .with_display_cause("fallback path");
+
+    let ir = report.to_diagnostic_ir();
+    let otel = ir.to_otel_envelope(OtelEnvelopeConfig::new().with_namespace("diagweave.otel"));
+    let record = otel.records.first().expect("report record should exist");
+
+    assert!(
+        record
+            .attributes
+            .iter()
+            .any(|a| a.key == "diagweave.otel.context.request_id")
+    );
+    assert!(
+        record
+            .attributes
+            .iter()
+            .any(|a| a.key == "diagweave.otel.system.hostname")
+    );
+    assert!(
+        record
+            .attributes
+            .iter()
+            .any(|a| a.key == "diagweave.otel.attachment.note")
+    );
+    assert!(
+        record
+            .attributes
+            .iter()
+            .any(|a| a.key == "diagweave.otel.attachment.payload.response")
+    );
+    assert!(
+        record
+            .attributes
+            .iter()
+            .any(|a| a.key == "diagweave.otel.diagnostic_bag.display_causes")
+    );
+    assert!(record.attributes.iter().any(|a| a.key == "exception.type"));
+}
+
+#[cfg(feature = "otel")]
+#[test]
 fn diagnostic_ir_requires_explicit_severity_upgrade_before_otel() {
     let _guard = init_test();
 
     let report = Report::new(ApiError::Unauthorized);
     let ir = report.to_diagnostic_ir().with_severity(Severity::Warn);
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope_default();
     let record = otel.records.first().expect("report record should exist");
 
     assert_eq!(record.name, "exception");
@@ -303,7 +360,7 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         panic!("trace.events should be array");
     };
     assert!(!events.is_empty());
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope_default();
     let report_record = otel
         .records
         .iter()
@@ -407,7 +464,7 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
         });
 
     let ir = report.to_diagnostic_ir();
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope_default();
     let json = serde_json::to_value(&otel).expect("otel envelope should serialize");
 
     let records = json["records"].as_array().expect("records should be array");

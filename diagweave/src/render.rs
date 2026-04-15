@@ -276,7 +276,7 @@ impl<E> Report<E, HasSeverity> {
         E: core::error::Error + Display + 'static,
     {
         let ir = self.to_diagnostic_ir();
-        let mut otel = ir.to_otel_envelope();
+        let mut otel = ir.to_otel_envelope_default();
         otel_snapshot::normalize_otel_envelope(&mut otel);
         serde_json::to_string(&otel).unwrap_or_default()
     }

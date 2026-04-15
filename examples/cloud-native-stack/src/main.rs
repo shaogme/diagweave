@@ -620,7 +620,9 @@ fn render_report(label: &str, report: ScenarioReport, telemetry: &TelemetryHandl
     println!("{}", report.render(Json::new(json_opts)));
 
     let ir = report.to_diagnostic_ir();
-    let otel = ir.to_otel_envelope();
+    let otel = ir.to_otel_envelope(
+        diagweave::adapters::OtelEnvelopeConfig::new().with_namespace(OTEL_ATTR_NAMESPACE),
+    );
     let Some(report_record) = otel.records.first() else {
         println!("--- {label}: OTel Envelope ---");
         println!("records_count=0");

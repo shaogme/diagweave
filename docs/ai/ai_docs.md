@@ -639,7 +639,7 @@ println!("context_count={context_count}, attachment_count={attachment_count}");
 ```
 
 `DiagnosticIr` keeps `display_causes` plus both source chains as structured data. In the JSON contract, both `origin_source_errors.type` and `diagnostic_source_errors.type` are `string | null`; `origin` commonly hits `null` due to natural `Error::source()` lossiness.
-The IR and adapter layers are borrow-first: error/type/trace string projections prefer `RefStr<'a>` so `to_tracing_fields()` and `to_otel_envelope()` avoid unnecessary `String` materialization on hot paths. OTEL export is intentionally limited to `DiagnosticIr<'a, HasSeverity>`.
+The IR and adapter layers are borrow-first: error/type/trace string projections prefer `RefStr<'a>` so `to_tracing_fields()` and `to_otel_envelope_default()` avoid unnecessary `String` materialization on hot paths. OTEL export is intentionally limited to `DiagnosticIr<'a, HasSeverity>`.
 
 ### Usage Example
 ```rust
@@ -751,12 +751,13 @@ report
 ### Conversion API
 | Method Declaration | Return Type | Description |
 | :--- | :--- | :--- |
-| `ir.to_otel_envelope()` | `OtelEnvelope<'a>` | Available on `DiagnosticIr<'a, HasSeverity>`; converts to an OTLP-style batch of log/event records |
+| `ir.to_otel_envelope(config)` | `OtelEnvelope<'a>` | Available on `DiagnosticIr<'a, HasSeverity>`; converts to an OTLP-style batch of log/event records and accepts `OtelEnvelopeConfig` for namespace control |
+| `ir.to_otel_envelope_default()` | `OtelEnvelope<'a>` | Compatibility shortcut that uses the default OTEL naming behavior |
 | `ir.to_tracing_fields()` | `Vec<TracingField<'a>>` | Converts to KV pairs for Tracing/Logging fields |
 
 ### OTel Mapping Logic
 1. **Record fields**: The primary report becomes a log record with severity, timestamp-ready metadata, trace correlation fields, and a structured `body` error node.
-2. **Attributes**: Core error fields, retry/category flags, cause-chain summaries, and attachment/context data are emitted as structured OTEL attributes.
+2. **Attributes**: Core error fields, retry/category flags, cause-chain summaries, and attachment/context data are emitted as structured OTEL attributes. Diagweave-owned keys can be namespaced through `OtelEnvelopeConfig`, while OTEL semantic-convention keys such as `exception.type` remain unchanged.
 3. **Trace events**: Internal `TraceEvent` values become additional OTLP-style log/event records with their own top-level timestamp, severity, and trace correlation fields.
 4. **Structure preservation**: `exception.stacktrace` and `diagnostic_bag.origin_source_errors / diagnostic_bag.diagnostic_source_errors` remain structured instead of string-flattened.
 
@@ -867,7 +868,7 @@ where
 | `std` | Yes | Standard library integrations (capture stack trace, global injector, etc.) |
 | `json` | No | `Json` renderer support (requires `serde` and `serde_json`) |
 | `trace` | No | Trace data model (`ReportTrace`, etc.), prepared emission typestate (`PreparedTracingEmission`), and pluggable exporter trait (`TracingExporterTrait`) |
-| `otel` | No | OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`) and `to_otel_envelope()` on `DiagnosticIr<'_, HasSeverity>` |
+| `otel` | No | OTLP envelope model (`OtelEnvelope`, `OtelEvent`, `OtelValue`), `OtelEnvelopeConfig`, and `to_otel_envelope(config)` / `to_otel_envelope_default()` on `DiagnosticIr<'_, HasSeverity>` |
 | `tracing` | No | Default `tracing` crate integration (`TracingExporter`, `prepare_tracing`, `emit_tracing`). Automatically enables `trace`. |
 
 ### Requirements Matrix

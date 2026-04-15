@@ -386,10 +386,16 @@ fn build_trace_ctx_value_opt(context: Option<&TraceContext>) -> AttachmentValue 
 fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
     let mut ctx = FastMap::new();
     if let Some(value) = context.trace_id.as_ref() {
-        ctx.insert("trace_id".into(), AttachmentValue::String(value.clone().into_inner()));
+        ctx.insert(
+            "trace_id".into(),
+            AttachmentValue::String(value.clone().into_inner()),
+        );
     }
     if let Some(value) = context.span_id.as_ref() {
-        ctx.insert("span_id".into(), AttachmentValue::String(value.clone().into_inner()));
+        ctx.insert(
+            "span_id".into(),
+            AttachmentValue::String(value.clone().into_inner()),
+        );
     }
     if let Some(value) = context.parent_span_id.as_ref() {
         ctx.insert(
@@ -420,10 +426,16 @@ fn build_trace_event_value(event: &TraceEvent) -> AttachmentValue {
     let mut map = FastMap::new();
     map.insert("name".into(), AttachmentValue::String(event.name.clone()));
     if let Some(value) = event.level {
-        map.insert("level".into(), AttachmentValue::String(value.as_str().into()));
+        map.insert(
+            "level".into(),
+            AttachmentValue::String(value.as_str().into()),
+        );
     }
     if let Some(value) = event.timestamp_unix_nano {
-        map.insert("timestamp_unix_nano".into(), AttachmentValue::Unsigned(value));
+        map.insert(
+            "timestamp_unix_nano".into(),
+            AttachmentValue::Unsigned(value),
+        );
     }
     map.insert(
         "attributes".into(),

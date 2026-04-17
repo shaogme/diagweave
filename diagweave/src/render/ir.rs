@@ -364,19 +364,19 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
     if let Some(value) = context.trace_id.as_ref() {
         ctx.insert(
             "trace_id".into(),
-            AttachmentValue::String(value.clone().into_inner()),
+            AttachmentValue::String(value.to_string().into()),
         );
     }
     if let Some(value) = context.span_id.as_ref() {
         ctx.insert(
             "span_id".into(),
-            AttachmentValue::String(value.clone().into_inner()),
+            AttachmentValue::String(value.to_string().into()),
         );
     }
     if let Some(value) = context.parent_span_id.as_ref() {
         ctx.insert(
             "parent_span_id".into(),
-            AttachmentValue::String(value.clone().into_inner()),
+            AttachmentValue::String(value.to_string().into()),
         );
     }
     if let Some(value) = context.sampled {

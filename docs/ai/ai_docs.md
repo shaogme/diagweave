@@ -356,7 +356,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 **Note**: `GlobalConfig` and `set_global_config` are a separate global configuration system for setting default `ReportOptions` values; `register_global_injector` is used for injecting context information. The two can be used together.
 
 `TraceId` / `SpanId` / `ParentSpanId` are hex-validated identifiers. Construct them with:
-- `TraceId::new("32-hex")` / `SpanId::new("16-hex")` / `ParentSpanId::new("16-hex")`
+- `TraceId::from_str("32-hex")` / `SpanId::from_str("16-hex")` / `ParentSpanId::from_str("16-hex")`
 - `unsafe { TraceId::new_unchecked(...) }` to skip validation
 
 ### Chained Configuration Methods
@@ -724,8 +724,8 @@ let report = report.with_severity(Severity::Error);
 // Bind trace/span ids
 #[cfg(feature = "trace")]
 let report = report.with_trace_ids(
-    TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
-    SpanId::new("00f067aa0ba902b7").unwrap(),
+    TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+    SpanId::from_str("00f067aa0ba902b7").unwrap(),
 );
 
 // Export to current tracing span with default options

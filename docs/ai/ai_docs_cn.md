@@ -356,7 +356,7 @@ let report3 = Report::new(error3).set_options(
 **注意**: `GlobalConfig` 和 `set_global_config` 是独立的全局配置系统，用于设置 `ReportOptions` 的默认值；而 `register_global_injector` 用于注入上下文信息。两者可以配合使用。
 
 `TraceId` / `SpanId` / `ParentSpanId` 为十六进制校验后的标识符。构造方式：
-- `TraceId::new("32位hex")` / `SpanId::new("16位hex")` / `ParentSpanId::new("16位hex")`
+- `TraceId::from_str("32位hex")` / `SpanId::from_str("16位hex")` / `ParentSpanId::from_str("16位hex")`
 - `unsafe { TraceId::new_unchecked(...) }` 跳过校验
 
 ### 链式配置方法
@@ -722,8 +722,8 @@ let report = report.with_severity(Severity::Error);
 // 绑定 trace/span ids
 #[cfg(feature = "trace")]
 let report = report.with_trace_ids(
-    TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
-    SpanId::new("00f067aa0ba902b7").unwrap(),
+    TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+    SpanId::from_str("00f067aa0ba902b7").unwrap(),
 );
 
 // 使用默认选项导出到当前 tracing span

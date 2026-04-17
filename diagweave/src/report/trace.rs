@@ -336,60 +336,160 @@ impl ReportTrace {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 /// Fixed-length non-zero hexadecimal identifier.
-pub struct HexId<const N: usize>(StaticRefStr);
+pub struct HexId<const N: usize>([u8; N]);
+
+impl<const N: usize> fmt::Debug for HexId<N> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "HexId({})", self.as_str())
+    }
+}
 
 impl<const N: usize> HexId<N> {
     /// Creates a validated hexadecimal identifier.
-    pub fn new(value: impl Into<StaticRefStr>) -> Result<Self, ()> {
-        HexId::try_from(value.into())
+    pub const fn new(value: [u8; N]) -> Result<Self, &'static str> {
+        let mut i = 0;
+        let mut all_zeros = true;
+
+        while i < N {
+            let b = value[i];
+            if !b.is_ascii_hexdigit() {
+                return Err("invalid hex id: contains non-hex characters");
+            }
+            if b != b'0' {
+                all_zeros = false;
+            }
+            i += 1;
+        }
+
+        if all_zeros {
+            return Err("invalid hex id: cannot be all zeros");
+        }
+
+        Ok(Self(value))
     }
 
-    /// Creates an identifier without validation.
+    /// Creates an unchecked identifier.
     ///
     /// # Safety
-    /// The caller must ensure `value` is a valid, non-zero hex string of length `N`.
-    pub unsafe fn new_unchecked(value: impl Into<StaticRefStr>) -> Self {
-        Self(value.into())
+    ///
+    /// The caller must ensure that `value` is a valid hexadecimal identifier.
+    pub const unsafe fn new_unchecked(value: [u8; N]) -> Self {
+        Self(value)
     }
 
-    /// Returns whether the input is a valid identifier for this width.
-    pub fn is_valid(value: &str) -> bool {
-        if value.len() != N {
-            return false;
+    /// Creates a validated hexadecimal identifier from a byte slice.
+    ///
+    /// If the slice length is less than N, the identifier is padded with '0' bytes at the beginning.
+    /// For example, if N=4 and the input is "ab", the result will be "00ab".
+    pub const fn from_bytes(value: &[u8]) -> Result<Self, &'static str> {
+        let len = value.len();
+        if len > N {
+            return Err("invalid hex id: input too long");
         }
-        if value.bytes().all(|b| b == b'0') {
-            return false;
+        if len == 0 {
+            return Err("invalid hex id: input is empty");
         }
-        value.bytes().all(|b: u8| b.is_ascii_hexdigit())
+
+        let mut bytes = [b'0'; N];
+        let mut i = 0;
+        let offset = N - len;
+        let mut all_zeros = true;
+
+        while i < len {
+            let b = value[i];
+            if !b.is_ascii_hexdigit() {
+                return Err("invalid hex id: contains non-hex characters");
+            }
+            if b != b'0' {
+                all_zeros = false;
+            }
+            bytes[offset + i] = b;
+            i += 1;
+        }
+
+        if all_zeros {
+            return Err("invalid hex id: cannot be all zeros");
+        }
+
+        Ok(Self(bytes))
     }
 
-    /// Returns the owned inner string.
-    pub fn into_inner(self) -> StaticRefStr {
+    /// Creates a validated hexadecimal identifier from a str.
+    pub const fn from_str(value: &str) -> Result<Self, &'static str> {
+        let slice = value.as_bytes();
+        if slice.len() != N {
+            return Err("invalid hex id: length mismatch");
+        }
+
+        let mut bytes = [0u8; N];
+        let mut i = 0;
+        let mut all_zeros = true;
+
+        while i < N {
+            let b = slice[i];
+            if !b.is_ascii_hexdigit() {
+                return Err("invalid hex id: contains non-hex characters");
+            }
+            if b != b'0' {
+                all_zeros = false;
+            }
+            bytes[i] = b;
+            i += 1;
+        }
+
+        if all_zeros {
+            return Err("invalid hex id: cannot be all zeros");
+        }
+
+        Ok(Self(bytes))
+    }
+
+    /// Creates an unchecked identifier from a str.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `value` is a valid hexadecimal identifier.
+    pub const unsafe fn from_str_unchecked(value: &str) -> Self {
+        let slice = value.as_bytes();
+        let mut bytes = [0u8; N];
+        let mut i = 0;
+        while i < N {
+            bytes[i] = slice[i];
+            i += 1;
+        }
+        Self(bytes)
+    }
+
+    /// Returns the owned inner bytes.
+    pub const fn into_inner(self) -> [u8; N] {
         self.0
     }
-}
 
-impl<const N: usize> TryFrom<StaticRefStr> for HexId<N> {
-    type Error = ();
-    fn try_from(value: StaticRefStr) -> Result<Self, Self::Error> {
-        if Self::is_valid(value.as_str()) {
-            Ok(Self(value))
-        } else {
-            Err(())
-        }
+    /// Returns the identifier as a string slice.
+    pub const fn as_str(&self) -> &str {
+        // SAFETY: HexId is always validated to be ASCII hex digits during construction.
+        unsafe { core::str::from_utf8_unchecked(&self.0) }
+    }
+
+    /// Returns the identifier as an owned String.
+    pub fn to_string(&self) -> String {
+        self.as_str().to_string()
     }
 }
 
-impl<const N: usize> TryFrom<&'static str> for HexId<N> {
-    type Error = ();
-    fn try_from(value: &'static str) -> Result<Self, Self::Error> {
-        if Self::is_valid(value) {
-            Ok(Self(value.into()))
-        } else {
-            Err(())
-        }
+impl<const N: usize> TryFrom<[u8; N]> for HexId<N> {
+    type Error = &'static str;
+    fn try_from(value: [u8; N]) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl<'a, const N: usize> TryFrom<&'a str> for HexId<N> {
+    type Error = &'static str;
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        Self::from_str(value)
     }
 }
 
@@ -399,7 +499,7 @@ impl<const N: usize> serde::Serialize for HexId<N> {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(self.as_ref())
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -409,19 +509,30 @@ impl<'de, const N: usize> serde::Deserialize<'de> for HexId<N> {
     where
         D: serde::Deserializer<'de>,
     {
-        let value = String::deserialize(deserializer)?;
-        Self::new(value).map_err(|_| {
-            serde::de::Error::custom(format!(
-                "hex id must be a {}-character non-zero hex string",
-                N
-            ))
-        })
+        struct HexIdVisitor<const N: usize>;
+
+        impl<'de, const N: usize> serde::de::Visitor<'de> for HexIdVisitor<N> {
+            type Value = HexId<N>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                write!(formatter, "a hex string of length {}", N)
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                HexId::from_str(v).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(HexIdVisitor::<N>)
     }
 }
 
 impl<const N: usize> AsRef<str> for HexId<N> {
     fn as_ref(&self) -> &str {
-        self.0.as_str()
+        self.as_str()
     }
 }
 
@@ -429,20 +540,37 @@ impl<const N: usize> core::ops::Deref for HexId<N> {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        self.as_ref()
+        self.as_str()
     }
 }
 
 impl<const N: usize> Display for HexId<N> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0.as_ref())
+        f.write_str(self.as_str())
     }
 }
 
 /// 16-byte trace id encoded as 32 lowercase hex chars.
 pub type TraceId = HexId<32>;
+
+#[cfg(feature = "otel")]
+impl TryFrom<opentelemetry::TraceId> for TraceId {
+    type Error = &'static str;
+    fn try_from(value: opentelemetry::TraceId) -> Result<Self, Self::Error> {
+        Self::from_bytes(value.to_bytes().as_ref())
+    }
+}
+
 /// 8-byte span id encoded as 16 lowercase hex chars.
 pub type SpanId = HexId<16>;
+
+#[cfg(feature = "otel")]
+impl TryFrom<opentelemetry::SpanId> for SpanId {
+    type Error = &'static str;
+    fn try_from(value: opentelemetry::SpanId) -> Result<Self, Self::Error> {
+        Self::from_bytes(value.to_bytes().as_ref())
+    }
+}
 /// Parent span id encoded as 16 lowercase hex chars.
 pub type ParentSpanId = HexId<16>;
 

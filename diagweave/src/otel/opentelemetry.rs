@@ -146,7 +146,7 @@ fn otel_log_severity(number: OtelSeverityNumber) -> Severity {
 
 fn otel_value_to_any_value(value: &OtelValue<'_>) -> AnyValue {
     match value {
-        OtelValue::String(v) => AnyValue::from(v.as_ref().to_owned()),
+        OtelValue::String(v) => AnyValue::from(v.to_string()),
         OtelValue::Int(v) => AnyValue::from(*v),
         OtelValue::U64(v) => match i64::try_from(*v) {
             Ok(v) => AnyValue::from(v),

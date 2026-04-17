@@ -212,11 +212,11 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
 /// Parses trace IDs from hardcoded strings.
 /// Returns an error report if any ID is invalid.
 fn parse_trace_ids() -> Result<(TraceId, SpanId, ParentSpanId), Report<ApiError, HasSeverity>> {
-    let trace_id = TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736")
+    let trace_id = TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736")
         .map_err(|_| Report::new(ApiError::retry_later(1)).with_severity(Severity::Error))?;
-    let span_id = SpanId::new("00f067aa0ba902b7")
+    let span_id = SpanId::from_str("00f067aa0ba902b7")
         .map_err(|_| Report::new(ApiError::retry_later(1)).with_severity(Severity::Error))?;
-    let parent_span_id = ParentSpanId::new("1111111111111111")
+    let parent_span_id = ParentSpanId::from_str("1111111111111111")
         .map_err(|_| Report::new(ApiError::retry_later(1)).with_severity(Severity::Error))?;
     Ok((trace_id, span_id, parent_span_id))
 }
@@ -440,8 +440,8 @@ fn init_global_context() {
         let mut ctx = GlobalContext::default();
         ctx.context.insert("global_request_id", "req-global-001");
         ctx.trace = Some(diagweave::report::GlobalTraceContext {
-            trace_id: TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok(),
-            span_id: SpanId::new("00f067aa0ba902b7").ok(),
+            trace_id: TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").ok(),
+            span_id: SpanId::from_str("00f067aa0ba902b7").ok(),
             ..diagweave::report::GlobalTraceContext::default()
         });
         Some(ctx)

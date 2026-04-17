@@ -3,8 +3,8 @@ use std::{env, io};
 use diagweave::otel::{OtelEnvelopeConfig, OtelSdkEmitter};
 use diagweave::prelude::{
     AttachmentValue, Compact, GlobalContext, HasSeverity, Pretty, Report, ReportRenderOptions,
-    ResultReportExt, Severity, SpanId, TraceEventAttribute, TraceEventLevel, TraceId,
-    register_global_injector, set, union,
+    ResultReportExt, Severity, TraceEventAttribute, TraceEventLevel, register_global_injector, set,
+    union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
 use diagweave::report::TraceFlags;
@@ -652,13 +652,11 @@ fn current_global_trace_context() -> Option<diagweave::report::GlobalTraceContex
         return None;
     }
 
-    let trace_id = TraceId::new(span_context.trace_id().to_string()).ok();
-    let span_id = SpanId::new(span_context.span_id().to_string()).ok();
     let sampled = span_context.is_sampled();
 
     Some(diagweave::report::GlobalTraceContext {
-        trace_id,
-        span_id,
+        trace_id: span_context.trace_id().try_into().ok(),
+        span_id: span_context.span_id().try_into().ok(),
         parent_span_id: None,
         sampled: Some(sampled),
         trace_state: None,

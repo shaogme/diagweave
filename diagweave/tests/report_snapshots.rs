@@ -142,10 +142,10 @@ fn snap_json_with_trace() {
 
     let report = Report::new(ApiError::Unauthorized)
         .with_trace_ids(
-            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
-            SpanId::new("00f067aa0ba902b7").unwrap(),
+            TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::from_str("00f067aa0ba902b7").unwrap(),
         )
-        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
+        .with_parent_span_id(ParentSpanId::from_str("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("vendor=blue")
         .with_trace_flags(1)
@@ -257,10 +257,10 @@ fn snap_otel_with_trace() {
     let report = Report::new(ApiError::Unauthorized)
         .with_severity(Severity::Error)
         .with_trace_ids(
-            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
-            SpanId::new("00f067aa0ba902b7").unwrap(),
+            TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::from_str("00f067aa0ba902b7").unwrap(),
         )
-        .with_parent_span_id(ParentSpanId::new("1111111111111111").unwrap())
+        .with_parent_span_id(ParentSpanId::from_str("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_event(TraceEvent {
             name: "db.query".into(),
@@ -319,8 +319,8 @@ fn snap_otel_record_count_with_trace() {
     let report = Report::new(ApiError::Unauthorized)
         .with_severity(Severity::Error)
         .with_trace_ids(
-            TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
-            SpanId::new("00f067aa0ba902b7").unwrap(),
+            TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").unwrap(),
+            SpanId::from_str("00f067aa0ba902b7").unwrap(),
         )
         .with_trace_event(TraceEvent {
             name: "auth.check".into(),

@@ -114,8 +114,8 @@ pub fn ensure_global_injector_installed() {
                 .insert("request_id", ContextValue::from("req-42"));
             #[cfg(feature = "trace")]
             {
-                let trace_id = TraceId::new("4bf92f3577b34da6a3ce929d0e0e4736").ok();
-                let span_id = SpanId::new("00f067aa0ba902b7").ok();
+                let trace_id = TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").ok();
+                let span_id = SpanId::from_str("00f067aa0ba902b7").ok();
                 context.trace = Some(GlobalTraceContext {
                     trace_id,
                     span_id,
@@ -133,12 +133,10 @@ pub fn ensure_global_injector_installed() {
 #[cfg(feature = "std")]
 #[allow(dead_code)]
 pub fn init_test() -> Option<MutexGuard<'static, ()>> {
-    Some(
-        TEST_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .expect("test lock"),
-    )
+    Some(match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    })
 }
 
 /// Initializes the test environment. (no-std version)

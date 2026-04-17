@@ -345,7 +345,7 @@ Note 附件读取：
 ```
 
 Trace 上下文使用已校验的 ID：
-- `TraceId::new("32位hex")` / `SpanId::new("16位hex")` / `ParentSpanId::new("16位hex")`
+- `TraceId::from_str("32位hex")` / `SpanId::from_str("16位hex")` / `ParentSpanId::from_str("16位hex")`
 - `unsafe { TraceId::new_unchecked(...) }` 可跳过校验
 
 ## 渲染与导出

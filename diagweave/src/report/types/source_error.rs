@@ -4,6 +4,8 @@ mod traversal;
 mod util;
 
 use super::*;
+#[cfg(feature = "trace")]
+use crate::report::TraceContext;
 use crate::utils::FastSet;
 
 use alloc::boxed::Box;
@@ -323,7 +325,7 @@ impl DiagnosticBag {
 #[derive(Debug, Clone, Default)]
 pub struct GlobalContext {
     #[cfg(feature = "trace")]
-    pub trace: Option<GlobalTraceContext>,
+    pub trace: Option<TraceContext>,
     pub error: Option<GlobalErrorMeta>,
     pub system: ContextMap,
     pub context: ContextMap,

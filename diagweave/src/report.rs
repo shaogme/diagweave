@@ -65,8 +65,6 @@ pub use trace::{
     ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
     TraceEventLevel, TraceFlags, TraceId, TraceState,
 };
-#[cfg(feature = "trace")]
-pub use types::GlobalTraceContext;
 
 #[cfg(feature = "std")]
 pub use global::RegisterGlobalContextError;

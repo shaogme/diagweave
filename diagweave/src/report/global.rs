@@ -91,11 +91,11 @@ pub struct RegisterGlobalContextError;
 /// ```rust
 /// # #[cfg(feature = "trace")]
 /// # {
-/// use diagweave::report::{register_global_injector, GlobalContext, GlobalTraceContext};
+/// use diagweave::report::{register_global_injector, GlobalContext, TraceContext};
 ///
 /// let _ = register_global_injector(|| {
 ///     let mut ctx = GlobalContext::default();
-///     ctx.trace = Some(GlobalTraceContext {
+///     ctx.trace = Some(TraceContext {
 ///         trace_id: Some("4bf92f3577b34da6a3ce929d0e0e4736".try_into().unwrap()),
 ///         span_id: Some("00f067aa0ba902b7".try_into().unwrap()),
 ///         parent_span_id: None,

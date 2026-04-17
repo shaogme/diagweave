@@ -65,13 +65,13 @@ pub mod report {
         GlobalConfig, RegisterGlobalContextError, SetGlobalConfigError, register_global_injector,
         set_global_config,
     };
-    #[cfg(feature = "trace")]
-    pub use crate::report_impl::{
-        GlobalTraceContext, ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent,
-        TraceEventAttribute, TraceEventLevel, TraceFlags, TraceId, TraceState,
-    };
     #[cfg(feature = "json")]
     pub use crate::report_impl::{JsonContext, JsonContextEntry};
+    #[cfg(feature = "trace")]
+    pub use crate::report_impl::{
+        ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
+        TraceEventLevel, TraceFlags, TraceId, TraceState,
+    };
 }
 
 #[cfg(feature = "trace")]

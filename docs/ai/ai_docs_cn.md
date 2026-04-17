@@ -351,7 +351,7 @@ let report3 = Report::new(error3).set_options(
 | `context` | `ContextMap` 全局注入的业务上下文 |
 | `system` | `ContextMap` 全局注入的系统/运行时上下文 |
 | `error` | `Option<GlobalErrorMeta>` 元数据覆盖（`error_code` / `category` / `retryable` / `severity`） |
-| `trace`（`trace` feature） | `Option<GlobalTraceContext>` 全局注入的 trace 上下文 |
+| `trace`（`trace` feature） | `Option<TraceContext>` 全局注入的 trace 上下文 |
 
 **注意**: `GlobalConfig` 和 `set_global_config` 是独立的全局配置系统，用于设置 `ReportOptions` 的默认值；而 `register_global_injector` 用于注入上下文信息。两者可以配合使用。
 

@@ -4,8 +4,6 @@ use core::fmt::{self, Display, Formatter};
 use ref_str::StaticRefStr;
 
 use super::{AttachmentValue, ErrorCode};
-#[cfg(feature = "trace")]
-use crate::report::{ParentSpanId, SpanId, TraceFlags, TraceId, TraceState};
 use crate::utils::FastMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -376,38 +374,5 @@ impl GlobalErrorMeta {
     /// Returns `true` if all metadata fields are `None`.
     pub fn is_empty(&self) -> bool {
         self.error_code.is_none() && self.category.is_none() && self.retryable.is_none()
-    }
-}
-
-/// Global trace context for distributed tracing, containing W3C trace context fields.
-#[cfg(feature = "trace")]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct GlobalTraceContext {
-    /// The W3C trace-id, a 32-digit hex string identifying the entire trace.
-    pub trace_id: Option<TraceId>,
-    /// The W3C span-id, a 16-digit hex string identifying this span.
-    pub span_id: Option<SpanId>,
-    /// The W3C parent-span-id, identifying the parent span.
-    pub parent_span_id: Option<ParentSpanId>,
-    /// Whether this trace was sampled for collection.
-    pub sampled: Option<bool>,
-    /// W3C trace-state header for vendor-specific trace information.
-    pub trace_state: Option<TraceState>,
-    /// W3C trace flags (e.g., sampled flag).
-    pub flags: Option<TraceFlags>,
-}
-
-#[cfg(feature = "trace")]
-impl GlobalTraceContext {
-    /// Returns `true` if all trace context fields are `None`.
-    ///
-    /// This is used to check whether any trace context has been set.
-    pub fn is_empty(&self) -> bool {
-        self.trace_id.is_none()
-            && self.span_id.is_none()
-            && self.parent_span_id.is_none()
-            && self.sampled.is_none()
-            && self.trace_state.is_none()
-            && self.flags.is_none()
     }
 }

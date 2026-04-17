@@ -643,7 +643,7 @@ fn render_report(label: &str, report: ScenarioReport, telemetry: &TelemetryHandl
     emit_otel_envelope(label, &otel, telemetry);
 }
 
-fn current_global_trace_context() -> Option<diagweave::report::GlobalTraceContext> {
+fn current_global_trace_context() -> Option<diagweave::report::TraceContext> {
     let current_span = tracing::Span::current();
     let otel_context = current_span.context();
     let span_context = otel_context.span().span_context().clone();
@@ -654,7 +654,7 @@ fn current_global_trace_context() -> Option<diagweave::report::GlobalTraceContex
 
     let sampled = span_context.is_sampled();
 
-    Some(diagweave::report::GlobalTraceContext {
+    Some(diagweave::report::TraceContext {
         trace_id: span_context.trace_id().try_into().ok(),
         span_id: span_context.span_id().try_into().ok(),
         parent_span_id: None,

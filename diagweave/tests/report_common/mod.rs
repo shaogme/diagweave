@@ -9,7 +9,7 @@ use diagweave::prelude::*;
 #[cfg(feature = "std")]
 use diagweave::report::GlobalContext;
 #[cfg(all(feature = "std", feature = "trace"))]
-use diagweave::report::GlobalTraceContext;
+use diagweave::report::TraceContext;
 #[cfg(feature = "std")]
 use diagweave::report::register_global_injector;
 
@@ -116,10 +116,10 @@ pub fn ensure_global_injector_installed() {
             {
                 let trace_id = TraceId::from_str("4bf92f3577b34da6a3ce929d0e0e4736").ok();
                 let span_id = SpanId::from_str("00f067aa0ba902b7").ok();
-                context.trace = Some(GlobalTraceContext {
+                context.trace = Some(TraceContext {
                     trace_id,
                     span_id,
-                    ..GlobalTraceContext::default()
+                    ..TraceContext::default()
                 });
             }
             Some(context)

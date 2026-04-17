@@ -351,7 +351,7 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `context` | `ContextMap` globally injected business context |
 | `system` | `ContextMap` globally injected system context (namespaced keys recommended, e.g., `service.name`, `deployment.environment`) |
 | `error` | `Option<GlobalErrorMeta>` metadata override (`error_code` / `category` / `retryable` / `severity`) |
-| `trace` (`trace` feature) | `Option<GlobalTraceContext>` globally injected trace context |
+| `trace` (`trace` feature) | `Option<TraceContext>` globally injected trace context |
 
 **Note**: `GlobalConfig` and `set_global_config` are a separate global configuration system for setting default `ReportOptions` values; `register_global_injector` is used for injecting context information. The two can be used together.
 

@@ -7,7 +7,6 @@ use diagweave::prelude::{
     union,
 };
 use diagweave::render::{Json, PrettyIndent, REPORT_JSON_SCHEMA_VERSION};
-use diagweave::report::TraceFlags;
 use opentelemetry::KeyValue;
 use opentelemetry::logs::LogRecord as _;
 use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
@@ -660,7 +659,6 @@ fn current_global_trace_context() -> Option<diagweave::report::TraceContext> {
         parent_span_id: None,
         sampled: Some(sampled),
         trace_state: None,
-        flags: Some(TraceFlags::new(if sampled { 1 } else { 0 })),
     })
 }
 

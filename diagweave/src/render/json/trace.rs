@@ -20,7 +20,6 @@ pub(super) struct TraceContextValue<'a> {
     pub parent_span_id: Option<RefStr<'a>>,
     pub sampled: Option<bool>,
     pub trace_state: Option<RefStr<'a>>,
-    pub flags: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,7 +59,6 @@ fn build_trace_ctx_value_opt(context: Option<&TraceContext>) -> TraceContextValu
             parent_span_id: None,
             sampled: None,
             trace_state: None,
-            flags: None,
         },
     }
 }
@@ -72,7 +70,6 @@ fn build_trace_ctx_value(context: &TraceContext) -> TraceContextValue<'_> {
         parent_span_id: context.parent_span_id.as_ref().map(|v| v.as_ref().into()),
         sampled: context.sampled,
         trace_state: context.trace_state.as_ref().map(|v| v.as_str().into()),
-        flags: context.flags.map(|flags| flags.bits()),
     }
 }
 

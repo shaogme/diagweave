@@ -392,9 +392,6 @@ fn write_trace_context_value(
             write_json_string(f, trace_state)
         })?;
     }
-    if let Some(v) = context.flags {
-        write_object_field(f, pretty, depth, &mut first, "flags", |f| write!(f, "{v}"))?;
-    }
     close_object(f, pretty, depth, first)
 }
 

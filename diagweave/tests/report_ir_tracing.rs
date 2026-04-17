@@ -150,7 +150,6 @@ fn tracing_exporter_uses_report_severity_for_unset_trace_events_and_carries_cont
         .with_parent_span_id(ParentSpanId::from_str("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("vendor=blue")
-        .with_trace_flags(1)
         .with_trace_event(TraceEvent {
             name: "db.query".into(),
             level: None,
@@ -202,12 +201,6 @@ fn tracing_exporter_uses_report_severity_for_unset_trace_events_and_carries_cont
             .fields
             .get("trace_state")
             .is_some_and(|v| v.contains("vendor=blue"))
-    );
-    assert!(
-        trace_event
-            .fields
-            .get("trace_flags")
-            .is_some_and(|v| v.contains("1"))
     );
 }
 

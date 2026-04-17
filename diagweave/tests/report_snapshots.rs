@@ -148,7 +148,6 @@ fn snap_json_with_trace() {
         .with_parent_span_id(ParentSpanId::from_str("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("vendor=blue")
-        .with_trace_flags(1)
         .with_trace_event(TraceEvent {
             name: "db.query".into(),
             level: Some(TraceEventLevel::Info),

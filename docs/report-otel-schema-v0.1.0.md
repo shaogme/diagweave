@@ -21,7 +21,7 @@ This document defines the machine-consumable OpenTelemetry envelope emitted by `
 - `severity_number: OtelSeverityNumber` when present (`1|5|9|13|17|21` on the wire)
 - `trace_id: TraceId` when present (`32-hex-string`)
 - `span_id: SpanId` when present (`16-hex-string`)
-- `trace_flags: integer` when present
+- `trace_sampled: boolean` when present
 - `trace_context: { parent_span_id?: ParentSpanId, trace_state?: TraceState }` when present
 - `attributes: Array<OtelAttribute>`
 

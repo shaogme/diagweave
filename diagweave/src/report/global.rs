@@ -101,7 +101,6 @@ pub struct RegisterGlobalContextError;
 ///         parent_span_id: None,
 ///         sampled: Some(true),
 ///         trace_state: None,
-///         flags: None,
 ///     });
 ///     Some(ctx)
 /// });
@@ -219,8 +218,7 @@ where
                 .set_span_id_opt(global_trace.span_id)
                 .set_parent_span_id_opt(global_trace.parent_span_id)
                 .set_sampled_opt(global_trace.sampled)
-                .set_trace_state_opt(global_trace.trace_state)
-                .set_flags_opt(global_trace.flags);
+                .set_trace_state_opt(global_trace.trace_state);
         }
 
         self

@@ -68,7 +68,6 @@ pub struct TraceContext {
     pub parent_span_id: Option<ParentSpanId>,
     pub sampled: Option<bool>,
     pub trace_state: Option<TraceState>,
-    pub flags: Option<TraceFlags>,
 }
 
 impl TraceContext {
@@ -79,7 +78,6 @@ impl TraceContext {
             && self.parent_span_id.is_none()
             && self.sampled.is_none()
             && self.trace_state.is_none()
-            && self.flags.is_none()
     }
 }
 
@@ -210,7 +208,6 @@ impl ReportTrace {
     pub fn set_sampled(mut self, sampled: bool) -> Self {
         let inner = self.ensure_inner();
         inner.context.sampled = Some(sampled);
-        sync_flags_with_sampled(&mut inner.context);
         self
     }
 
@@ -219,7 +216,6 @@ impl ReportTrace {
         if self.context().and_then(|c| c.sampled).is_none() {
             let inner = self.ensure_inner();
             inner.context.sampled = Some(sampled);
-            sync_flags_with_sampled(&mut inner.context);
         }
         self
     }
@@ -238,24 +234,6 @@ impl ReportTrace {
             .is_none()
         {
             self.ensure_inner().context.trace_state = Some(TraceState::from(trace_state.into()));
-        }
-        self
-    }
-
-    /// Sets the trace flags, replacing any existing value.
-    pub fn set_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
-        let inner = self.ensure_inner();
-        inner.context.flags = Some(flags.into());
-        sync_sampled_with_flags(&mut inner.context);
-        self
-    }
-
-    /// Sets the trace flags only if not already set.
-    pub fn with_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
-        if self.context().and_then(|c| c.flags.as_ref()).is_none() {
-            let inner = self.ensure_inner();
-            inner.context.flags = Some(flags.into());
-            sync_sampled_with_flags(&mut inner.context);
         }
         self
     }
@@ -300,7 +278,6 @@ impl ReportTrace {
         {
             let inner = self.ensure_inner();
             inner.context.sampled = Some(s);
-            sync_flags_with_sampled(&mut inner.context);
         }
         self
     }
@@ -314,18 +291,6 @@ impl ReportTrace {
                 .is_none()
         {
             self.ensure_inner().context.trace_state = Some(ts);
-        }
-        self
-    }
-
-    /// Sets the trace flags from an Option, only if not already set.
-    pub fn set_flags_opt(mut self, flags: Option<TraceFlags>) -> Self {
-        if let Some(f) = flags
-            && self.context().and_then(|c| c.flags.as_ref()).is_none()
-        {
-            let inner = self.ensure_inner();
-            inner.context.flags = Some(f);
-            sync_sampled_with_flags(&mut inner.context);
         }
         self
     }
@@ -622,60 +587,6 @@ impl Display for TraceState {
     }
 }
 
-/// Trace flags as defined by the W3C TraceContext specification.
-///
-/// The flags are represented as a single byte where:
-/// - Bit 0: Sampled flag (1 = sampled, 0 = not sampled)
-/// - Bits 1-7: Reserved for future use
-///
-/// # Example
-/// ```
-/// use diagweave::report::TraceFlags;
-///
-/// let flags = TraceFlags::new(1);
-/// assert!(flags.is_sampled());
-/// assert_eq!(flags.bits(), 1);
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "json", derive(serde::Serialize, serde::Deserialize))]
-pub struct TraceFlags(u8);
-
-impl TraceFlags {
-    /// Creates new trace flags from a raw byte value.
-    pub fn new(value: u8) -> Self {
-        Self(value)
-    }
-
-    /// Returns the raw flags byte.
-    ///
-    /// Bit layout per W3C TraceContext specification:
-    /// - Bit 0: Sampled flag (1 = sampled, 0 = not sampled)
-    /// - Bits 1-7: Reserved for future use
-    pub fn bits(self) -> u8 {
-        self.0
-    }
-
-    /// Returns true if the sampled bit (bit 0) is set.
-    ///
-    /// Per W3C TraceContext specification, this indicates whether
-    /// the trace should be sampled and recorded by tracing backends.
-    pub fn is_sampled(self) -> bool {
-        (self.0 & 1) == 1
-    }
-}
-
-impl From<u8> for TraceFlags {
-    fn from(value: u8) -> Self {
-        Self(value)
-    }
-}
-
-impl Display for TraceFlags {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 impl<E, State> Report<E, State>
 where
     State: SeverityState,
@@ -752,7 +663,6 @@ where
     pub fn set_trace_sampled(mut self, sampled: bool) -> Self {
         let inner = self.trace_mut().ensure_inner();
         inner.context.sampled = Some(sampled);
-        sync_flags_with_sampled(&mut inner.context);
         self
     }
 
@@ -761,7 +671,6 @@ where
         if self.trace().context().and_then(|c| c.sampled).is_none() {
             let inner = self.trace_mut().ensure_inner();
             inner.context.sampled = Some(sampled);
-            sync_flags_with_sampled(&mut inner.context);
         }
         self
     }
@@ -783,29 +692,6 @@ where
         {
             self.trace_mut().ensure_inner().context.trace_state =
                 Some(TraceState::from(trace_state.into()));
-        }
-        self
-    }
-
-    /// Sets the trace flags, replacing any existing value.
-    pub fn set_trace_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
-        let inner = self.trace_mut().ensure_inner();
-        inner.context.flags = Some(flags.into());
-        sync_sampled_with_flags(&mut inner.context);
-        self
-    }
-
-    /// Sets the trace flags only if not already set.
-    pub fn with_trace_flags(mut self, flags: impl Into<TraceFlags>) -> Self {
-        if self
-            .trace()
-            .context()
-            .and_then(|c| c.flags.as_ref())
-            .is_none()
-        {
-            let inner = self.trace_mut().ensure_inner();
-            inner.context.flags = Some(flags.into());
-            sync_sampled_with_flags(&mut inner.context);
         }
         self
     }
@@ -847,29 +733,3 @@ where
     }
 }
 
-#[cfg(feature = "trace")]
-fn sync_flags_with_sampled(context: &mut TraceContext) {
-    let Some(sampled) = context.sampled else {
-        return;
-    };
-    match context.flags.as_mut() {
-        Some(flags) => {
-            if sampled {
-                *flags = TraceFlags::new(flags.bits() | 1);
-            } else {
-                *flags = TraceFlags::new(flags.bits() & !1);
-            }
-        }
-        None => {
-            context.flags = Some(TraceFlags::new(if sampled { 1 } else { 0 }));
-        }
-    }
-}
-
-#[cfg(feature = "trace")]
-fn sync_sampled_with_flags(context: &mut TraceContext) {
-    let Some(flags) = context.flags else {
-        return;
-    };
-    context.sampled = Some((flags.bits() & 1) == 1);
-}

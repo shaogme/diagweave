@@ -187,7 +187,6 @@ fn api_handler(request_id: &'static str) -> Result<String, Report<ApiError, HasS
             .with_parent_span_id(parent_span_id)
             .with_trace_sampled(true)
             .with_trace_state("service=api")
-            .with_trace_flags(1)
             .push_trace_event_with(
                 "api.handler",
                 Some(TraceEventLevel::Error),

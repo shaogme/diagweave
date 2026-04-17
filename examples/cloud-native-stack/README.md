@@ -116,7 +116,7 @@ The OpenTelemetry envelope is converted into native log records instead of being
 1. Each `OtelEvent` becomes one OTEL log record
 2. `OtelEvent.attributes` are emitted as structured log attributes
 3. `OtelEvent.body` is preserved as a structured attribute
-4. `trace_id`, `span_id`, and `trace_flags` stay attached to the current OpenTelemetry span context
+4. `trace_id`, `span_id`, and `trace_sampled` stay attached to the current OpenTelemetry span context
 
 In practice, the Collector sees native OTEL records instead of an application-specific JSON string.
 

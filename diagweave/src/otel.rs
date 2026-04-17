@@ -186,7 +186,7 @@ pub struct OtelEvent<'a> {
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub span_id: Option<SpanId>,
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
-    pub trace_flags: Option<u8>,
+    pub trace_sampled: Option<bool>,
     #[cfg_attr(feature = "json", serde(skip_serializing_if = "Option::is_none"))]
     pub trace_context: Option<OtelTraceContext>,
     pub attributes: Vec<OtelAttribute<'a>>,
@@ -338,7 +338,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     fn otel_report_ev(
         &'a self,
         config: &OtelEnvelopeConfig<'a>,
-        trace_ids: (Option<TraceId>, Option<SpanId>, Option<u8>),
+        trace_ids: (Option<TraceId>, Option<SpanId>, Option<bool>),
         trace_context: Option<OtelTraceContext>,
     ) -> OtelEvent<'a> {
         let report_level = self.metadata.required_severity();
@@ -392,7 +392,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
             });
         }
 
-        let (trace_id, span_id, trace_flags) = trace_ids;
+        let (trace_id, span_id, trace_sampled) = trace_ids;
         OtelEvent {
             name: "exception".into(),
             body: Some(error_message_value),
@@ -402,7 +402,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
             severity_number: Some(report_level.into()),
             trace_id,
             span_id,
-            trace_flags,
+            trace_sampled,
             trace_context,
             attributes,
         }
@@ -429,17 +429,17 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
     }
 
     #[cfg(feature = "trace")]
-    fn otel_trace_ids(&'a self) -> (Option<TraceId>, Option<SpanId>, Option<u8>) {
+    fn otel_trace_ids(&'a self) -> (Option<TraceId>, Option<SpanId>, Option<bool>) {
         let ctx = self.trace.context();
         (
             ctx.and_then(|c| c.trace_id.clone()),
             ctx.and_then(|c| c.span_id.clone()),
-            ctx.and_then(|c| c.flags.map(|f| f.bits())),
+            ctx.and_then(|c| c.sampled),
         )
     }
 
     #[cfg(not(feature = "trace"))]
-    fn otel_trace_ids(&'a self) -> (Option<TraceId>, Option<SpanId>, Option<u8>) {
+    fn otel_trace_ids(&'a self) -> (Option<TraceId>, Option<SpanId>, Option<bool>) {
         (None, None, None)
     }
 
@@ -543,7 +543,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
         &'a self,
         _config: &OtelEnvelopeConfig<'a>,
         records: &mut Vec<OtelEvent<'a>>,
-        trace_ids: (Option<TraceId>, Option<SpanId>, Option<u8>),
+        trace_ids: (Option<TraceId>, Option<SpanId>, Option<bool>),
         trace_context: Option<OtelTraceContext>,
     ) {
         let Some(events) = self.trace.events() else {
@@ -574,7 +574,7 @@ impl<'a> DiagnosticIr<'a, HasSeverity> {
                 severity_number,
                 trace_id: trace_ids.0.clone(),
                 span_id: trace_ids.1.clone(),
-                trace_flags: trace_ids.2,
+                trace_sampled: trace_ids.2,
                 trace_context: trace_context.clone(),
                 attributes,
             });

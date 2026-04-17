@@ -383,7 +383,6 @@ fn json_trace_section_uses_shared_trace_shape() {
         .with_parent_span_id(ParentSpanId::from_str("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("vendor=blue")
-        .with_trace_flags(1)
         .with_trace_event(TraceEvent {
             name: "db.query".into(),
             level: Some(TraceEventLevel::Info),
@@ -416,7 +415,6 @@ fn json_trace_section_uses_shared_trace_shape() {
         trace["context"]["trace_state"].as_str(),
         Some("vendor=blue")
     );
-    assert_eq!(trace["context"]["flags"].as_u64(), Some(1));
     assert_eq!(trace["events"].as_array().map(|a| a.len()), Some(1));
     assert_eq!(
         trace["events"][0]["attributes"][0]["value"]["kind"].as_str(),

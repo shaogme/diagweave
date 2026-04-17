@@ -294,7 +294,6 @@ fn diagnostic_ir_maps_to_tracing_and_otel_adapters() {
         .with_parent_span_id(ParentSpanId::from_str("1111111111111111").unwrap())
         .with_trace_sampled(true)
         .with_trace_state("vendor=blue")
-        .with_trace_flags(1)
         .with_trace_event(TraceEvent {
             name: "auth.lookup".into(),
             level: Some(TraceEventLevel::Warn),
@@ -472,7 +471,6 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     assert_eq!(records[0]["name"], "exception");
     assert_eq!(records[0]["severity_text"], "error");
     assert_eq!(records[0]["severity_number"], 17);
-    assert!(records[0]["trace_flags"].is_null());
     assert!(records[0]["trace_context"].is_null());
     // Body is now a plain string per OTel semantic conventions
     assert_eq!(
@@ -482,7 +480,6 @@ fn otel_envelope_serializes_with_expected_serde_shape() {
     assert_eq!(records[1]["name"], "db.query");
     assert_eq!(records[1]["severity_text"], "info");
     assert_eq!(records[1]["severity_number"], 9);
-    assert!(records[1]["trace_flags"].is_null());
     assert!(records[1]["trace_context"].is_null());
     assert!(records[1]["body"].is_null());
 }

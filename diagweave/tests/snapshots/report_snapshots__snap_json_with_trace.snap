@@ -2,4 +2,4 @@
 source: diagweave/tests/report_snapshots.rs
 expression: output
 ---
-{"schema_version":"v0.1.0","error":{"message":"api unauthorized","type":"report_snapshots::report_common::ApiError"},"metadata":{},"diagnostic_bag":{},"trace":{"context":{"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"1111111111111111","sampled":true,"trace_state":"vendor=blue","flags":1},"events":[{"name":"db.query","level":"info","timestamp_unix_nano":1713337100000000000,"attributes":[{"key":"db.system","value":{"kind":"string","value":"postgres"}}]}]},"context":{},"system":{},"attachments":[]}
+{"schema_version":"v0.1.0","error":{"message":"api unauthorized","type":"report_snapshots::report_common::ApiError"},"metadata":{},"diagnostic_bag":{},"trace":{"context":{"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","parent_span_id":"1111111111111111","sampled":true,"trace_state":"vendor=blue"},"events":[{"name":"db.query","level":"info","timestamp_unix_nano":1713337100000000000,"attributes":[{"key":"db.system","value":{"kind":"string","value":"postgres"}}]}]},"context":{},"system":{},"attachments":[]}

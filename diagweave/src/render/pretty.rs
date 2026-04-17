@@ -200,10 +200,6 @@ where
                     write_indent(f, options.pretty_indent)?;
                     writeln!(f, "- trace_state: {trace_state}")?;
                 }
-                if let Some(flags) = context.flags {
-                    write_indent(f, options.pretty_indent)?;
-                    writeln!(f, "- flags: {flags}")?;
-                }
             }
             if let Some(events) = trace.events() {
                 for (idx, event) in events.iter().enumerate() {

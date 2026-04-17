@@ -398,8 +398,6 @@ let report3 = Report::new(error3).set_options(
 | `with_trace_sampled` | `bool` | 设置是否采样，仅当未设置时生效 |
 | `set_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state 用于关联元数据，覆盖已有值 |
 | `with_trace_state` | `impl Into<StaticRefStr>` | 设置 trace state，仅当未设置时生效 |
-| `set_trace_flags` | `impl Into<TraceFlags>` | 设置追踪标志，覆盖已有值 |
-| `with_trace_flags` | `impl Into<TraceFlags>` | 设置追踪标志，仅当未设置时生效 |
 | `with_trace_event` | `TraceEvent` | 添加追踪事件到报告 |
 | `push_trace_event` | `impl Into<StaticRefStr>` | 追加一个默认字段的 trace 事件 |
 | `push_trace_event_with` | `(impl Into<StaticRefStr>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | 追加一个完整指定的 trace 事件 |

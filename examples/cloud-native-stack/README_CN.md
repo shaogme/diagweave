@@ -116,7 +116,7 @@ OpenTelemetry envelope 不再被序列化成一整段字符串塞进 log body，
 1. 每个 `OtelEvent` 对应一条 OTEL log record
 2. `OtelEvent.attributes` 会作为结构化 log attributes 输出
 3. `OtelEvent.body` 会保留成结构化属性
-4. `trace_id`、`span_id`、`trace_flags` 会继续挂在当前 OpenTelemetry span 上
+4. `trace_id`、`span_id`、`trace_sampled` 会继续挂在当前 OpenTelemetry span 上
 
 这样 Collector 中看到的是原生 OTEL 结构，而不是应用自定义的扁平 JSON。
 

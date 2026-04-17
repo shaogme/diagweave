@@ -63,7 +63,7 @@ pub use types::{JsonContext, JsonContextEntry};
 #[cfg(feature = "trace")]
 pub use trace::{
     ParentSpanId, ReportTrace, SpanId, TraceContext, TraceEvent, TraceEventAttribute,
-    TraceEventLevel, TraceFlags, TraceId, TraceState,
+    TraceEventLevel, TraceId, TraceState,
 };
 
 #[cfg(feature = "std")]

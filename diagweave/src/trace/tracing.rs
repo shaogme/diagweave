@@ -86,7 +86,6 @@ macro_rules! report_event {
             parent_span_id = ?$ir.trace.context().and_then(|t| t.parent_span_id.as_ref()),
             trace_sampled = ?$ir.trace.context().and_then(|t| t.sampled),
             trace_state = ?$ir.trace.context().and_then(|t| t.trace_state.as_ref()),
-            trace_flags = ?$ir.trace.context().and_then(|t| t.flags),
             trace_event_count = $ir.trace.events().map(|e| e.len()).unwrap_or(0),
             report_context = ?$context,
             report_system = ?$system,
@@ -151,7 +150,6 @@ macro_rules! trace_event {
             parent_span_id = ?$trace.context().and_then(|t| t.parent_span_id.as_ref()),
             trace_sampled = ?$trace.context().and_then(|t| t.sampled),
             trace_state = ?$trace.context().and_then(|t| t.trace_state.as_ref()),
-            trace_flags = ?$trace.context().and_then(|t| t.flags),
             "diagweave trace event"
         )
     };

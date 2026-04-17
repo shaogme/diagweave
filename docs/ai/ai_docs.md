@@ -398,8 +398,6 @@ Used for automatic cross-layer context injection (e.g., RequestID, SessionID).
 | `with_trace_sampled` | `bool` | Set whether the trace is sampled only if not already set |
 | `set_trace_state` | `impl Into<StaticRefStr>` | Set trace state for correlation metadata, replacing any existing value |
 | `with_trace_state` | `impl Into<StaticRefStr>` | Set trace state only if not already set |
-| `set_trace_flags` | `impl Into<TraceFlags>` | Set trace flags, replacing any existing value |
-| `with_trace_flags` | `impl Into<TraceFlags>` | Set trace flags only if not already set |
 | `with_trace_event` | `TraceEvent` | Add a trace event to the report |
 | `push_trace_event` | `impl Into<StaticRefStr>` | Append a trace event with default fields |
 | `push_trace_event_with` | `(impl Into<StaticRefStr>, Option<TraceEventLevel>, Option<u64>, impl IntoIterator<Item = TraceEventAttribute>)` | Append a fully specified trace event |

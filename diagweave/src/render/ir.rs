@@ -388,12 +388,6 @@ fn build_trace_ctx_value(context: &TraceContext) -> AttachmentValue {
             AttachmentValue::String(value.as_static_ref().clone()),
         );
     }
-    if let Some(value) = context.flags {
-        ctx.insert(
-            "flags".into(),
-            AttachmentValue::Unsigned(value.bits() as u64),
-        );
-    }
     AttachmentValue::Object(ctx)
 }
 

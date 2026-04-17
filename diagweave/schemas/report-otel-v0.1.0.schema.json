@@ -136,10 +136,8 @@
         "span_id": {
           "$ref": "#/$defs/span_id"
         },
-        "trace_flags": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 255
+        "trace_sampled": {
+          "type": "boolean"
         },
         "trace_context": {
           "description": "Fixed top-level trace-context object for the record. When present, it carries parent span metadata and trace state directly on the event.",
